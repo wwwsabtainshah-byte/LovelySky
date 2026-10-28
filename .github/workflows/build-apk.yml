@@ -27,6 +27,14 @@ jobs:
           flutter-version: "3.50.0-0.2.pre"
           channel: master
 
+      - name: Decode Android signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "Signing key secret missing"; exit 1; }
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/lovelysky-release.jks"
+          test -s "$RUNNER_TEMP/lovelysky-release.jks"
+
       - name: Get dependencies
         run: flutter pub get
 
@@ -34,6 +42,11 @@ jobs:
         run: flutter analyze --no-fatal-infos
 
       - name: Build Android APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/lovelysky-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: flutter build apk --release
 
       - name: Upload APK
