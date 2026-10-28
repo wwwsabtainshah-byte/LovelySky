@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'auth_screen.dart';
 
 void main() => runApp(const LovelyChatApp());
 
@@ -26,7 +27,7 @@ class LovelyChatApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
-      home: const MainScreen(),
+      home: const AuthGate(home: MainScreen()),
     );
   }
 }
