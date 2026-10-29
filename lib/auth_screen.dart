@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -175,15 +177,83 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _googleSetupMessage() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Google Login activate karne ke liye Firebase Android configuration zaroori hai.',
-        ),
-        duration: Duration(seconds: 4),
-      ),
-    );
+  Future<void> _googleLogin() async {
+    if (_busy) return;
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    try {
+      await GoogleSignIn.instance.initialize(
+        serverClientId:
+            '122872274591-uuehmdgobp2hpl8a3ad09eqv08g0sise.apps.googleusercontent.com',
+      );
+
+      final account = await GoogleSignIn.instance.authenticate();
+      final googleIdToken = account.authentication.idToken;
+
+      if (googleIdToken == null || googleIdToken.isEmpty) {
+        throw Exception('Google ID token nahi mila. Firebase OAuth configuration check karein.');
+      }
+
+      final credential = GoogleAuthProvider.credential(
+        idToken: googleIdToken,
+      );
+      final userCredential =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+      final firebaseIdToken = await userCredential.user?.getIdToken();
+
+      if (firebaseIdToken == null || firebaseIdToken.isEmpty) {
+        throw Exception('Firebase verification token nahi mila.');
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final deviceId = await _deviceId(prefs);
+
+      final response = await http
+          .post(
+            Uri.parse('$lovelyApi/auth/google'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'id_token': firebaseIdToken,
+              'device_id': deviceId,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      Map<String, dynamic> data = {};
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) data = decoded;
+      } catch (_) {}
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data['success'] == true &&
+          data['token'] != null) {
+        await prefs.setString('lovely_token', data['token'].toString());
+        if (!mounted) return;
+        widget.onLoggedIn();
+        return;
+      }
+
+      final message = data['detail'] ??
+          data['message'] ??
+          'Google Login nahi hua. Dobara try karein.';
+      if (mounted) setState(() => _error = message.toString());
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        setState(() => _error = 'Firebase Login error: ${e.message ?? e.code}');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = 'Google Login nahi hua: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -379,7 +449,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       SizedBox(
                         height: 52,
                         child: OutlinedButton.icon(
-                          onPressed: _busy ? null : _googleSetupMessage,
+                          onPressed: _busy ? null : _googleLogin,
                           icon: const Icon(Icons.g_mobiledata_rounded, size: 30),
                           label: const Text(
                             'Continue with Google',
