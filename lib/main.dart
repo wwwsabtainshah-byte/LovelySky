@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'auth_screen.dart';
 
-void main() => runApp(const LovelyChatApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(const LovelyChatApp());
+}
 
 const blue = Color(0xFF168FFF);
 const sky = Color(0xFF67D4FF);
