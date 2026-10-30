@@ -1,12 +1,14 @@
 import os
 import json
 import base64
+import logging
 import firebase_admin
 from firebase_admin import auth, credentials
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 class GoogleLoginRequest(BaseModel):
     id_token: str
@@ -36,6 +38,11 @@ def verify_token(token: str):
     except HTTPException:
         raise
     except Exception as exc:
+        logger.error(
+            "Firebase token verification failed (%s): %s",
+            type(exc).__name__,
+            str(exc)[:300],
+        )
         raise HTTPException(401, "Firebase token rejected") from exc
 
 @router.post("/auth/google")
