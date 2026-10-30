@@ -302,7 +302,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 24),
                       const Text(
-                        'Lovely Chat',
+                        'Lovely Sky',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 32,
@@ -467,7 +467,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 24),
                       Text(
-                        'Secure login • Lovely Chat',
+                        'Secure login • Lovely Sky',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 12,
