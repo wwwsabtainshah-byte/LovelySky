@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String lovelyApi = 'https://lovely.fastapicloud.dev';
+const String lovelyApi = 'https://lovelysky.fastapicloud.dev';
 
 class AuthGate extends StatefulWidget {
   final Widget home;
