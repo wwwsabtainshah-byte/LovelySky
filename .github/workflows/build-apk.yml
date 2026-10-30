@@ -44,6 +44,13 @@ jobs:
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/lovelysky-release.jks"
           test -s "$RUNNER_TEMP/lovelysky-release.jks"
 
+      - name: Show release certificate fingerprints
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          keytool -list -v -keystore "$RUNNER_TEMP/lovelysky-release.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" | grep -E 'SHA1:|SHA256:'
+
       - name: Get dependencies
         run: flutter pub get
 
