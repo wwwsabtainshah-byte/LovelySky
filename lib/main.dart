@@ -1,4 +1,7 @@
-import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:material_ui/material_ui.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'auth_screen.dart';
 
@@ -95,7 +98,7 @@ Widget pageTitle(String title, {String? subtitle, Widget? trailing}) {
             ],
           ),
         ),
-        if (trailing != null) trailing,
+        ?trailing,
       ],
     ),
   );
@@ -491,83 +494,211 @@ class ChatPage extends StatelessWidget {
         const SizedBox(height: 10),
         ...people.map((p) => UserRow(
           name: p[0], detail: p[1], avatar: p[3])),
-      ],
-    ));
+        ],
+      ));
   }
 }
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
   @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  String displayName = 'Lovely User 💙';
+  String userCode = '';
+  String profilePhoto = '';
+  bool profileLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('lovely_token');
+
+      if (token == null || token.isEmpty) {
+        if (mounted) setState(() => profileLoading = false);
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('$lovelyApi/me'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          if (mounted) {
+            setState(() {
+              final name = decoded['display_name']?.toString().trim() ?? '';
+              final code = decoded['user_code']?.toString().trim() ?? '';
+              final photo = decoded['profile_photo']?.toString().trim() ?? '';
+
+              if (name.isNotEmpty) displayName = name;
+              if (code.isNotEmpty) userCode = code;
+              if (photo.startsWith('https://') ||
+                  photo.startsWith('http://')) {
+                profilePhoto = photo;
+              }
+              profileLoading = false;
+            });
+          }
+          return;
+        }
+      }
+    } catch (_) {
+      // Agar network temporary band ho to screen crash na ho.
+    }
+
+    if (mounted) setState(() => profileLoading = false);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return SafeArea(child: ListView(
-      padding: const EdgeInsets.all(18),
-      children: [
-        pageTitle('My Profile', subtitle: 'Your Lovely world',
-            trailing: roundIcon(Icons.settings_rounded)),
-        Container(
-          padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF168FFF), Color(0xFF8BDEFF)]),
-            borderRadius: BorderRadius.circular(25),
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          pageTitle(
+            'My Profile',
+            subtitle: 'Your Lovely world',
+            trailing: roundIcon(Icons.settings_rounded),
           ),
-          child: Column(children: [
-            Container(
-              width: 88, height: 88,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-                border: Border.all(color: Colors.white, width: 4)),
-              child: const Icon(Icons.person_rounded, size: 55, color: blue),
+          Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF168FFF), Color(0xFF8BDEFF)],
+              ),
+              borderRadius: BorderRadius.circular(25),
             ),
-            const SizedBox(height: 12),
-            const Text('Lovely User 💙', style: TextStyle(
-              fontSize: 22, color: Colors.white, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 6),
-            const Text('ID: Not connected yet',
-                style: TextStyle(color: Colors.white)),
-            const SizedBox(height: 20),
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            child: Column(
               children: [
-                StatItem(value: '0', label: 'Followers'),
-                StatItem(value: '0', label: 'Following'),
-                StatItem(value: '0', label: 'Likes'),
+                Container(
+                  width: 88,
+                  height: 88,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                    border: Border.all(color: Colors.white, width: 4),
+                    image: profilePhoto.isNotEmpty
+                        ? DecorationImage(
+                            image: NetworkImage(profilePhoto),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
+                  ),
+                  child: profilePhoto.isEmpty
+                      ? const Icon(
+                          Icons.person_rounded,
+                          size: 55,
+                          color: blue,
+                        )
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  displayName,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  profileLoading
+                      ? 'ID: Loading...'
+                      : userCode.isNotEmpty
+                          ? 'ID: $userCode'
+                          : 'ID: Not available — login again',
+                  style: const TextStyle(color: Colors.white),
+                ),
+                const SizedBox(height: 20),
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    StatItem(value: '0', label: 'Followers'),
+                    StatItem(value: '0', label: 'Following'),
+                    StatItem(value: '0', label: 'Likes'),
+                  ],
+                ),
               ],
             ),
-          ]),
-        ),
-        sectionTitle('My Lovely Space'),
-        const Row(children: [
-          Expanded(child: MenuTile(icon: Icons.account_balance_wallet_rounded,
-              title: 'Wallet', subtitle: 'Coins & history')),
-          SizedBox(width: 12),
-          Expanded(child: MenuTile(icon: Icons.storefront_rounded,
-              title: 'Store', subtitle: 'Gifts & frames')),
-        ]),
-        const SizedBox(height: 12),
-        const Row(children: [
-          Expanded(child: MenuTile(icon: Icons.card_giftcard_rounded,
-              title: 'Gift Bag', subtitle: 'My gifts')),
-          SizedBox(width: 12),
-          Expanded(child: MenuTile(icon: Icons.emoji_events_rounded,
-              title: 'Rewards', subtitle: 'Daily rewards')),
-        ]),
-        sectionTitle('Account'),
-        const MenuTile(icon: Icons.edit_rounded,
-            title: 'Edit Profile', subtitle: 'Name and picture'),
-        const SizedBox(height: 10),
-        const MenuTile(icon: Icons.shield_rounded,
-            title: 'Privacy & Security', subtitle: 'Protect your account'),
-        const SizedBox(height: 10),
-        const MenuTile(icon: Icons.help_outline_rounded,
-            title: 'Help & Support', subtitle: 'We are here to help'),
-      ],
-    ));
+          ),
+          sectionTitle('My Lovely Space'),
+          const Row(
+            children: [
+              Expanded(
+                child: MenuTile(
+                  icon: Icons.account_balance_wallet_rounded,
+                  title: 'Wallet',
+                  subtitle: 'Coins & history',
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: MenuTile(
+                  icon: Icons.storefront_rounded,
+                  title: 'Store',
+                  subtitle: 'Gifts & frames',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Row(
+            children: [
+              Expanded(
+                child: MenuTile(
+                  icon: Icons.card_giftcard_rounded,
+                  title: 'Gift Bag',
+                  subtitle: 'My gifts',
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: MenuTile(
+                  icon: Icons.emoji_events_rounded,
+                  title: 'Rewards',
+                  subtitle: 'Daily rewards',
+                ),
+              ),
+            ],
+          ),
+          sectionTitle('Account'),
+          const MenuTile(
+            icon: Icons.edit_rounded,
+            title: 'Edit Profile',
+            subtitle: 'Name and picture',
+          ),
+          const SizedBox(height: 10),
+          const MenuTile(
+            icon: Icons.shield_rounded,
+            title: 'Privacy & Security',
+            subtitle: 'Protect your account',
+          ),
+          const SizedBox(height: 10),
+          const MenuTile(
+            icon: Icons.help_outline_rounded,
+            title: 'Help & Support',
+            subtitle: 'We are here to help',
+          ),
+        ],
+      ),
+    );
   }
 }
+
 
 class StatItem extends StatelessWidget {
   final String value, label;
