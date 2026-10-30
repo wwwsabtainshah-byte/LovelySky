@@ -1,4 +1,4 @@
-package com.lovelychat.app
+package com.lovelysky.app
 
 import io.flutter.embedding.android.FlutterActivity
 

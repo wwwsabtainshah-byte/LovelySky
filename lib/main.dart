@@ -20,7 +20,7 @@ class LovelyChatApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Lovely Chat',
+      title: 'Lovely Sky',
       theme: ThemeData(
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF5FBFF),
@@ -186,7 +186,7 @@ class HomePage extends StatelessWidget {
                     color: Colors.white, size: 27),
               ),
               const SizedBox(width: 10),
-              const Expanded(child: Text('Lovely Chat',
+              const Expanded(child: Text('Lovely Sky',
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900,
                     color: blue))),
               roundIcon(Icons.search_rounded),
@@ -224,7 +224,7 @@ class HomePage extends StatelessWidget {
           sectionTitle('Recommended Users'),
           const UserRow(name: 'Princess', detail: 'Online now', avatar: '👑'),
           const UserRow(name: 'Cute Girl', detail: 'Making new friends', avatar: '🌸'),
-          const UserRow(name: 'King', detail: 'Enjoying Lovely Chat', avatar: '😎'),
+          const UserRow(name: 'King', detail: 'Enjoying Lovely Sky', avatar: '😎'),
         ],
       ),
     );
