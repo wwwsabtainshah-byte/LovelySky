@@ -114,8 +114,11 @@ def save_google_user(claims):
                 )
             code = "1"
         elif row is not None:
-            old_code = str(row["user_code"] or "")
-            code = old_code if old_code.isdigit() and int(old_code) >= 1001 else next_user_code(db)
+            old_code = str(row["user_code"] or "").strip()
+            if old_code.isdigit() and int(old_code) >= 1001:
+                code = old_code
+            else:
+                code = next_user_code(db)
         else:
             code = next_user_code(db)
 
