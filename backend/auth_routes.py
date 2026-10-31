@@ -409,23 +409,30 @@ def get_voice_room_seats(
 
         occupied = db.execute(
             """
-            SELECT seat_number, user_code
-            FROM voice_room_participants
-            WHERE room_id = ? AND seat_number BETWEEN 1 AND 18
+            SELECT p.seat_number, p.user_code,
+                   u.display_name, u.profile_photo
+            FROM voice_room_participants AS p
+            LEFT JOIN users AS u ON u.google_uid = p.user_uid
+            WHERE p.room_id = ? AND p.seat_number BETWEEN 1 AND 18
             """,
             (room_id,),
         ).fetchall()
 
-        by_seat = {row["seat_number"]: row["user_code"] for row in occupied}
+        by_seat = {row["seat_number"]: row for row in occupied}
         return {
             "success": True,
             "room_id": room_id,
             "seats": [
                 {
                     "seat_number": n,
-                    "user_code": by_seat.get(n),
+                    "user_code": by_seat[n]["user_code"] if n in by_seat else None,
+                    "display_name": by_seat[n]["display_name"] if n in by_seat else None,
+                    "profile_photo": by_seat[n]["profile_photo"] if n in by_seat else None,
                     "is_occupied": n in by_seat,
-                    "is_mine": n in by_seat and by_seat.get(n) == str(user["user_code"]),
+                    "is_mine": (
+                        n in by_seat
+                        and by_seat[n]["user_code"] == str(user["user_code"])
+                    ),
                 }
                 for n in range(1, 19)
             ],
@@ -792,6 +799,46 @@ async def voice_room_signal(websocket: WebSocket, room_id: int):
 
             kind = message.get("type")
             target_uid = message.get("target_uid")
+            if kind == "mic_status":
+                mic_on = message.get("payload")
+                if not isinstance(mic_on, bool):
+                    continue
+                broadcast = {
+                    "type": "mic_status",
+                    "sender_uid": uid,
+                    "sender_code": str(user["user_code"]),
+                    "payload": mic_on,
+                }
+                for peer_uid, peer in list(connections.items()):
+                    if peer_uid == uid:
+                        continue
+                    try:
+                        await peer.send_json(broadcast)
+                    except Exception:
+                        if connections.get(peer_uid) is peer:
+                            connections.pop(peer_uid, None)
+                continue
+
+            if kind == "speaking":
+                speaking = message.get("payload")
+                if not isinstance(speaking, bool):
+                    continue
+                broadcast = {
+                    "type": "speaking",
+                    "sender_uid": uid,
+                    "sender_code": str(user["user_code"]),
+                    "payload": speaking,
+                }
+                for peer_uid, peer in list(connections.items()):
+                    if peer_uid == uid:
+                        continue
+                    try:
+                        await peer.send_json(broadcast)
+                    except Exception:
+                        if connections.get(peer_uid) is peer:
+                            connections.pop(peer_uid, None)
+                continue
+
             if kind not in {"offer", "answer", "candidate"}:
                 continue
             if not isinstance(target_uid, str) or target_uid == uid:

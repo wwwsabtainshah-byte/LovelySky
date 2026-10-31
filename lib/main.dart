@@ -682,10 +682,7 @@ class _VoicePageState extends State<VoicePage> {
       // Apne rooms bhi load karo, taake Popular tab mein bhi nazar aa saken.
       try {
         final mineResponse = await http
-            .get(
-              Uri.parse('$lovelyApi/voice/rooms/mine'),
-              headers: headers,
-            )
+            .get(Uri.parse('$lovelyApi/voice/rooms/mine'), headers: headers)
             .timeout(const Duration(seconds: 15));
 
         if (mineResponse.statusCode == 200) {
@@ -695,8 +692,7 @@ class _VoicePageState extends State<VoicePage> {
             for (final item in mineData['rooms'] as List) {
               if (item is Map) {
                 final room = Map<String, dynamic>.from(item);
-                if (room['is_active'] == 1 &&
-                    knownIds.add('${room['id']}')) {
+                if (room['is_active'] == 1 && knownIds.add('${room['id']}')) {
                   loadedRooms.insert(0, room);
                 }
               }
@@ -1412,6 +1408,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   final Map<String, RTCPeerConnection> peerConnections = {};
   final Map<String, List<RTCIceCandidate>> pendingCandidates = {};
   final Set<String> remoteDescriptionReady = {};
+  final Map<String, bool> remoteMicStatus = {};
 
   static const Color purple = Color(0xFF7728E8);
   static const Color pink = Color(0xFFFF4FA3);
@@ -1423,15 +1420,11 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     unawaited(_startVoice());
     _loadSeats();
     _loadMessages();
-    seatRefreshTimer = Timer.periodic(
-      const Duration(seconds: 4),
-      (_) {
-        _loadSeats();
-        _loadMessages();
-      },
-    );
+    seatRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      _loadSeats();
+      _loadMessages();
+    });
   }
-
 
   Future<void> _startVoice() async {
     try {
@@ -1473,6 +1466,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       );
 
       socket.add(jsonEncode({'token': token}));
+      socket.add(jsonEncode({'type': 'mic_status', 'payload': micOn}));
 
       if (mounted) {
         showMessage('Microphone ready; room se connect ho raha hai.');
@@ -1480,7 +1474,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     } catch (e) {
       debugPrint('Voice startup failed: $e');
       if (mounted) {
-        showMessage('Voice start nahi hui. Mic permission aur server check karo.');
+        showMessage(
+          'Voice start nahi hui. Mic permission aur server check karo.',
+        );
       }
     }
   }
@@ -1493,11 +1489,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     final socket = signalSocket;
     if (socket == null || socket.readyState != WebSocket.open) return;
 
-    socket.add(jsonEncode({
-      'type': type,
-      'target_uid': targetUid,
-      'payload': payload,
-    }));
+    socket.add(
+      jsonEncode({'type': type, 'target_uid': targetUid, 'payload': payload}),
+    );
   }
 
   Future<RTCPeerConnection> _ensureVoicePeer(String uid) async {
@@ -1537,10 +1531,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       final offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      _sendVoiceSignal('offer', uid, {
-        'sdp': offer.sdp,
-        'type': offer.type,
-      });
+      _sendVoiceSignal('offer', uid, {'sdp': offer.sdp, 'type': offer.type});
     } catch (e) {
       debugPrint('Voice offer failed: $e');
     }
@@ -1558,9 +1549,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
 
   Future<void> _handleVoiceSignal(dynamic event) async {
     try {
-      final decoded = jsonDecode(
-        event is String ? event : event.toString(),
-      );
+      final decoded = jsonDecode(event is String ? event : event.toString());
       if (decoded is! Map) return;
 
       final data = Map<String, dynamic>.from(decoded);
@@ -1597,16 +1586,29 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         return;
       }
 
+      if (type == 'mic_status') {
+        final senderCode = data['sender_code']?.toString();
+        final payload = data['payload'];
+        if (senderCode == null || senderCode.isEmpty || payload is! bool) {
+          return;
+        }
+        if (mounted) {
+          setState(() => remoteMicStatus[senderCode] = payload);
+        }
+        return;
+      }
       final pc = await _ensureVoicePeer(senderUid);
       final rawPayload = data['payload'];
       if (rawPayload is! Map) return;
       final payload = Map<String, dynamic>.from(rawPayload);
 
       if (type == 'offer') {
-        await pc.setRemoteDescription(RTCSessionDescription(
-          payload['sdp']?.toString(),
-          payload['type']?.toString(),
-        ));
+        await pc.setRemoteDescription(
+          RTCSessionDescription(
+            payload['sdp']?.toString(),
+            payload['type']?.toString(),
+          ),
+        );
 
         remoteDescriptionReady.add(senderUid);
         await _flushVoiceCandidates(senderUid);
@@ -1619,10 +1621,12 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
           'type': answer.type,
         });
       } else if (type == 'answer') {
-        await pc.setRemoteDescription(RTCSessionDescription(
-          payload['sdp']?.toString(),
-          payload['type']?.toString(),
-        ));
+        await pc.setRemoteDescription(
+          RTCSessionDescription(
+            payload['sdp']?.toString(),
+            payload['type']?.toString(),
+          ),
+        );
 
         remoteDescriptionReady.add(senderUid);
         await _flushVoiceCandidates(senderUid);
@@ -1656,6 +1660,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       track.enabled = micOn;
     }
 
+    final socket = signalSocket;
+    if (socket != null && socket.readyState == WebSocket.open) {
+      socket.add(jsonEncode({'type': 'mic_status', 'payload': micOn}));
+    }
     showMessage(micOn ? 'Mic On' : 'Mic Off');
   }
 
@@ -1817,48 +1825,149 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     final occupied = seat['is_occupied'] == true;
     final mine = seat['is_mine'] == true;
     final size = large ? 58.0 : 44.0;
+    final photo = (seat['profile_photo'] ?? '').toString();
+    final avatarSize = large ? 30.0 : 23.0;
+
+    Widget avatar;
+    if (photo.startsWith('http://') || photo.startsWith('https://')) {
+      avatar = Image.network(
+        photo,
+        width: avatarSize,
+        height: avatarSize,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Icon(
+          occupied ? Icons.person : Icons.event_seat,
+          color: Colors.white,
+          size: large ? 23 : 17,
+        ),
+      );
+    } else if (photo.startsWith('data:image') && photo.contains(',')) {
+      try {
+        avatar = Image.memory(
+          base64Decode(photo.substring(photo.indexOf(',') + 1)),
+          width: avatarSize,
+          height: avatarSize,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) =>
+              const Icon(Icons.person, color: Colors.white),
+        );
+      } catch (_) {
+        avatar = Icon(
+          occupied ? Icons.person : Icons.event_seat,
+          color: Colors.white,
+          size: large ? 23 : 17,
+        );
+      }
+    } else {
+      avatar = Icon(
+        occupied ? Icons.person : Icons.event_seat,
+        color: Colors.white,
+        size: large ? 23 : 17,
+      );
+    }
 
     return InkWell(
       onTap: () => _tapSeat(number),
       borderRadius: BorderRadius.circular(size),
-      child: Container(
+      child: SizedBox(
         width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: mine ? const LinearGradient(colors: [pink, purple]) : null,
-          color: mine
-              ? null
-              : occupied
-              ? const Color(0xFF49345E)
-              : Colors.white.withValues(alpha: 0.07),
-          border: Border.all(
-            color: mine
-                ? pink
-                : occupied
-                ? purple
-                : Colors.white24,
-            width: large ? 2.5 : 1.2,
-          ),
-        ),
+        height: size + (occupied ? 12 : 0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              occupied ? Icons.person : Icons.event_seat,
-              color: Colors.white,
-              size: large ? 23 : 17,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: size,
+                  height: size,
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: occupied
+                          ? const [
+                              Color(0xFFFF4FA3),
+                              Color(0xFF7728E8),
+                              Color(0xFF38D9FF),
+                            ]
+                          : [Colors.white24, Colors.white10],
+                    ),
+                    boxShadow: occupied
+                        ? [
+                            BoxShadow(
+                              color: pink.withValues(alpha: 0.45),
+                              blurRadius: large ? 15 : 9,
+                              spreadRadius: 1,
+                            ),
+                            BoxShadow(
+                              color: purple.withValues(alpha: 0.35),
+                              blurRadius: large ? 19 : 12,
+                            ),
+                          ]
+                        : [],
+                  ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: mine
+                          ? const Color(0xFF382052)
+                          : const Color(0xFF241638),
+                      border: Border.all(
+                        color: mine ? pink : Colors.white24,
+                        width: mine ? 1.5 : 1,
+                      ),
+                    ),
+                    child: ClipOval(child: Center(child: avatar)),
+                  ),
+                ),
+                if (occupied)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: large ? 17 : 14,
+                      height: large ? 17 : 14,
+                      decoration: BoxDecoration(
+                        color: mine
+                            ? (micOn
+                                  ? const Color(0xFF20C997)
+                                  : const Color(0xFFE8415B))
+                            : const Color(0xFF49345E),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFF160D2B),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Icon(
+                        mine
+                            ? (micOn ? Icons.mic : Icons.mic_off)
+                            : ((remoteMicStatus[seat['user_code']?.toString() ??
+                                          ''] ??
+                                      true)
+                                  ? Icons.mic
+                                  : Icons.mic_off),
+                        size: large ? 10 : 8,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             if (occupied)
-              Text(
-                mine ? 'You' : (seat['user_code'] ?? '').toString(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: large ? 9 : 7,
-                  fontWeight: FontWeight.bold,
+              SizedBox(
+                width: size + 4,
+                child: Text(
+                  mine ? 'You' : (seat['user_code'] ?? '').toString(),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: large ? 9 : 7,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
           ],
@@ -1876,14 +1985,15 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('lovely_token');
       if (token == null || token.isEmpty) return;
-      final response = await http.get(
-        Uri.parse('$lovelyApi/voice/rooms/${widget.room['id']}/messages'),
-        headers: {'Authorization': 'Bearer $token'},
-      ).timeout(const Duration(seconds: 12));
+      final response = await http
+          .get(
+            Uri.parse('$lovelyApi/voice/rooms/${widget.room['id']}/messages'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 12));
       if (!mounted || response.statusCode != 200) return;
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final rows = (data['messages'] as List<dynamic>? ?? [])
-          .map((item) {
+      final rows = (data['messages'] as List<dynamic>? ?? []).map((item) {
         final row = Map<String, dynamic>.from(item as Map);
         return <String, dynamic>{
           'id': row['id'],
@@ -1911,20 +2021,24 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     }
     messageController.clear();
     try {
-      final response = await http.post(
-        Uri.parse('$lovelyApi/voice/rooms/${widget.room['id']}/messages'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({'message': text}),
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(
+            Uri.parse('$lovelyApi/voice/rooms/${widget.room['id']}/messages'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'message': text}),
+          )
+          .timeout(const Duration(seconds: 15));
       if (!mounted) return;
       if (response.statusCode == 200) {
         await _loadMessages();
       } else {
         messageController.text = text;
-        showMessage('Message send nahi hua (${response.statusCode}). Room join check karein.');
+        showMessage(
+          'Message send nahi hua (${response.statusCode}). Room join check karein.',
+        );
       }
     } catch (_) {
       if (!mounted) return;
@@ -1972,14 +2086,14 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     super.dispose();
   }
 
-
   @override
   Widget build(BuildContext context) {
     final name = (widget.room['name'] ?? 'Voice Room').toString();
     final owner = (widget.room['owner_code'] ?? '').toString();
     final roomId = (widget.room['id'] ?? '').toString();
-    final ownerPhoto = (widget.room['owner_photo'] ??
-        widget.room['profile_photo'] ?? '').toString();
+    final ownerPhoto =
+        (widget.room['owner_photo'] ?? widget.room['profile_photo'] ?? '')
+            .toString();
 
     Widget roundButton(IconData icon, String tip, VoidCallback action) {
       return IconButton(
@@ -2018,7 +2132,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                     radius: 23,
                     backgroundColor: purple,
                     backgroundImage: ownerPhoto.startsWith('http')
-                        ? NetworkImage(ownerPhoto) : null,
+                        ? NetworkImage(ownerPhoto)
+                        : null,
                     child: ownerPhoto.startsWith('http')
                         ? null
                         : const Icon(Icons.person, color: Colors.white),
@@ -2028,7 +2143,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(name, maxLines: 1,
+                        Text(
+                          name,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: Colors.white,
@@ -2036,17 +2153,27 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                             fontSize: 16,
                           ),
                         ),
-                        Text('ID: ${owner.isEmpty ? roomId : owner}',
+                        Text(
+                          'ID: ${owner.isEmpty ? roomId : owner}',
                           style: const TextStyle(
-                            color: Colors.white70, fontSize: 11)),
+                            color: Colors.white70,
+                            fontSize: 11,
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  roundButton(Icons.flag_outlined, 'Report',
-                      () => showMessage('Report feature baad mein connect hoga.')),
+                  roundButton(
+                    Icons.flag_outlined,
+                    'Report',
+                    () => showMessage('Report feature baad mein connect hoga.'),
+                  ),
                   roundButton(Icons.refresh, 'Refresh', _loadSeats),
-                  roundButton(Icons.power_settings_new, 'Leave room',
-                      _leaveRoom),
+                  roundButton(
+                    Icons.power_settings_new,
+                    'Leave room',
+                    _leaveRoom,
+                  ),
                 ],
               ),
             ),
@@ -2058,16 +2185,24 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 children: [
                   Row(
                     children: [
-                      roundButton(speakerOn ? Icons.volume_up : Icons.volume_off,
-                          'Room sound', _toggleSpeaker),
+                      roundButton(
+                        speakerOn ? Icons.volume_up : Icons.volume_off,
+                        'Room sound',
+                        _toggleSpeaker,
+                      ),
                       const SizedBox(width: 5),
-                      const Icon(Icons.local_fire_department,
-                          color: Colors.orange, size: 23),
-                      const Text('0',
-                          style: TextStyle(color: Colors.white70)),
+                      const Icon(
+                        Icons.local_fire_department,
+                        color: Colors.orange,
+                        size: 23,
+                      ),
+                      const Text('0', style: TextStyle(color: Colors.white70)),
                       const Spacer(),
-                      roundButton(Icons.people_alt_outlined, 'Members',
-                          () => showMessage('Room members')),
+                      roundButton(
+                        Icons.people_alt_outlined,
+                        'Members',
+                        () => showMessage('Room members'),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 5),
@@ -2090,12 +2225,20 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                               children: [
                                 _buildSeat(n, large: n == 2),
                                 const SizedBox(height: 3),
-                                Text('No. $n',
+                                Text(
+                                  'No. $n',
                                   style: const TextStyle(
-                                    color: Colors.white70, fontSize: 11)),
-                                const Text('💗 0',
+                                    color: Colors.white70,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                                const Text(
+                                  '💗 0',
                                   style: TextStyle(
-                                    color: Colors.pinkAccent, fontSize: 10)),
+                                    color: Colors.pinkAccent,
+                                    fontSize: 10,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -2113,12 +2256,20 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                 children: [
                                   _buildSeat(first + i),
                                   const SizedBox(height: 3),
-                                  Text('No. ${first + i}',
+                                  Text(
+                                    'No. ${first + i}',
                                     style: const TextStyle(
-                                      color: Colors.white70, fontSize: 11)),
-                                  const Text('💗 0',
+                                      color: Colors.white70,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                  const Text(
+                                    '💗 0',
                                     style: TextStyle(
-                                      color: Colors.pinkAccent, fontSize: 10)),
+                                      color: Colors.pinkAccent,
+                                      fontSize: 10,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -2131,14 +2282,20 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   // Room tabs.
                   Row(
                     children: [
-                      const Text('All',
+                      const Text(
+                        'All',
                         style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold)),
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       const SizedBox(width: 22),
                       TextButton(
                         onPressed: () => showMessage('Room chat'),
-                        child: const Text('Chat',
-                          style: TextStyle(color: Colors.white70)),
+                        child: const Text(
+                          'Chat',
+                          style: TextStyle(color: Colors.white70),
+                        ),
                       ),
                     ],
                   ),
@@ -2149,7 +2306,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                       'Welcome to Lovely Sky! Please respect all members '
                       'and follow the room rules.',
                       style: TextStyle(
-                        color: Colors.amber, fontSize: 14, height: 1.4),
+                        color: Colors.amber,
+                        fontSize: 14,
+                        height: 1.4,
+                      ),
                     ),
                   ),
                   panel(
@@ -2161,8 +2321,11 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   panel(
                     const Row(
                       children: [
-                        Icon(Icons.campaign_outlined,
-                          color: Colors.white70, size: 28),
+                        Icon(
+                          Icons.campaign_outlined,
+                          color: Colors.white70,
+                          size: 28,
+                        ),
                         SizedBox(width: 10),
                         Expanded(
                           child: Text(
@@ -2174,170 +2337,220 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                     ),
                   ),
                   if (messages.isNotEmpty)
-                    ...messages.map((message) => panel(
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const CircleAvatar(
-                            radius: 15,
-                            backgroundColor: purple,
-                            child: Icon(Icons.person,
-                              color: Colors.white, size: 17),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(message['text'].toString(),
-                              style: const TextStyle(color: Colors.white)),
-                          ),
-                          Text(message['time'].toString(),
-                            style: const TextStyle(
-                              color: Colors.white54, fontSize: 10)),
-                        ],
-                      ),
-                    )),
-                ],
-              ),
-            ),
-
-            // Compact bottom row: chat, send, emoji, mic, gift and More.
-Container(
-  padding: const EdgeInsets.fromLTRB(5, 4, 5, 4),
-  decoration: const BoxDecoration(
-    color: Color(0xFF211438),
-    border: Border(
-      top: BorderSide(color: Color(0x887728E8)),
-    ),
-  ),
-  child: Row(
-    children: [
-      Expanded(
-        child: TextField(
-          controller: messageController,
-          style: const TextStyle(color: Colors.white, fontSize: 13),
-          textInputAction: TextInputAction.send,
-          onSubmitted: (_) => sendMessage(),
-          decoration: InputDecoration(
-            hintText: 'Message...',
-            hintStyle: const TextStyle(color: Colors.white54),
-            isDense: true,
-            filled: true,
-            fillColor: background,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 10, vertical: 9,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(22),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
-      ),
-      IconButton(
-        tooltip: 'Send',
-        constraints: const BoxConstraints.tightFor(width: 36, height: 42),
-        padding: EdgeInsets.zero,
-        onPressed: sendMessage,
-        icon: const Icon(Icons.send_rounded, color: pink, size: 22),
-      ),
-      IconButton(
-        tooltip: 'Emoji',
-        constraints: const BoxConstraints.tightFor(width: 34, height: 42),
-        padding: EdgeInsets.zero,
-        onPressed: () {
-          messageController.text += '😊';
-          messageController.selection = TextSelection.collapsed(
-            offset: messageController.text.length,
-          );
-        },
-        icon: const Icon(Icons.emoji_emotions_outlined,
-            color: Colors.white, size: 23),
-      ),
-      IconButton(
-        tooltip: 'Mic',
-        constraints: const BoxConstraints.tightFor(width: 34, height: 42),
-        padding: EdgeInsets.zero,
-        onPressed: _toggleMic,
-        icon: Icon(
-          micOn ? Icons.mic : Icons.mic_off,
-          color: micOn ? pink : Colors.white54,
-          size: 24,
-        ),
-      ),
-      IconButton(
-        tooltip: 'Gift',
-        constraints: const BoxConstraints.tightFor(width: 38, height: 42),
-        padding: EdgeInsets.zero,
-        onPressed: () => showMessage('Gift feature abhi connect karna hai.'),
-        icon: const Icon(Icons.card_giftcard_rounded, color: pink, size: 29),
-      ),
-      Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            tooltip: 'Games',
-            constraints: const BoxConstraints.tightFor(width: 38, height: 29),
-            padding: EdgeInsets.zero,
-            onPressed: () => showMessage('Games feature'),
-            icon: const Icon(Icons.sports_esports,
-                color: Colors.amber, size: 22),
-          ),
-          IconButton(
-                    tooltip: 'More',
-                    onPressed: () => showModalBottomSheet(
-                      context: context,
-                      backgroundColor: background,
-                      builder: (ctx) => SafeArea(
-                        child: Wrap(
+                    ...messages.map(
+                      (message) => panel(
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            ListTile(
-                              leading: const Icon(Icons.info_outline,
-                                color: Colors.white),
-                              title: const Text('Room Information',
-                                style: TextStyle(color: Colors.white)),
-                              onTap: () {
-                                Navigator.pop(ctx);
-                                showMessage('Room ID: $roomId');
-                              },
+                            const CircleAvatar(
+                              radius: 15,
+                              backgroundColor: purple,
+                              child: Icon(
+                                Icons.person,
+                                color: Colors.white,
+                                size: 17,
+                              ),
                             ),
-                            ListTile(
-                              leading: const Icon(Icons.volume_up,
-                                color: Colors.white),
-                              title: const Text('Speaker On / Off',
-                                style: TextStyle(color: Colors.white)),
-                              onTap: () {
-                                Navigator.pop(ctx);
-                                setState(() => speakerOn = !speakerOn);
-                                showMessage(speakerOn
-                                  ? 'Speaker On' : 'Speaker Off');
-                              },
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                message['text'].toString(),
+                                style: const TextStyle(color: Colors.white),
+                              ),
                             ),
-                            ListTile(
-                              leading: const Icon(Icons.exit_to_app,
-                                color: Colors.redAccent),
-                              title: const Text('Leave Room',
-                                style: TextStyle(color: Colors.white)),
-                              onTap: () {
-                                Navigator.pop(ctx);
-                                _leaveRoom();
-                              },
+                            Text(
+                              message['time'].toString(),
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 10,
+                              ),
                             ),
                           ],
                         ),
                       ),
                     ),
-                    icon: const Icon(Icons.grid_view_rounded,
-                      color: Colors.white, size: 26),
-                  )
-        ],
-      ),
-    ],
-  ),
-),
-],
+                ],
+              ),
+            ),
+
+            // Compact bottom row: chat, send, emoji, mic, gift and More.
+            Container(
+              padding: const EdgeInsets.fromLTRB(5, 4, 5, 4),
+              decoration: const BoxDecoration(
+                color: Color(0xFF211438),
+                border: Border(top: BorderSide(color: Color(0x887728E8))),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: messageController,
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => sendMessage(),
+                      decoration: InputDecoration(
+                        hintText: 'Message...',
+                        hintStyle: const TextStyle(color: Colors.white54),
+                        isDense: true,
+                        filled: true,
+                        fillColor: background,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 9,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Send',
+                    constraints: const BoxConstraints.tightFor(
+                      width: 36,
+                      height: 42,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: sendMessage,
+                    icon: const Icon(Icons.send_rounded, color: pink, size: 22),
+                  ),
+                  IconButton(
+                    tooltip: 'Emoji',
+                    constraints: const BoxConstraints.tightFor(
+                      width: 34,
+                      height: 42,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: () {
+                      messageController.text += '😊';
+                      messageController.selection = TextSelection.collapsed(
+                        offset: messageController.text.length,
+                      );
+                    },
+                    icon: const Icon(
+                      Icons.emoji_emotions_outlined,
+                      color: Colors.white,
+                      size: 23,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Mic',
+                    constraints: const BoxConstraints.tightFor(
+                      width: 34,
+                      height: 42,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: _toggleMic,
+                    icon: Icon(
+                      micOn ? Icons.mic : Icons.mic_off,
+                      color: micOn ? pink : Colors.white54,
+                      size: 24,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Gift',
+                    constraints: const BoxConstraints.tightFor(
+                      width: 38,
+                      height: 42,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: () =>
+                        showMessage('Gift feature abhi connect karna hai.'),
+                    icon: const Icon(
+                      Icons.card_giftcard_rounded,
+                      color: pink,
+                      size: 29,
+                    ),
+                  ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'Games',
+                        constraints: const BoxConstraints.tightFor(
+                          width: 38,
+                          height: 29,
+                        ),
+                        padding: EdgeInsets.zero,
+                        onPressed: () => showMessage('Games feature'),
+                        icon: const Icon(
+                          Icons.sports_esports,
+                          color: Colors.amber,
+                          size: 22,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'More',
+                        onPressed: () => showModalBottomSheet(
+                          context: context,
+                          backgroundColor: background,
+                          builder: (ctx) => SafeArea(
+                            child: Wrap(
+                              children: [
+                                ListTile(
+                                  leading: const Icon(
+                                    Icons.info_outline,
+                                    color: Colors.white,
+                                  ),
+                                  title: const Text(
+                                    'Room Information',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    showMessage('Room ID: $roomId');
+                                  },
+                                ),
+                                ListTile(
+                                  leading: const Icon(
+                                    Icons.volume_up,
+                                    color: Colors.white,
+                                  ),
+                                  title: const Text(
+                                    'Speaker On / Off',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    setState(() => speakerOn = !speakerOn);
+                                    showMessage(
+                                      speakerOn ? 'Speaker On' : 'Speaker Off',
+                                    );
+                                  },
+                                ),
+                                ListTile(
+                                  leading: const Icon(
+                                    Icons.exit_to_app,
+                                    color: Colors.redAccent,
+                                  ),
+                                  title: const Text(
+                                    'Leave Room',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    _leaveRoom();
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        icon: const Icon(
+                          Icons.grid_view_rounded,
+                          color: Colors.white,
+                          size: 26,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
-
-
