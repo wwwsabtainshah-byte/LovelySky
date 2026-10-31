@@ -5,7 +5,7 @@ import logging
 import sqlite3
 import firebase_admin
 from firebase_admin import auth, credentials
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 try:
@@ -714,3 +714,120 @@ def send_voice_room_message(
         return {"success": True, "message": dict(row)}
     finally:
         db.close()
+
+
+# WebRTC signaling connections, indexed by room and user UID.
+VOICE_SIGNAL_CONNECTIONS: dict[int, dict[str, WebSocket]] = {}
+
+
+@router.websocket("/voice/rooms/{room_id}/signal")
+async def voice_room_signal(websocket: WebSocket, room_id: int):
+    await websocket.accept()
+    user = None
+    uid = None
+    connections = None
+
+    try:
+        auth_message = await websocket.receive_json()
+        token = auth_message.get("token") if isinstance(auth_message, dict) else None
+        if not isinstance(token, str) or not token.strip():
+            await websocket.close(code=4401, reason="Authentication required")
+            return
+
+        try:
+            claims = verify_token(token.strip())
+            user = save_google_user(claims)
+        except Exception:
+            await websocket.close(code=4401, reason="Authentication failed")
+            return
+
+        uid = str(user["google_uid"])
+        db = get_connection()
+        try:
+            room = db.execute(
+                "SELECT id FROM voice_rooms WHERE id = ? AND is_active = 1",
+                (room_id,),
+            ).fetchone()
+            member = db.execute(
+                "SELECT 1 FROM voice_room_participants WHERE room_id = ? AND user_uid = ?",
+                (room_id, user["google_uid"]),
+            ).fetchone()
+        finally:
+            db.close()
+
+        if not room or not member:
+            await websocket.close(code=4403, reason="Join this voice room first")
+            return
+
+        connections = VOICE_SIGNAL_CONNECTIONS.setdefault(room_id, {})
+        existing = [
+            {"uid": peer_uid}
+            for peer_uid in connections
+            if peer_uid != uid
+        ]
+        connections[uid] = websocket
+
+        await websocket.send_json({
+            "type": "existing_peers",
+            "payload": {"peers": existing},
+        })
+
+        for peer_uid, peer in list(connections.items()):
+            if peer_uid == uid:
+                continue
+            try:
+                await peer.send_json({
+                    "type": "peer_joined",
+                    "sender_uid": uid,
+                    "sender_code": str(user["user_code"]),
+                })
+            except Exception:
+                if connections.get(peer_uid) is peer:
+                    connections.pop(peer_uid, None)
+
+        while True:
+            message = await websocket.receive_json()
+            if not isinstance(message, dict):
+                continue
+
+            kind = message.get("type")
+            target_uid = message.get("target_uid")
+            if kind not in {"offer", "answer", "candidate"}:
+                continue
+            if not isinstance(target_uid, str) or target_uid == uid:
+                continue
+
+            peer = connections.get(target_uid)
+            if peer is None:
+                continue
+
+            await peer.send_json({
+                "type": kind,
+                "sender_uid": uid,
+                "sender_code": str(user["user_code"]),
+                "payload": message.get("payload"),
+            })
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.warning("Voice signaling disconnected (%s)", type(exc).__name__)
+    finally:
+        if connections is not None and uid is not None:
+            if connections.get(uid) is websocket:
+                connections.pop(uid, None)
+                for peer_uid, peer in list(connections.items()):
+                    try:
+                        await peer.send_json({
+                            "type": "peer_left",
+                            "sender_uid": uid,
+                        })
+                    except Exception:
+                        if connections.get(peer_uid) is peer:
+                            connections.pop(peer_uid, None)
+            if not connections:
+                VOICE_SIGNAL_CONNECTIONS.pop(room_id, None)
+        try:
+            await websocket.close()
+        except Exception:
+            pass

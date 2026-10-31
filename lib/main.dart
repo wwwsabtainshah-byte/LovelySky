@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -1405,6 +1407,11 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   bool seatsLoading = true;
   bool seatRequestInProgress = false;
   Timer? seatRefreshTimer;
+  MediaStream? localAudioStream;
+  WebSocket? signalSocket;
+  final Map<String, RTCPeerConnection> peerConnections = {};
+  final Map<String, List<RTCIceCandidate>> pendingCandidates = {};
+  final Set<String> remoteDescriptionReady = {};
 
   static const Color purple = Color(0xFF7728E8);
   static const Color pink = Color(0xFFFF4FA3);
@@ -1413,6 +1420,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(_startVoice());
     _loadSeats();
     _loadMessages();
     seatRefreshTimer = Timer.periodic(
@@ -1422,6 +1430,273 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         _loadMessages();
       },
     );
+  }
+
+
+  Future<void> _startVoice() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('lovely_token');
+
+      if (token == null || token.isEmpty) {
+        if (mounted) showMessage('Voice: login token nahi mila.');
+        return;
+      }
+
+      localAudioStream = await navigator.mediaDevices.getUserMedia({
+        'audio': true,
+        'video': false,
+      });
+
+      for (final track in localAudioStream!.getAudioTracks()) {
+        track.enabled = micOn;
+      }
+
+      await Helper.setSpeakerphoneOn(speakerOn);
+
+      final roomId = widget.room['id'];
+      final socket = await WebSocket.connect(
+        'wss://lovelysky.fastapicloud.dev/voice/rooms/$roomId/signal',
+      ).timeout(const Duration(seconds: 15));
+
+      signalSocket = socket;
+      socket.listen(
+        (event) => unawaited(_handleVoiceSignal(event)),
+        onError: (Object error) {
+          debugPrint('Voice socket error: $error');
+          if (mounted) showMessage('Voice connection mein error aya.');
+        },
+        onDone: () {
+          if (mounted) showMessage('Voice connection band ho gaya.');
+        },
+        cancelOnError: false,
+      );
+
+      socket.add(jsonEncode({'token': token}));
+
+      if (mounted) {
+        showMessage('Microphone ready; room se connect ho raha hai.');
+      }
+    } catch (e) {
+      debugPrint('Voice startup failed: $e');
+      if (mounted) {
+        showMessage('Voice start nahi hui. Mic permission aur server check karo.');
+      }
+    }
+  }
+
+  void _sendVoiceSignal(
+    String type,
+    String targetUid,
+    Map<String, dynamic> payload,
+  ) {
+    final socket = signalSocket;
+    if (socket == null || socket.readyState != WebSocket.open) return;
+
+    socket.add(jsonEncode({
+      'type': type,
+      'target_uid': targetUid,
+      'payload': payload,
+    }));
+  }
+
+  Future<RTCPeerConnection> _ensureVoicePeer(String uid) async {
+    final existing = peerConnections[uid];
+    if (existing != null) return existing;
+
+    final pc = await createPeerConnection({
+      'iceServers': [
+        {'urls': 'stun:stun.l.google.com:19302'},
+      ],
+    });
+
+    peerConnections[uid] = pc;
+
+    final stream = localAudioStream;
+    if (stream != null) {
+      for (final track in stream.getAudioTracks()) {
+        await pc.addTrack(track, stream);
+      }
+    }
+
+    pc.onIceCandidate = (candidate) {
+      if (candidate.candidate == null) return;
+      _sendVoiceSignal('candidate', uid, {
+        'candidate': candidate.candidate,
+        'sdpMid': candidate.sdpMid,
+        'sdpMLineIndex': candidate.sdpMLineIndex,
+      });
+    };
+
+    return pc;
+  }
+
+  Future<void> _createVoiceOffer(String uid) async {
+    try {
+      final pc = await _ensureVoicePeer(uid);
+      final offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      _sendVoiceSignal('offer', uid, {
+        'sdp': offer.sdp,
+        'type': offer.type,
+      });
+    } catch (e) {
+      debugPrint('Voice offer failed: $e');
+    }
+  }
+
+  Future<void> _flushVoiceCandidates(String uid) async {
+    final pc = peerConnections[uid];
+    if (pc == null) return;
+
+    final queued = pendingCandidates.remove(uid) ?? [];
+    for (final candidate in queued) {
+      await pc.addCandidate(candidate);
+    }
+  }
+
+  Future<void> _handleVoiceSignal(dynamic event) async {
+    try {
+      final decoded = jsonDecode(
+        event is String ? event : event.toString(),
+      );
+      if (decoded is! Map) return;
+
+      final data = Map<String, dynamic>.from(decoded);
+      final type = data['type'];
+      final senderUid = data['sender_uid']?.toString();
+
+      if (type == 'existing_peers') {
+        final payload = data['payload'];
+        if (payload is Map) {
+          final peers = payload['peers'];
+          if (peers is List) {
+            for (final item in peers) {
+              if (item is Map && item['uid'] != null) {
+                await _createVoiceOffer(item['uid'].toString());
+              }
+            }
+          }
+        }
+        return;
+      }
+
+      if (senderUid == null || senderUid.isEmpty) return;
+
+      if (type == 'peer_joined') {
+        await _ensureVoicePeer(senderUid);
+        return;
+      }
+
+      if (type == 'peer_left') {
+        final pc = peerConnections.remove(senderUid);
+        if (pc != null) await pc.close();
+        pendingCandidates.remove(senderUid);
+        remoteDescriptionReady.remove(senderUid);
+        return;
+      }
+
+      final pc = await _ensureVoicePeer(senderUid);
+      final rawPayload = data['payload'];
+      if (rawPayload is! Map) return;
+      final payload = Map<String, dynamic>.from(rawPayload);
+
+      if (type == 'offer') {
+        await pc.setRemoteDescription(RTCSessionDescription(
+          payload['sdp']?.toString(),
+          payload['type']?.toString(),
+        ));
+
+        remoteDescriptionReady.add(senderUid);
+        await _flushVoiceCandidates(senderUid);
+
+        final answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        _sendVoiceSignal('answer', senderUid, {
+          'sdp': answer.sdp,
+          'type': answer.type,
+        });
+      } else if (type == 'answer') {
+        await pc.setRemoteDescription(RTCSessionDescription(
+          payload['sdp']?.toString(),
+          payload['type']?.toString(),
+        ));
+
+        remoteDescriptionReady.add(senderUid);
+        await _flushVoiceCandidates(senderUid);
+      } else if (type == 'candidate') {
+        final value = payload['candidate'];
+        if (value == null) return;
+
+        final index = payload['sdpMLineIndex'];
+        final candidate = RTCIceCandidate(
+          value.toString(),
+          payload['sdpMid']?.toString(),
+          index is num ? index.toInt() : null,
+        );
+
+        if (remoteDescriptionReady.contains(senderUid)) {
+          await pc.addCandidate(candidate);
+        } else {
+          pendingCandidates.putIfAbsent(senderUid, () => []).add(candidate);
+        }
+      }
+    } catch (e) {
+      debugPrint('Voice signaling message failed: $e');
+    }
+  }
+
+  void _toggleMic() {
+    setState(() => micOn = !micOn);
+
+    for (final track
+        in localAudioStream?.getAudioTracks() ?? <MediaStreamTrack>[]) {
+      track.enabled = micOn;
+    }
+
+    showMessage(micOn ? 'Mic On' : 'Mic Off');
+  }
+
+  void _toggleSpeaker() {
+    setState(() => speakerOn = !speakerOn);
+    unawaited(Helper.setSpeakerphoneOn(speakerOn));
+    showMessage(speakerOn ? 'Speaker On' : 'Speaker Off');
+  }
+
+  Future<void> _stopVoice() async {
+    final socket = signalSocket;
+    signalSocket = null;
+
+    try {
+      await socket?.close();
+    } catch (_) {}
+
+    for (final pc in peerConnections.values.toList()) {
+      try {
+        await pc.close();
+      } catch (_) {}
+    }
+
+    peerConnections.clear();
+    pendingCandidates.clear();
+    remoteDescriptionReady.clear();
+
+    final stream = localAudioStream;
+    localAudioStream = null;
+
+    if (stream != null) {
+      for (final track in stream.getTracks()) {
+        try {
+          await track.stop();
+        } catch (_) {}
+      }
+
+      try {
+        await stream.dispose();
+      } catch (_) {}
+    }
   }
 
   Future<void> _loadSeats() async {
@@ -1692,6 +1967,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   @override
   void dispose() {
     seatRefreshTimer?.cancel();
+    unawaited(_stopVoice());
     messageController.dispose();
     super.dispose();
   }
@@ -1782,8 +2058,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 children: [
                   Row(
                     children: [
-                      roundButton(Icons.volume_up, 'Room sound',
-                          () => showMessage('Room sound')),
+                      roundButton(speakerOn ? Icons.volume_up : Icons.volume_off,
+                          'Room sound', _toggleSpeaker),
                       const SizedBox(width: 5),
                       const Icon(Icons.local_fire_department,
                           color: Colors.orange, size: 23),
@@ -1980,10 +2256,7 @@ Container(
         tooltip: 'Mic',
         constraints: const BoxConstraints.tightFor(width: 34, height: 42),
         padding: EdgeInsets.zero,
-        onPressed: () {
-          setState(() => micOn = !micOn);
-          showMessage(micOn ? 'Mic On' : 'Mic Off');
-        },
+        onPressed: _toggleMic,
         icon: Icon(
           micOn ? Icons.mic : Icons.mic_off,
           color: micOn ? pink : Colors.white54,
