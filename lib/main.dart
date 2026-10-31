@@ -1740,75 +1740,6 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   ),
                   const SizedBox(height: 5),
 
-                  // Owner / host section.
-                  panel(
-                    Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 34,
-                                    backgroundColor: purple,
-                                    backgroundImage: ownerPhoto.startsWith('http')
-                                        ? NetworkImage(ownerPhoto) : null,
-                                    child: ownerPhoto.startsWith('http')
-                                        ? null
-                                        : const Icon(Icons.person,
-                                            size: 34, color: Colors.white),
-                                  ),
-                                  const SizedBox(height: 5),
-                                  Text(
-                                    owner.isEmpty ? name : 'Host #$owner',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white, fontSize: 12),
-                                  ),
-                                  const Text('💗 0',
-                                    style: TextStyle(
-                                      color: Colors.pinkAccent, fontSize: 11)),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              width: 1, height: 75,
-                              color: Colors.white24,
-                            ),
-                            Expanded(
-                              child: Column(
-                                children: [
-                                  Container(
-                                    width: 65, height: 65,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      gradient: const LinearGradient(
-                                        colors: [pink, purple]),
-                                      border: Border.all(
-                                        color: Colors.amber, width: 2),
-                                    ),
-                                    child: const Icon(Icons.workspace_premium,
-                                      color: Colors.amber, size: 35),
-                                  ),
-                                  const SizedBox(height: 5),
-                                  const Text('BOSS',
-                                    style: TextStyle(
-                                      color: Colors.white, fontSize: 12)),
-                                  const Text('💗 0',
-                                    style: TextStyle(
-                                      color: Colors.pinkAccent, fontSize: 11)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
                   if (seatsLoading && seats.isEmpty)
                     const Center(
                       child: Padding(
@@ -1826,7 +1757,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                             child: Column(
                               children: [
                                 _buildSeat(n, large: n == 2),
-                                const SizedBox(height: 5),
+                                const SizedBox(height: 3),
                                 Text('No. $n',
                                   style: const TextStyle(
                                     color: Colors.white70, fontSize: 11)),
@@ -1838,7 +1769,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 3),
 
                     // Remaining fifteen seats in three rows.
                     for (final first in [4, 9, 14]) ...[
@@ -1849,7 +1780,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                               child: Column(
                                 children: [
                                   _buildSeat(first + i),
-                                  const SizedBox(height: 5),
+                                  const SizedBox(height: 3),
                                   Text('No. ${first + i}',
                                     style: const TextStyle(
                                       color: Colors.white70, fontSize: 11)),
@@ -1861,7 +1792,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                             ),
                         ],
                       ),
-                      const SizedBox(height: 13),
+                      const SizedBox(height: 3),
                     ],
                   ],
 
