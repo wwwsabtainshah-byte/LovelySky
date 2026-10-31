@@ -186,6 +186,77 @@ def google_login(payload: GoogleLoginRequest):
     }
 
 
+
+class CreateVoiceRoomRequest(BaseModel):
+    name: str
+    description: str = ""
+
+
+@router.post("/voice/rooms")
+def create_voice_room(
+    payload: CreateVoiceRoomRequest,
+    authorization: str | None = Header(default=None),
+):
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Bearer token required")
+
+    name = payload.name.strip()
+    description = payload.description.strip()
+
+    if not name:
+        raise HTTPException(400, "Room name is required")
+    if len(name) > 60:
+        raise HTTPException(400, "Room name must be 60 characters or fewer")
+    if len(description) > 200:
+        raise HTTPException(400, "Description must be 200 characters or fewer")
+
+    claims = verify_token(authorization.split(" ", 1)[1].strip())
+    user = save_google_user(claims)
+    ensure_database()
+
+    db = get_connection()
+    try:
+        cursor = db.execute(
+            "INSERT INTO voice_rooms (owner_uid, owner_code, name, description) VALUES (?, ?, ?, ?)",
+            (user["google_uid"], str(user["user_code"]), name, description),
+        )
+        room_id = cursor.lastrowid
+        row = db.execute(
+            "SELECT id, owner_code, name, description, created_at, is_active "
+            "FROM voice_rooms WHERE id = ?",
+            (room_id,),
+        ).fetchone()
+        db.commit()
+        return {"success": True, "room": dict(row)}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+
+@router.get("/voice/rooms/mine")
+def my_voice_rooms(authorization: str | None = Header(default=None)):
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Bearer token required")
+
+    claims = verify_token(authorization.split(" ", 1)[1].strip())
+    user = save_google_user(claims)
+    ensure_database()
+
+    db = get_connection()
+    try:
+        rows = db.execute(
+            "SELECT id, owner_code, name, description, created_at, is_active "
+            "FROM voice_rooms WHERE owner_uid = ? ORDER BY id DESC",
+            (user["google_uid"],),
+        ).fetchall()
+        return {"success": True, "rooms": [dict(row) for row in rows]}
+    finally:
+        db.close()
+
+
 @router.get("/me")
 def current_user(authorization: str | None = Header(default=None)):
     if not authorization or not authorization.lower().startswith("bearer "):

@@ -73,6 +73,17 @@ def initialize_database():
             FOREIGN KEY(user_id) REFERENCES users(id)
         );
         """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS voice_rooms (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_uid TEXT NOT NULL,
+                owner_code TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                is_active INTEGER NOT NULL DEFAULT 1
+            )
+        """)
 
 if __name__ == "__main__":
     initialize_database()
