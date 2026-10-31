@@ -1867,64 +1867,92 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
               ),
             ),
 
-            // Bottom action bar in Lovely Sky colors.
-            Container(
-              padding: const EdgeInsets.fromLTRB(5, 7, 5, 8),
-              decoration: const BoxDecoration(
-                color: Color(0xFF211438),
-                border: Border(
-                  top: BorderSide(color: Color(0x887728E8))),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  IconButton(
-                    tooltip: 'Chat',
-                    onPressed: () => FocusScope.of(context).requestFocus(
-                      FocusNode()),
-                    icon: const Icon(Icons.chat_bubble_outline,
-                      color: Colors.white, size: 25),
-                  ),
-                  IconButton(
-                    tooltip: 'Mic',
-                    onPressed: () {
-                      setState(() => micOn = !micOn);
-                      showMessage(micOn ? 'Mic On' : 'Mic Off');
-                    },
-                    icon: Icon(
-                      micOn ? Icons.mic : Icons.mic_off,
-                      color: micOn ? pink : Colors.white54, size: 27),
-                  ),
-                  IconButton(
-                    tooltip: 'Emoji',
-                    onPressed: () {
-                      messageController.text += '😊';
-                      messageController.selection = TextSelection.collapsed(
-                        offset: messageController.text.length);
-                    },
-                    icon: const Icon(Icons.emoji_emotions_outlined,
-                      color: Colors.white, size: 26),
-                  ),
-                  IconButton(
-                    tooltip: 'Gift',
-                    onPressed: () => showMessage(
-                      'Gift feature abhi connect karna hai.'),
-                    icon: const Icon(Icons.card_giftcard_rounded,
-                      color: pink, size: 30),
-                  ),
-                  IconButton(
-                    tooltip: 'Games',
-                    onPressed: () => showMessage('Games feature'),
-                    icon: const Icon(Icons.sports_esports,
-                      color: Colors.amber, size: 27),
-                  ),
-                  IconButton(
-                    tooltip: 'Notifications',
-                    onPressed: () => showMessage('Notifications'),
-                    icon: const Icon(Icons.notifications_none,
-                      color: Colors.white, size: 26),
-                  ),
-                  IconButton(
+            // Compact bottom row: chat, send, emoji, mic, gift and More.
+Container(
+  padding: const EdgeInsets.fromLTRB(5, 4, 5, 4),
+  decoration: const BoxDecoration(
+    color: Color(0xFF211438),
+    border: Border(
+      top: BorderSide(color: Color(0x887728E8)),
+    ),
+  ),
+  child: Row(
+    children: [
+      Expanded(
+        child: TextField(
+          controller: messageController,
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+          textInputAction: TextInputAction.send,
+          onSubmitted: (_) => sendMessage(),
+          decoration: InputDecoration(
+            hintText: 'Message...',
+            hintStyle: const TextStyle(color: Colors.white54),
+            isDense: true,
+            filled: true,
+            fillColor: background,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 10, vertical: 9,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(22),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+      ),
+      IconButton(
+        tooltip: 'Send',
+        constraints: const BoxConstraints.tightFor(width: 36, height: 42),
+        padding: EdgeInsets.zero,
+        onPressed: sendMessage,
+        icon: const Icon(Icons.send_rounded, color: pink, size: 22),
+      ),
+      IconButton(
+        tooltip: 'Emoji',
+        constraints: const BoxConstraints.tightFor(width: 34, height: 42),
+        padding: EdgeInsets.zero,
+        onPressed: () {
+          messageController.text += '😊';
+          messageController.selection = TextSelection.collapsed(
+            offset: messageController.text.length,
+          );
+        },
+        icon: const Icon(Icons.emoji_emotions_outlined,
+            color: Colors.white, size: 23),
+      ),
+      IconButton(
+        tooltip: 'Mic',
+        constraints: const BoxConstraints.tightFor(width: 34, height: 42),
+        padding: EdgeInsets.zero,
+        onPressed: () {
+          setState(() => micOn = !micOn);
+          showMessage(micOn ? 'Mic On' : 'Mic Off');
+        },
+        icon: Icon(
+          micOn ? Icons.mic : Icons.mic_off,
+          color: micOn ? pink : Colors.white54,
+          size: 24,
+        ),
+      ),
+      IconButton(
+        tooltip: 'Gift',
+        constraints: const BoxConstraints.tightFor(width: 38, height: 42),
+        padding: EdgeInsets.zero,
+        onPressed: () => showMessage('Gift feature abhi connect karna hai.'),
+        icon: const Icon(Icons.card_giftcard_rounded, color: pink, size: 29),
+      ),
+      Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: 'Games',
+            constraints: const BoxConstraints.tightFor(width: 38, height: 29),
+            padding: EdgeInsets.zero,
+            onPressed: () => showMessage('Games feature'),
+            icon: const Icon(Icons.sports_esports,
+                color: Colors.amber, size: 22),
+          ),
+          IconButton(
                     tooltip: 'More',
                     onPressed: () => showModalBottomSheet(
                       context: context,
@@ -1970,45 +1998,13 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                     ),
                     icon: const Icon(Icons.grid_view_rounded,
                       color: Colors.white, size: 26),
-                  ),
-                ],
-              ),
-            ),
-            // Message input remains available above Android navigation.
-            Container(
-              color: const Color(0xFF211438),
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: messageController,
-                      style: const TextStyle(
-                        color: Colors.white, fontSize: 13),
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => sendMessage(),
-                      decoration: InputDecoration(
-                        hintText: 'Message...',
-                        hintStyle: const TextStyle(color: Colors.white54),
-                        isDense: true,
-                        filled: true,
-                        fillColor: background,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(22),
-                          borderSide: BorderSide.none),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: sendMessage,
-                    icon: const Icon(Icons.send_rounded, color: pink),
-                  ),
-                ],
-              ),
-            ),
-          ],
+                  )
+        ],
+      ),
+    ],
+  ),
+),
+],
         ),
       ),
     );
