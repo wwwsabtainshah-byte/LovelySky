@@ -2084,46 +2084,4 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   }
 }
 
-class _OpenCircleInfoPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2
-      ..strokeCap = StrokeCap.round;
 
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width * 0.39;
-
-    // Gol C shape, jiska khula hissa upar hai.
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      0.785,
-      4.712,
-      false,
-      paint,
-    );
-
-    // Andar i ka nishan.
-    final infoPaint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 2.2
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawCircle(
-      Offset(center.dx, center.dy - 5),
-      1.2,
-      Paint()..color = Colors.white,
-    );
-
-    canvas.drawLine(
-      Offset(center.dx, center.dy - 1),
-      Offset(center.dx, center.dy + 6),
-      infoPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
