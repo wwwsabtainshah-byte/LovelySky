@@ -432,9 +432,10 @@ class VoicePage extends StatefulWidget {
 }
 
 class _VoicePageState extends State<VoicePage> {
-  List<Map<String, dynamic>> myRooms = [];
+  List<Map<String, dynamic>> rooms = [];
   bool loading = false;
   bool creating = false;
+  String selectedTab = 'popular';
 
   @override
   void initState() {
@@ -442,15 +443,22 @@ class _VoicePageState extends State<VoicePage> {
     _loadRooms();
   }
 
+  Future<String?> _token() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('lovely_token');
+  }
+
   Future<void> _loadRooms() async {
-    if (mounted) setState(() => loading = true);
+    setState(() => loading = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('lovely_token');
-      if (token == null || token.isEmpty) return;
+      final token = await _token();
+      if (token == null || token.isEmpty) {
+        _message('Please log in first.');
+        return;
+      }
 
       final response = await http.get(
-        Uri.parse('$lovelyApi/voice/rooms/mine'),
+        Uri.parse('$lovelyApi/voice/rooms?tab=$selectedTab'),
         headers: {'Authorization': 'Bearer $token'},
       ).timeout(const Duration(seconds: 15));
 
@@ -458,15 +466,19 @@ class _VoicePageState extends State<VoicePage> {
         final data = jsonDecode(response.body);
         if (data is Map && data['rooms'] is List && mounted) {
           setState(() {
-            myRooms = (data['rooms'] as List)
+            rooms = (data['rooms'] as List)
                 .whereType<Map>()
                 .map((r) => Map<String, dynamic>.from(r))
                 .toList();
           });
+        } else {
+          _message('Room list ka response samajh nahi aaya.');
         }
+      } else {
+        _message('Rooms load nahi huay (${response.statusCode}).');
       }
     } catch (_) {
-      // Network errors are shown when creating a room.
+      _message('Connection failed. Backend deployment check karein.');
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -529,8 +541,7 @@ class _VoicePageState extends State<VoicePage> {
 
     setState(() => creating = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('lovely_token');
+      final token = await _token();
       if (token == null || token.isEmpty) {
         _message('Please log in first.');
         return;
@@ -546,10 +557,11 @@ class _VoicePageState extends State<VoicePage> {
       ).timeout(const Duration(seconds: 20));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        setState(() => selectedTab = 'visit');
         _message('Room created successfully!');
         await _loadRooms();
       } else {
-        var error = 'Could not create room (${response.statusCode}).';
+        var error = 'Room create nahi hua (${response.statusCode}).';
         try {
           final data = jsonDecode(response.body);
           if (data is Map && data['detail'] != null) {
@@ -565,6 +577,34 @@ class _VoicePageState extends State<VoicePage> {
     }
   }
 
+  Future<void> _joinRoom(Map<String, dynamic> room) async {
+    final id = room['id'];
+    if (id == null) {
+      _message('Room ID missing hai.');
+      return;
+    }
+    try {
+      final token = await _token();
+      if (token == null || token.isEmpty) {
+        _message('Please log in first.');
+        return;
+      }
+      final response = await http.post(
+        Uri.parse('$lovelyApi/voice/rooms/$id/join'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        _message('Room membership saved. Live audio connection abhi available nahi hai.');
+        await _loadRooms();
+      } else {
+        _message('Room join nahi hua (${response.statusCode}).');
+      }
+    } catch (_) {
+      _message('Room join karte waqt connection error aaya.');
+    }
+  }
+
   void _message(String text) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -572,87 +612,167 @@ class _VoicePageState extends State<VoicePage> {
     );
   }
 
+  Widget _tab(String label, String value) {
+    final active = selectedTab == value;
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: FilledButton(
+          onPressed: loading ? null : () {
+            setState(() => selectedTab = value);
+            _loadRooms();
+          },
+          style: FilledButton.styleFrom(
+            backgroundColor: active ? blue : Colors.white,
+            foregroundColor: active ? Colors.white : blue,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+              side: BorderSide(color: blue.withValues(alpha: 0.2)),
+            ),
+          ),
+          child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          pageTitle(
-            'Voice Rooms',
-            subtitle: 'Talk • Make Friends • Have Fun',
-            trailing: roundIcon(Icons.add_rounded, onTap: _createRoom),
-          ),
-          blueBanner(
-            'Your Voice, Your World',
-            'Join a room and meet new people',
-            Icons.mic_rounded,
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: creating ? null : _createRoom,
-              icon: const Icon(Icons.add_circle_outline_rounded),
-              label: Text(creating ? 'Creating Room...' : 'Create Room'),
-              style: FilledButton.styleFrom(
-                backgroundColor: blue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+      child: RefreshIndicator(
+        onRefresh: _loadRooms,
+        child: ListView(
+          padding: const EdgeInsets.all(18),
+          children: [
+            pageTitle(
+              'Voice Rooms',
+              subtitle: 'Talk • Make Friends • Have Fun',
+              trailing: roundIcon(
+                Icons.add_rounded,
+                onTap: creating ? null : _createRoom,
               ),
             ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'My Rooms',
-            style: TextStyle(
-              color: ink, fontSize: 18, fontWeight: FontWeight.w800,
+            blueBanner(
+              'Your Voice, Your World',
+              'Join a room and meet new people',
+              Icons.mic_rounded,
             ),
-          ),
-          const SizedBox(height: 10),
-          if (loading)
-            const Center(child: CircularProgressIndicator())
-          else if (myRooms.isEmpty)
-            const Text('Abhi aapne koi room create nahi kiya.')
-          else
-            ...myRooms.map((room) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: RoomCard(
-                title: (room['name'] ?? 'Voice Room').toString(),
-                subtitle: (room['description'] ?? '').toString(),
-                count: 'Room #${room['id']}',
-                icon: Icons.mic_rounded,
-              ),
-            )),
-          const SizedBox(height: 16),
-          const Text(
-            'Popular Rooms',
-            style: TextStyle(
-              color: ink, fontSize: 18, fontWeight: FontWeight.w800,
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                _tab('Following', 'following'),
+                _tab('Popular', 'popular'),
+                _tab('Visit', 'visit'),
+              ],
             ),
-          ),
-          const SizedBox(height: 10),
-          const RoomCard(
-            title: 'Late Night Talk 🌙',
-            subtitle: 'Come say hello',
-            count: '3.1K online',
-            icon: Icons.nightlight_round,
-          ),
-          const SizedBox(height: 12),
-          const RoomCard(
-            title: 'Voice Friends 💙',
-            subtitle: 'Friendly conversations',
-            count: '2.8K online',
-            icon: Icons.headphones_rounded,
-          ),
-          const SizedBox(height: 12),
-          const RoomCard(
-            title: 'Gaming Zone 🎮',
-            subtitle: 'Chat while gaming',
-            count: '1.5K online',
-            icon: Icons.sports_esports_rounded,
-          ),
-        ],
+            const SizedBox(height: 18),
+            if (loading)
+              const Padding(
+                padding: EdgeInsets.all(28),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (rooms.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 35),
+                child: Column(
+                  children: [
+                    Icon(Icons.mic_none_rounded, size: 48, color: blue.withValues(alpha: 0.6)),
+                    const SizedBox(height: 10),
+                    Text(
+                      selectedTab == 'following'
+                          ? 'Follow users to see their rooms here.'
+                          : selectedTab == 'visit'
+                              ? 'No visited rooms yet. Your own rooms will appear here.'
+                              : 'Abhi koi active voice room nahi hai.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: ink),
+                    ),
+                    if (selectedTab == 'visit') ...[
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: _createRoom,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Create your room'),
+                      ),
+                    ],
+                  ],
+                ),
+              )
+            else
+              ...rooms.map((room) {
+                final name = (room['name'] ?? 'Voice Room').toString();
+                final description = (room['description'] ?? '').toString();
+                final count = (room['participant_count'] ?? 0).toString();
+                final owner = (room['owner_code'] ?? '').toString();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => _joinRoom(room),
+                      child: Container(
+                        padding: const EdgeInsets.all(15),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFFE1F2FF)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              height: 58,
+                              width: 58,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(colors: [blue, sky]),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Icon(Icons.mic_rounded, color: Colors.white, size: 30),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(name, style: const TextStyle(
+                                    color: ink, fontWeight: FontWeight.w800, fontSize: 14,
+                                  )),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    description.isEmpty ? 'Room #${room['id']}' : description,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(color: Colors.blueGrey.shade400, fontSize: 11),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    '● $count members${owner.isEmpty ? '' : '  •  Host #$owner'}',
+                                    style: const TextStyle(color: Color(0xFF14B88A), fontSize: 10),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+                              decoration: BoxDecoration(
+                                color: blue, borderRadius: BorderRadius.circular(22),
+                              ),
+                              child: const Text('Join', style: TextStyle(
+                                color: Colors.white, fontWeight: FontWeight.w700,
+                              )),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+          ],
+        ),
       ),
     );
   }

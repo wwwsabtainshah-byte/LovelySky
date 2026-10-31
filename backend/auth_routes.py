@@ -257,6 +257,190 @@ def my_voice_rooms(authorization: str | None = Header(default=None)):
         db.close()
 
 
+
+def _voice_authenticated_user(authorization: str | None):
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Bearer token required")
+    claims = verify_token(authorization.split(" ", 1)[1].strip())
+    user = save_google_user(claims)
+    ensure_database()
+    return user
+
+
+@router.get("/voice/rooms")
+def list_voice_rooms(
+    tab: str = "popular",
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    tab = tab.strip().lower()
+    if tab not in {"popular", "following", "visit"}:
+        raise HTTPException(400, "tab must be popular, following, or visit")
+
+    db = get_connection()
+    try:
+        base = """
+            SELECT r.id, r.owner_uid, r.owner_code, r.name, r.description,
+                   r.created_at, r.is_active,
+                   COUNT(DISTINCT p.user_uid) AS participant_count
+            FROM voice_rooms r
+            LEFT JOIN voice_room_participants p ON p.room_id = r.id
+        """
+        if tab == "following":
+            rows = db.execute(
+                base + """
+                JOIN user_follows f ON f.followed_uid = r.owner_uid
+                WHERE r.is_active = 1 AND f.follower_uid = ?
+                GROUP BY r.id
+                ORDER BY participant_count DESC, r.id DESC
+                """,
+                (user["google_uid"],),
+            ).fetchall()
+        elif tab == "visit":
+            rows = db.execute(
+                base + """
+                WHERE r.is_active = 1
+                  AND (
+                    r.owner_uid = ?
+                    OR r.id IN (
+                        SELECT room_id FROM voice_room_visits
+                        WHERE user_uid = ?
+                    )
+                  )
+                GROUP BY r.id
+                ORDER BY
+                  CASE WHEN r.owner_uid = ? THEN 0 ELSE 1 END,
+                  r.id DESC
+                """,
+                (user["google_uid"], user["google_uid"], user["google_uid"]),
+            ).fetchall()
+        else:
+            rows = db.execute(
+                base + """
+                WHERE r.is_active = 1
+                GROUP BY r.id
+                ORDER BY participant_count DESC, r.id DESC
+                """
+            ).fetchall()
+
+        return {"success": True, "tab": tab, "rooms": [dict(row) for row in rows]}
+    finally:
+        db.close()
+
+
+@router.post("/voice/rooms/{room_id}/join")
+def join_voice_room(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        room = db.execute(
+            "SELECT id FROM voice_rooms WHERE id = ? AND is_active = 1",
+            (room_id,),
+        ).fetchone()
+        if not room:
+            raise HTTPException(404, "Voice room not found")
+
+        db.execute(
+            """
+            INSERT INTO voice_room_participants (room_id, user_uid, user_code)
+            VALUES (?, ?, ?)
+            ON CONFLICT(room_id, user_uid) DO UPDATE SET
+                joined_at = CURRENT_TIMESTAMP
+            """,
+            (room_id, user["google_uid"], str(user["user_code"])),
+        )
+        db.execute(
+            "INSERT INTO voice_room_visits (room_id, user_uid) VALUES (?, ?)",
+            (room_id, user["google_uid"]),
+        )
+        db.commit()
+        count = db.execute(
+            "SELECT COUNT(*) AS n FROM voice_room_participants WHERE room_id = ?",
+            (room_id,),
+        ).fetchone()["n"]
+        return {"success": True, "room_id": room_id, "participant_count": count}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.post("/voice/rooms/{room_id}/leave")
+def leave_voice_room(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        db.execute(
+            "DELETE FROM voice_room_participants WHERE room_id = ? AND user_uid = ?",
+            (room_id, user["google_uid"]),
+        )
+        db.commit()
+        count = db.execute(
+            "SELECT COUNT(*) AS n FROM voice_room_participants WHERE room_id = ?",
+            (room_id,),
+        ).fetchone()["n"]
+        return {"success": True, "room_id": room_id, "participant_count": count}
+    finally:
+        db.close()
+
+
+class VoiceFollowRequest(BaseModel):
+    user_uid: str
+
+
+@router.post("/voice/follow")
+def follow_voice_user(
+    payload: VoiceFollowRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    target_uid = payload.user_uid.strip()
+    if not target_uid or target_uid == user["google_uid"]:
+        raise HTTPException(400, "Invalid user to follow")
+
+    db = get_connection()
+    try:
+        target = db.execute(
+            "SELECT google_uid FROM users WHERE google_uid = ?",
+            (target_uid,),
+        ).fetchone()
+        if not target:
+            raise HTTPException(404, "User not found")
+        db.execute(
+            "INSERT OR IGNORE INTO user_follows (follower_uid, followed_uid) VALUES (?, ?)",
+            (user["google_uid"], target_uid),
+        )
+        db.commit()
+        return {"success": True, "followed_uid": target_uid}
+    finally:
+        db.close()
+
+
+@router.delete("/voice/follow/{target_uid}")
+def unfollow_voice_user(
+    target_uid: str,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        db.execute(
+            "DELETE FROM user_follows WHERE follower_uid = ? AND followed_uid = ?",
+            (user["google_uid"], target_uid),
+        )
+        db.commit()
+        return {"success": True, "unfollowed_uid": target_uid}
+    finally:
+        db.close()
+
+
 @router.get("/me")
 def current_user(authorization: str | None = Header(default=None)):
     if not authorization or not authorization.lower().startswith("bearer "):

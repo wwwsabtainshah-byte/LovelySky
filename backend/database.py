@@ -85,6 +85,42 @@ def initialize_database():
             )
         """)
 
+
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS voice_room_participants (
+            room_id INTEGER NOT NULL,
+            user_uid TEXT NOT NULL,
+            user_code TEXT NOT NULL,
+            joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            is_muted INTEGER NOT NULL DEFAULT 0,
+            seat_number INTEGER,
+            PRIMARY KEY (room_id, user_uid),
+            FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS voice_room_visits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            user_uid TEXT NOT NULL,
+            visited_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_voice_visits_user
+            ON voice_room_visits(user_uid, visited_at);
+
+        CREATE TABLE IF NOT EXISTS user_follows (
+            follower_uid TEXT NOT NULL,
+            followed_uid TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (follower_uid, followed_uid),
+            CHECK (follower_uid != followed_uid)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_voice_rooms_active
+            ON voice_rooms(is_active);
+    """)
+
 if __name__ == "__main__":
     initialize_database()
     print("LovelySky database tables created:", DB_PATH)
