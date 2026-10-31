@@ -644,7 +644,7 @@ class _VoicePageState extends State<VoicePage> {
   }
 
   Future<void> _loadRooms() async {
-    setState(() => loading = true);
+    if (mounted) setState(() => loading = true);
     try {
       final token = await _token();
       if (token == null || token.isEmpty) {
@@ -652,27 +652,61 @@ class _VoicePageState extends State<VoicePage> {
         return;
       }
 
+      final headers = {'Authorization': 'Bearer $token'};
+
       final response = await http
           .get(
             Uri.parse('$lovelyApi/voice/rooms?tab=$selectedTab'),
-            headers: {'Authorization': 'Bearer $token'},
+            headers: headers,
           )
           .timeout(const Duration(seconds: 15));
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data is Map && data['rooms'] is List && mounted) {
-          setState(() {
-            rooms = (data['rooms'] as List)
-                .whereType<Map>()
-                .map((r) => Map<String, dynamic>.from(r))
-                .toList();
-          });
-        } else {
-          _message('Room list ka response samajh nahi aaya.');
-        }
-      } else {
+      if (response.statusCode != 200) {
         _message('Rooms load nahi huay (${response.statusCode}).');
+        return;
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is! Map || data['rooms'] is! List) {
+        _message('Room list ka response samajh nahi aaya.');
+        return;
+      }
+
+      final loadedRooms = (data['rooms'] as List)
+          .whereType<Map>()
+          .map((r) => Map<String, dynamic>.from(r))
+          .toList();
+
+      // Apne rooms bhi load karo, taake Popular tab mein bhi nazar aa saken.
+      try {
+        final mineResponse = await http
+            .get(
+              Uri.parse('$lovelyApi/voice/rooms/mine'),
+              headers: headers,
+            )
+            .timeout(const Duration(seconds: 15));
+
+        if (mineResponse.statusCode == 200) {
+          final mineData = jsonDecode(mineResponse.body);
+          if (mineData is Map && mineData['rooms'] is List) {
+            final knownIds = loadedRooms.map((r) => '${r['id']}').toSet();
+            for (final item in mineData['rooms'] as List) {
+              if (item is Map) {
+                final room = Map<String, dynamic>.from(item);
+                if (room['is_active'] == 1 &&
+                    knownIds.add('${room['id']}')) {
+                  loadedRooms.insert(0, room);
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {
+        // Current tab ki room list phir bhi dikhao.
+      }
+
+      if (mounted) {
+        setState(() => rooms = loadedRooms);
       }
     } catch (_) {
       _message('Connection failed. Backend deployment check karein.');
