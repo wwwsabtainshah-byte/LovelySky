@@ -87,6 +87,19 @@ def initialize_database():
 
 
     db.executescript("""
+        CREATE TABLE IF NOT EXISTS voice_room_messages (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+room_id INTEGER NOT NULL,
+sender_uid TEXT NOT NULL,
+sender_code TEXT NOT NULL,
+message TEXT NOT NULL,
+created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
+);
+
+    CREATE INDEX IF NOT EXISTS idx_voice_room_messages_room
+        ON voice_room_messages(room_id, id);
+
         CREATE TABLE IF NOT EXISTS voice_room_participants (
             room_id INTEGER NOT NULL,
             user_uid TEXT NOT NULL,

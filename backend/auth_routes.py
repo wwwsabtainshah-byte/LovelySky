@@ -645,3 +645,72 @@ def current_user(authorization: str | None = Header(default=None)):
         "profile_photo": user["profile_photo"],
         "role": "owner" if user["google_email"].lower() == OWNER_EMAIL else "user"
     }
+class VoiceRoomMessageRequest(BaseModel):
+    message: str
+
+
+def _require_voice_room_member(db, room_id: int, user):
+    room = db.execute(
+        "SELECT id FROM voice_rooms WHERE id = ? AND is_active = 1",
+        (room_id,),
+    ).fetchone()
+    if not room:
+        raise HTTPException(404, "Voice room not found")
+    member = db.execute(
+        "SELECT 1 FROM voice_room_participants WHERE room_id = ? AND user_uid = ?",
+        (room_id, user["google_uid"]),
+    ).fetchone()
+    if not member:
+        raise HTTPException(403, "Join this voice room before using its chat")
+
+
+@router.get("/voice/rooms/{room_id}/messages")
+def get_voice_room_messages(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        _require_voice_room_member(db, room_id, user)
+        rows = db.execute(
+            """SELECT id, sender_uid, sender_code, message, created_at
+               FROM voice_room_messages
+               WHERE room_id = ? ORDER BY id DESC LIMIT 100""",
+            (room_id,),
+        ).fetchall()
+        return {"success": True, "messages": [dict(row) for row in reversed(rows)]}
+    finally:
+        db.close()
+
+
+@router.post("/voice/rooms/{room_id}/messages")
+def send_voice_room_message(
+    room_id: int,
+    payload: VoiceRoomMessageRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(400, "Message cannot be empty")
+    if len(message) > 500:
+        raise HTTPException(400, "Message cannot exceed 500 characters")
+    db = get_connection()
+    try:
+        _require_voice_room_member(db, room_id, user)
+        cursor = db.execute(
+            """INSERT INTO voice_room_messages
+               (room_id, sender_uid, sender_code, message)
+               VALUES (?, ?, ?, ?)""",
+            (room_id, user["google_uid"], str(user["user_code"]), message),
+        )
+        db.commit()
+        row = db.execute(
+            """SELECT id, sender_uid, sender_code, message, created_at
+               FROM voice_room_messages WHERE id = ?""",
+            (cursor.lastrowid,),
+        ).fetchone()
+        return {"success": True, "message": dict(row)}
+    finally:
+        db.close()
