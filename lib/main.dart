@@ -1606,329 +1606,361 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     super.dispose();
   }
 
+
   @override
   Widget build(BuildContext context) {
     final name = (widget.room['name'] ?? 'Voice Room').toString();
     final owner = (widget.room['owner_code'] ?? '').toString();
     final roomId = (widget.room['id'] ?? '').toString();
+    final ownerPhoto = (widget.room['owner_photo'] ??
+        widget.room['profile_photo'] ?? '').toString();
+
+    Widget roundButton(IconData icon, String tip, VoidCallback action) {
+      return IconButton(
+        tooltip: tip,
+        onPressed: action,
+        icon: Icon(icon, color: Colors.white, size: 23),
+        style: IconButton.styleFrom(
+          backgroundColor: Colors.white.withValues(alpha: 0.09),
+          minimumSize: const Size(42, 42),
+        ),
+      );
+    }
+
+    Widget panel(Widget child) => Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xCC211438),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: purple.withValues(alpha: 0.35)),
+      ),
+      child: child,
+    );
 
     return Scaffold(
       backgroundColor: background,
-      appBar: AppBar(
-        backgroundColor: background,
-        foregroundColor: Colors.white,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              name,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            Text('Room #$roomId', style: const TextStyle(fontSize: 11)),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Room Information',
-            onPressed: () => showMessage('Room information'),
-            icon: SizedBox(
-              width: 28,
-              height: 28,
-              child: CustomPaint(painter: _OpenCircleInfoPainter()),
-            ),
-          ),
-        ],
-      ),
       body: SafeArea(
         child: Column(
           children: [
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(16),
+            // Top room name, owner ID and controls.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 5, 8, 2),
+              child: Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [purple, Color(0xFF35145D), pink],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
+                  CircleAvatar(
+                    radius: 23,
+                    backgroundColor: purple,
+                    backgroundImage: ownerPhoto.startsWith('http')
+                        ? NetworkImage(ownerPhoto) : null,
+                    child: ownerPhoto.startsWith('http')
+                        ? null
+                        : const Icon(Icons.person, color: Colors.white),
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(
-                          Icons.graphic_eq_rounded,
-                          size: 45,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          name,
-                          textAlign: TextAlign.center,
+                        Text(name, maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 21,
                             fontWeight: FontWeight.bold,
+                            fontSize: 16,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          owner.isEmpty ? 'Voice Room' : 'Host #$owner',
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                        const SizedBox(height: 12),
-                        const Chip(
-                          avatar: Icon(
-                            Icons.people_alt,
-                            color: Colors.white,
-                            size: 17,
-                          ),
-                          label: Text(
-                            'Voice Room',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                          backgroundColor: Color(0x55300060),
-                        ),
+                        Text('ID: ${owner.isEmpty ? roomId : owner}',
+                          style: const TextStyle(
+                            color: Colors.white70, fontSize: 11)),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Voice Seats',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                  roundButton(Icons.flag_outlined, 'Report',
+                      () => showMessage('Report feature baad mein connect hoga.')),
+                  roundButton(Icons.refresh, 'Refresh', _loadSeats),
+                  roundButton(Icons.power_settings_new, 'Leave room',
+                      _leaveRoom),
+                ],
+              ),
+            ),
+
+            // Scrollable room area.
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
+                children: [
+                  Row(
+                    children: [
+                      roundButton(Icons.volume_up, 'Room sound',
+                          () => showMessage('Room sound')),
+                      const SizedBox(width: 5),
+                      const Icon(Icons.local_fire_department,
+                          color: Colors.orange, size: 23),
+                      const Text('0',
+                          style: TextStyle(color: Colors.white70)),
+                      const Spacer(),
+                      roundButton(Icons.people_alt_outlined, 'Members',
+                          () => showMessage('Room members')),
+                    ],
                   ),
-                  const SizedBox(height: 14),
-                  if (seatsLoading && seats.isEmpty)
-                    const Center(child: CircularProgressIndicator(color: pink))
-                  else
+                  const SizedBox(height: 5),
+
+                  // Owner / host section.
+                  panel(
                     Column(
                       children: [
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            _buildSeat(1),
-                            _buildSeat(2, large: true),
-                            _buildSeat(3),
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 34,
+                                    backgroundColor: purple,
+                                    backgroundImage: ownerPhoto.startsWith('http')
+                                        ? NetworkImage(ownerPhoto) : null,
+                                    child: ownerPhoto.startsWith('http')
+                                        ? null
+                                        : const Icon(Icons.person,
+                                            size: 34, color: Colors.white),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    owner.isEmpty ? name : 'Host #$owner',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white, fontSize: 12),
+                                  ),
+                                  const Text('💗 0',
+                                    style: TextStyle(
+                                      color: Colors.pinkAccent, fontSize: 11)),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              width: 1, height: 75,
+                              color: Colors.white24,
+                            ),
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  Container(
+                                    width: 65, height: 65,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: const LinearGradient(
+                                        colors: [pink, purple]),
+                                      border: Border.all(
+                                        color: Colors.amber, width: 2),
+                                    ),
+                                    child: const Icon(Icons.workspace_premium,
+                                      color: Colors.amber, size: 35),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  const Text('BOSS',
+                                    style: TextStyle(
+                                      color: Colors.white, fontSize: 12)),
+                                  const Text('💗 0',
+                                    style: TextStyle(
+                                      color: Colors.pinkAccent, fontSize: 11)),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        for (final first in [4, 9, 14]) ...[
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: List.generate(
-                              5,
-                              (index) => _buildSeat(first + index),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                        ],
                       ],
                     ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Room Messages',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
+                  ),
+
+                  if (seatsLoading && seats.isEmpty)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(18),
+                        child: CircularProgressIndicator(color: pink),
+                      ),
+                    )
+                  else ...[
+                    // Three seats at the top.
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        for (final n in [1, 2, 3])
+                          Expanded(
+                            child: Column(
+                              children: [
+                                _buildSeat(n, large: n == 2),
+                                const SizedBox(height: 5),
+                                Text('No. $n',
+                                  style: const TextStyle(
+                                    color: Colors.white70, fontSize: 11)),
+                                const Text('💗 0',
+                                  style: TextStyle(
+                                    color: Colors.pinkAccent, fontSize: 10)),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Remaining fifteen seats in three rows.
+                    for (final first in [4, 9, 14]) ...[
+                      Row(
+                        children: [
+                          for (int i = 0; i < 5; i++)
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  _buildSeat(first + i),
+                                  const SizedBox(height: 5),
+                                  Text('No. ${first + i}',
+                                    style: const TextStyle(
+                                      color: Colors.white70, fontSize: 11)),
+                                  const Text('💗 0',
+                                    style: TextStyle(
+                                      color: Colors.pinkAccent, fontSize: 10)),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 13),
+                    ],
+                  ],
+
+                  // Room tabs.
+                  Row(
+                    children: [
+                      const Text('All',
+                        style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 22),
+                      TextButton(
+                        onPressed: () => showMessage('Room chat'),
+                        child: const Text('Chat',
+                          style: TextStyle(color: Colors.white70)),
+                      ),
+                    ],
+                  ),
+
+                  // Room announcement and message history.
+                  panel(
+                    const Text(
+                      'Welcome to Lovely Sky! Please respect all members '
+                      'and follow the room rules.',
+                      style: TextStyle(
+                        color: Colors.amber, fontSize: 14, height: 1.4),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  if (messages.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Center(
-                        child: Text(
-                          'Be the first to send a message!',
-                          style: TextStyle(color: Colors.white60),
-                        ),
-                      ),
+                  panel(
+                    const Text(
+                      'Room announcement: Only Friendship',
+                      style: TextStyle(color: Colors.amber, fontSize: 14),
                     ),
-                  ...messages.map(
-                    (message) => Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.09),
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                      child: Row(
+                  ),
+                  panel(
+                    const Row(
+                      children: [
+                        Icon(Icons.campaign_outlined,
+                          color: Colors.white70, size: 28),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Invite friends to support your room.',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (messages.isNotEmpty)
+                    ...messages.map((message) => panel(
+                      Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const CircleAvatar(
                             radius: 15,
                             backgroundColor: purple,
-                            child: Icon(
-                              Icons.person,
-                              color: Colors.white,
-                              size: 18,
-                            ),
+                            child: Icon(Icons.person,
+                              color: Colors.white, size: 17),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
-                              message['text'].toString(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                              ),
-                            ),
+                            child: Text(message['text'].toString(),
+                              style: const TextStyle(color: Colors.white)),
                           ),
-                          Text(
-                            message['time'].toString(),
+                          Text(message['time'].toString(),
                             style: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 10,
-                            ),
-                          ),
+                              color: Colors.white54, fontSize: 10)),
                         ],
                       ),
-                    ),
-                  ),
+                    )),
                 ],
               ),
             ),
+
+            // Bottom action bar in Lovely Sky colors.
             Container(
-              padding: const EdgeInsets.fromLTRB(6, 8, 6, 10),
+              padding: const EdgeInsets.fromLTRB(5, 7, 5, 8),
               decoration: const BoxDecoration(
                 color: Color(0xFF211438),
-                border: Border(top: BorderSide(color: Color(0x447728E8))),
+                border: Border(
+                  top: BorderSide(color: Color(0x887728E8))),
               ),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: messageController,
-                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => sendMessage(),
-                      decoration: InputDecoration(
-                        hintText: 'Message...',
-                        hintStyle: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 12,
-                        ),
-                        isDense: true,
-                        filled: true,
-                        fillColor: background,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 11,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(22),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  ),
                   IconButton(
-                    tooltip: 'Emoji',
-                    visualDensity: VisualDensity.compact,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 40,
-                    ),
-                    padding: EdgeInsets.zero,
-                    onPressed: () {
-                      messageController.text += '😊';
-                      messageController.selection = TextSelection.collapsed(
-                        offset: messageController.text.length,
-                      );
-                    },
-                    icon: const Icon(
-                      Icons.emoji_emotions_outlined,
-                      color: Colors.amber,
-                      size: 21,
-                    ),
+                    tooltip: 'Chat',
+                    onPressed: () => FocusScope.of(context).requestFocus(
+                      FocusNode()),
+                    icon: const Icon(Icons.chat_bubble_outline,
+                      color: Colors.white, size: 25),
                   ),
                   IconButton(
                     tooltip: 'Mic',
-                    visualDensity: VisualDensity.compact,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 40,
-                    ),
-                    padding: EdgeInsets.zero,
                     onPressed: () {
                       setState(() => micOn = !micOn);
                       showMessage(micOn ? 'Mic On' : 'Mic Off');
                     },
                     icon: Icon(
                       micOn ? Icons.mic : Icons.mic_off,
-                      color: micOn ? pink : Colors.white54,
-                      size: 21,
-                    ),
+                      color: micOn ? pink : Colors.white54, size: 27),
+                  ),
+                  IconButton(
+                    tooltip: 'Emoji',
+                    onPressed: () {
+                      messageController.text += '😊';
+                      messageController.selection = TextSelection.collapsed(
+                        offset: messageController.text.length);
+                    },
+                    icon: const Icon(Icons.emoji_emotions_outlined,
+                      color: Colors.white, size: 26),
                   ),
                   IconButton(
                     tooltip: 'Gift',
-                    visualDensity: VisualDensity.compact,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 40,
-                    ),
-                    padding: EdgeInsets.zero,
-                    onPressed: () =>
-                        showMessage('Gift feature abhi connect karna hai.'),
-                    icon: const Icon(
-                      Icons.card_giftcard_rounded,
-                      color: pink,
-                      size: 21,
-                    ),
+                    onPressed: () => showMessage(
+                      'Gift feature abhi connect karna hai.'),
+                    icon: const Icon(Icons.card_giftcard_rounded,
+                      color: pink, size: 30),
                   ),
                   IconButton(
-                    tooltip: 'Speaker',
-                    visualDensity: VisualDensity.compact,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 40,
-                    ),
-                    padding: EdgeInsets.zero,
-                    onPressed: () {
-                      setState(() => speakerOn = !speakerOn);
-                      showMessage(speakerOn ? 'Speaker On' : 'Speaker Off');
-                    },
-                    icon: Icon(
-                      speakerOn
-                          ? Icons.volume_up_rounded
-                          : Icons.volume_off_rounded,
-                      color: speakerOn ? pink : Colors.white54,
-                      size: 21,
-                    ),
+                    tooltip: 'Games',
+                    onPressed: () => showMessage('Games feature'),
+                    icon: const Icon(Icons.sports_esports,
+                      color: Colors.amber, size: 27),
                   ),
                   IconButton(
-                    tooltip: 'Inbox',
-                    visualDensity: VisualDensity.compact,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 40,
-                    ),
-                    padding: EdgeInsets.zero,
-                    onPressed: () =>
-                        showMessage('Inbox feature abhi connect karna hai.'),
-                    icon: const Icon(
-                      Icons.inbox_rounded,
-                      color: Colors.white,
-                      size: 21,
-                    ),
+                    tooltip: 'Notifications',
+                    onPressed: () => showMessage('Notifications'),
+                    icon: const Icon(Icons.notifications_none,
+                      color: Colors.white, size: 26),
                   ),
                   IconButton(
                     tooltip: 'More',
-                    visualDensity: VisualDensity.compact,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 40,
-                    ),
-                    padding: EdgeInsets.zero,
                     onPressed: () => showModalBottomSheet(
                       context: context,
                       backgroundColor: background,
@@ -1936,28 +1968,32 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                         child: Wrap(
                           children: [
                             ListTile(
-                              leading: const Icon(
-                                Icons.info_outline,
-                                color: Colors.white,
-                              ),
-                              title: const Text(
-                                'Room Information',
-                                style: TextStyle(color: Colors.white),
-                              ),
+                              leading: const Icon(Icons.info_outline,
+                                color: Colors.white),
+                              title: const Text('Room Information',
+                                style: TextStyle(color: Colors.white)),
                               onTap: () {
                                 Navigator.pop(ctx);
-                                showMessage('Room information');
+                                showMessage('Room ID: $roomId');
                               },
                             ),
                             ListTile(
-                              leading: const Icon(
-                                Icons.exit_to_app,
-                                color: Colors.redAccent,
-                              ),
-                              title: const Text(
-                                'Leave Room',
-                                style: TextStyle(color: Colors.white),
-                              ),
+                              leading: const Icon(Icons.volume_up,
+                                color: Colors.white),
+                              title: const Text('Speaker On / Off',
+                                style: TextStyle(color: Colors.white)),
+                              onTap: () {
+                                Navigator.pop(ctx);
+                                setState(() => speakerOn = !speakerOn);
+                                showMessage(speakerOn
+                                  ? 'Speaker On' : 'Speaker Off');
+                              },
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.exit_to_app,
+                                color: Colors.redAccent),
+                              title: const Text('Leave Room',
+                                style: TextStyle(color: Colors.white)),
                               onTap: () {
                                 Navigator.pop(ctx);
                                 _leaveRoom();
@@ -1967,11 +2003,42 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                         ),
                       ),
                     ),
-                    icon: const Icon(
-                      Icons.more_vert,
-                      color: Colors.white,
-                      size: 22,
+                    icon: const Icon(Icons.grid_view_rounded,
+                      color: Colors.white, size: 26),
+                  ),
+                ],
+              ),
+            ),
+            // Message input remains available above Android navigation.
+            Container(
+              color: const Color(0xFF211438),
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: messageController,
+                      style: const TextStyle(
+                        color: Colors.white, fontSize: 13),
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => sendMessage(),
+                      decoration: InputDecoration(
+                        hintText: 'Message...',
+                        hintStyle: const TextStyle(color: Colors.white54),
+                        isDense: true,
+                        filled: true,
+                        fillColor: background,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: BorderSide.none),
+                      ),
                     ),
+                  ),
+                  IconButton(
+                    onPressed: sendMessage,
+                    icon: const Icon(Icons.send_rounded, color: pink),
                   ),
                 ],
               ),
