@@ -391,6 +391,136 @@ def leave_voice_room(
         db.close()
 
 
+
+@router.get("/voice/rooms/{room_id}/seats")
+def get_voice_room_seats(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        room = db.execute(
+            "SELECT id FROM voice_rooms WHERE id = ? AND is_active = 1",
+            (room_id,),
+        ).fetchone()
+        if not room:
+            raise HTTPException(404, "Voice room not found")
+
+        occupied = db.execute(
+            """
+            SELECT seat_number, user_code
+            FROM voice_room_participants
+            WHERE room_id = ? AND seat_number BETWEEN 1 AND 18
+            """,
+            (room_id,),
+        ).fetchall()
+
+        by_seat = {row["seat_number"]: row["user_code"] for row in occupied}
+        return {
+            "success": True,
+            "room_id": room_id,
+            "seats": [
+                {
+                    "seat_number": n,
+                    "user_code": by_seat.get(n),
+                    "is_occupied": n in by_seat,
+                    "is_mine": n in by_seat and by_seat.get(n) == str(user["user_code"]),
+                }
+                for n in range(1, 19)
+            ],
+        }
+    finally:
+        db.close()
+
+
+@router.post("/voice/rooms/{room_id}/seats/{seat_number}/sit")
+def sit_voice_room_seat(
+    room_id: int,
+    seat_number: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    if seat_number < 1 or seat_number > 18:
+        raise HTTPException(400, "Seat number must be between 1 and 18")
+
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        room = db.execute(
+            "SELECT id FROM voice_rooms WHERE id = ? AND is_active = 1",
+            (room_id,),
+        ).fetchone()
+        if not room:
+            raise HTTPException(404, "Voice room not found")
+
+        participant = db.execute(
+            """
+            SELECT seat_number FROM voice_room_participants
+            WHERE room_id = ? AND user_uid = ?
+            """,
+            (room_id, user["google_uid"]),
+        ).fetchone()
+        if not participant:
+            raise HTTPException(409, "Join the room before taking a seat")
+
+        occupied = db.execute(
+            """
+            SELECT user_uid FROM voice_room_participants
+            WHERE room_id = ? AND seat_number = ?
+            """,
+            (room_id, seat_number),
+        ).fetchone()
+        if occupied and occupied["user_uid"] != user["google_uid"]:
+            raise HTTPException(409, "This seat is already occupied")
+
+        db.execute(
+            """
+            UPDATE voice_room_participants
+            SET seat_number = NULL
+            WHERE room_id = ? AND user_uid = ?
+            """,
+            (room_id, user["google_uid"]),
+        )
+        db.execute(
+            """
+            UPDATE voice_room_participants
+            SET seat_number = ?
+            WHERE room_id = ? AND user_uid = ?
+            """,
+            (seat_number, room_id, user["google_uid"]),
+        )
+        db.commit()
+        return {"success": True, "room_id": room_id, "seat_number": seat_number}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.post("/voice/rooms/{room_id}/seats/leave")
+def leave_voice_room_seat(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        db.execute(
+            """
+            UPDATE voice_room_participants
+            SET seat_number = NULL
+            WHERE room_id = ? AND user_uid = ?
+            """,
+            (room_id, user["google_uid"]),
+        )
+        db.commit()
+        return {"success": True, "room_id": room_id}
+    finally:
+        db.close()
+
+
 class VoiceFollowRequest(BaseModel):
     user_uid: str
 

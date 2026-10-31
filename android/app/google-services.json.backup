@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "122872274591",
+    "project_id": "lovely-sky-c9024",
+    "storage_bucket": "lovely-sky-c9024.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:122872274591:android:5e4f20acb78683deba4caa",
+        "android_client_info": {
+          "package_name": "com.lovelychat.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "122872274591-aq47b194jvrk51srbij4r326iejkg00n.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.lovelychat.app",
+            "certificate_hash": "05734992dfb340b95068fa05953ae3c0ba57c432"
+          }
+        },
+        {
+          "client_id": "122872274591-uuehmdgobp2hpl8a3ad09eqv08g0sise.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDDl99_L1n5U7Ntbf4OkhDqY1fLORJARcQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "122872274591-uuehmdgobp2hpl8a3ad09eqv08g0sise.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

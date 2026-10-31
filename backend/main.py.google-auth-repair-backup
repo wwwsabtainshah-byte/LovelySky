@@ -1,0 +1,125 @@
+import os
+import json
+import base64
+import firebase_admin
+from firebase_admin import auth, credentials
+from fastapi import FastAPI, HTTPException, Header
+from pydantic import BaseModel, Field
+from backend.database import get_connection, initialize_database
+from backend.storage import setup_storage
+
+class GoogleLoginRequest(BaseModel):
+    id_token: str = Field(min_length=1)
+    device_id: str = Field(min_length=16, max_length=128)
+
+
+app = FastAPI(title="Lovely Sky API", version="1.0.0")
+
+def get_firebase_app():
+    try:
+        return firebase_admin.get_app()
+    except ValueError:
+        encoded = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON_B64", "")
+        if not encoded:
+            raise HTTPException(status_code=503, detail="Firebase server configuration missing")
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+            service_account = json.loads(raw.decode("utf-8"))
+            if service_account.get("project_id") != "lovely-sky-c9024":
+                raise ValueError("Firebase project mismatch")
+            return firebase_admin.initialize_app(credentials.Certificate(service_account), {"projectId": "lovely-sky-c9024"})
+        except Exception:
+            raise HTTPException(status_code=503, detail="Firebase server configuration invalid")
+
+
+@app.on_event("startup")
+def startup():
+    setup_storage()
+    initialize_database()
+
+
+@app.on_event("startup")
+def startup():
+    setup_storage()
+    initialize_database()
+
+
+@app.get("/")
+def home():
+    return {"app": "Lovely Sky API", "status": "online"}
+
+@app.post("/auth/google")
+def google_login(body: GoogleLoginRequest):
+    try:
+        get_firebase_app()
+        claims = auth.verify_id_token(body.id_token, check_revoked=True)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="Firebase token rejected")
+
+    uid = claims.get("uid")
+    email = (claims.get("email") or "").strip().lower()
+    if not uid or not email or claims.get("email_verified") is not True:
+        raise HTTPException(status_code=401, detail="Verified Google account required")
+
+    try:
+        with get_connection() as db:
+            user = db.execute(
+                "SELECT * FROM users WHERE google_uid = ?", (uid,)
+            ).fetchone()
+            email_user = db.execute(
+                "SELECT * FROM users WHERE google_email = ?", (email,)
+            ).fetchone()
+
+            if user is None and email_user is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This email is linked to a different account"
+                )
+
+            if user is None:
+                cursor = db.execute(
+                    "INSERT INTO users (google_uid, google_email) VALUES (?, ?)",
+                    (uid, email)
+                )
+                user_id = cursor.lastrowid
+                db.execute(
+                    "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
+                    (user_id,)
+                )
+                user = db.execute(
+                    "SELECT * FROM users WHERE id = ?", (user_id,)
+                ).fetchone()
+            else:
+                user_id = user["id"]
+                db.execute(
+                    "UPDATE users SET google_email = ? WHERE id = ?",
+                    (email, user_id)
+                )
+                user = db.execute(
+                    "SELECT * FROM users WHERE id = ?", (user_id,)
+                ).fetchone()
+
+        return {
+            "success": True,
+            "token": body.id_token,
+            "user": {
+                "id": user["id"],
+                "user_code": user["user_code"] or str(user["id"]),
+                "display_name": user["display_name"],
+                "profile_photo": user["profile_photo"]
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Account database is temporarily unavailable"
+        )
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

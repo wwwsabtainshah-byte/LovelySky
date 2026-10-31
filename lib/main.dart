@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
+
 import 'auth_screen.dart';
 
 Future<void> main() async {
@@ -69,9 +72,15 @@ class _MainScreenState extends State<MainScreen> {
         onDestinationSelected: (i) => setState(() => selected = i),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.video_library_rounded), label: 'Video'),
+          NavigationDestination(
+            icon: Icon(Icons.video_library_rounded),
+            label: 'Video',
+          ),
           NavigationDestination(icon: Icon(Icons.mic_rounded), label: 'Voice'),
-          NavigationDestination(icon: Icon(Icons.chat_bubble_rounded), label: 'Chat'),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_rounded),
+            label: 'Chat',
+          ),
           NavigationDestination(icon: Icon(Icons.person_rounded), label: 'Me'),
         ],
       ),
@@ -88,12 +97,23 @@ Widget pageTitle(String title, {String? subtitle, Widget? trailing}) {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(
-                fontSize: 25, fontWeight: FontWeight.w800, color: ink)),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 25,
+                  fontWeight: FontWeight.w800,
+                  color: ink,
+                ),
+              ),
               if (subtitle != null) ...[
                 const SizedBox(height: 4),
-                Text(subtitle, style: TextStyle(
-                  fontSize: 12, color: Colors.blueGrey.shade500)),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.blueGrey.shade500,
+                  ),
+                ),
               ],
             ],
           ),
@@ -140,11 +160,19 @@ Widget blueBanner(String title, String subtitle, IconData icon) {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(
-                color: Colors.white, fontSize: 21, fontWeight: FontWeight.w800)),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 21,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
               const SizedBox(height: 7),
-              Text(subtitle, style: const TextStyle(
-                color: Colors.white, fontSize: 12)),
+              Text(
+                subtitle,
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
             ],
           ),
         ),
@@ -159,10 +187,24 @@ Widget sectionTitle(String title, {String action = 'See All'}) {
     padding: const EdgeInsets.only(top: 22, bottom: 12),
     child: Row(
       children: [
-        Expanded(child: Text(title, style: const TextStyle(
-          color: ink, fontSize: 17, fontWeight: FontWeight.w800))),
-        Text(action, style: const TextStyle(
-          color: blue, fontSize: 12, fontWeight: FontWeight.w700)),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: ink,
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        Text(
+          action,
+          style: const TextStyle(
+            color: blue,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ],
     ),
   );
@@ -180,54 +222,102 @@ class HomePage extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 43, height: 43,
+                width: 43,
+                height: 43,
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(colors: [blue, sky]),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.favorite_rounded,
-                    color: Colors.white, size: 27),
+                child: const Icon(
+                  Icons.favorite_rounded,
+                  color: Colors.white,
+                  size: 27,
+                ),
               ),
               const SizedBox(width: 10),
-              const Expanded(child: Text('Lovely Sky',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900,
-                    color: blue))),
+              const Expanded(
+                child: Text(
+                  'Lovely Sky',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: blue,
+                  ),
+                ),
+              ),
               roundIcon(Icons.search_rounded),
               const SizedBox(width: 8),
               roundIcon(Icons.notifications_none_rounded),
             ],
           ),
           const SizedBox(height: 20),
-          blueBanner('Good Vibes, Great People',
-              'Connect • Chat • Make Friends', Icons.favorite_rounded),
+          blueBanner(
+            'Good Vibes, Great People',
+            'Connect • Chat • Make Friends',
+            Icons.favorite_rounded,
+          ),
           sectionTitle('Explore Lovely'),
           Row(
             children: const [
-              Expanded(child: QuickTile(icon: Icons.video_library_rounded,
-                  label: 'Video', color: blue)),
+              Expanded(
+                child: QuickTile(
+                  icon: Icons.video_library_rounded,
+                  label: 'Video',
+                  color: blue,
+                ),
+              ),
               SizedBox(width: 10),
-              Expanded(child: QuickTile(icon: Icons.mic_rounded,
-                  label: 'Voice', color: Color(0xFF10BFD3))),
+              Expanded(
+                child: QuickTile(
+                  icon: Icons.mic_rounded,
+                  label: 'Voice',
+                  color: Color(0xFF10BFD3),
+                ),
+              ),
               SizedBox(width: 10),
-              Expanded(child: QuickTile(icon: Icons.camera_alt_rounded,
-                  label: 'Moment', color: Color(0xFFDE72D9))),
+              Expanded(
+                child: QuickTile(
+                  icon: Icons.camera_alt_rounded,
+                  label: 'Moment',
+                  color: Color(0xFFDE72D9),
+                ),
+              ),
               SizedBox(width: 10),
-              Expanded(child: QuickTile(icon: Icons.chat_rounded,
-                  label: 'Chat', color: Color(0xFF42B8FF))),
+              Expanded(
+                child: QuickTile(
+                  icon: Icons.chat_rounded,
+                  label: 'Chat',
+                  color: Color(0xFF42B8FF),
+                ),
+              ),
             ],
           ),
           sectionTitle('Popular Rooms'),
-          const RoomCard(title: 'Music Vibes 🎵',
-              subtitle: 'Meet friends and enjoy music', count: '2.4K online',
-              icon: Icons.music_note_rounded),
+          const RoomCard(
+            title: 'Music Vibes 🎵',
+            subtitle: 'Meet friends and enjoy music',
+            count: '2.4K online',
+            icon: Icons.music_note_rounded,
+          ),
           const SizedBox(height: 12),
-          const RoomCard(title: 'Friends Forever 💙',
-              subtitle: 'Talk • Laugh • Connect', count: '860 online',
-              icon: Icons.groups_rounded),
+          const RoomCard(
+            title: 'Friends Forever 💙',
+            subtitle: 'Talk • Laugh • Connect',
+            count: '860 online',
+            icon: Icons.groups_rounded,
+          ),
           sectionTitle('Recommended Users'),
           const UserRow(name: 'Princess', detail: 'Online now', avatar: '👑'),
-          const UserRow(name: 'Cute Girl', detail: 'Making new friends', avatar: '🌸'),
-          const UserRow(name: 'King', detail: 'Enjoying Lovely Sky', avatar: '😎'),
+          const UserRow(
+            name: 'Cute Girl',
+            detail: 'Making new friends',
+            avatar: '🌸',
+          ),
+          const UserRow(
+            name: 'King',
+            detail: 'Enjoying Lovely Sky',
+            avatar: '😎',
+          ),
         ],
       ),
     );
@@ -238,15 +328,20 @@ class QuickTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
-  const QuickTile({super.key, required this.icon,
-    required this.label, required this.color});
+  const QuickTile({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Container(
-          height: 54, width: 58,
+          height: 54,
+          width: 58,
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(18),
@@ -254,8 +349,14 @@ class QuickTile extends StatelessWidget {
           child: Icon(icon, color: color, size: 27),
         ),
         const SizedBox(height: 7),
-        Text(label, style: const TextStyle(
-          fontSize: 11, color: ink, fontWeight: FontWeight.w600)),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            color: ink,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ],
     );
   }
@@ -264,8 +365,13 @@ class QuickTile extends StatelessWidget {
 class RoomCard extends StatelessWidget {
   final String title, subtitle, count;
   final IconData icon;
-  const RoomCard({super.key, required this.title, required this.subtitle,
-    required this.count, required this.icon});
+  const RoomCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.count,
+    required this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -279,7 +385,8 @@ class RoomCard extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            height: 62, width: 62,
+            height: 62,
+            width: 62,
             decoration: BoxDecoration(
               gradient: const LinearGradient(colors: [blue, sky]),
               borderRadius: BorderRadius.circular(17),
@@ -287,25 +394,50 @@ class RoomCard extends StatelessWidget {
             child: Icon(icon, color: Colors.white, size: 31),
           ),
           const SizedBox(width: 13),
-          Expanded(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(
-                color: ink, fontWeight: FontWeight.w800, fontSize: 14)),
-              const SizedBox(height: 5),
-              Text(subtitle, style: TextStyle(
-                color: Colors.blueGrey.shade400, fontSize: 11)),
-              const SizedBox(height: 6),
-              Text('● $count', style: const TextStyle(
-                color: Color(0xFF14B88A), fontSize: 10)),
-            ],
-          )),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: ink,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: Colors.blueGrey.shade400,
+                    fontSize: 11,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '● $count',
+                  style: const TextStyle(
+                    color: Color(0xFF14B88A),
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
             decoration: BoxDecoration(
-              color: blue, borderRadius: BorderRadius.circular(22)),
-            child: const Text('Join', style: TextStyle(
-              color: Colors.white, fontWeight: FontWeight.w700)),
+              color: blue,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: const Text(
+              'Join',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
@@ -315,8 +447,12 @@ class RoomCard extends StatelessWidget {
 
 class UserRow extends StatelessWidget {
   final String name, detail, avatar;
-  const UserRow({super.key, required this.name,
-    required this.detail, required this.avatar});
+  const UserRow({
+    super.key,
+    required this.name,
+    required this.detail,
+    required this.avatar,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -325,26 +461,47 @@ class UserRow extends StatelessWidget {
       child: Row(
         children: [
           CircleAvatar(
-            radius: 25, backgroundColor: pale,
+            radius: 25,
+            backgroundColor: pale,
             child: Text(avatar, style: const TextStyle(fontSize: 25)),
           ),
           const SizedBox(width: 12),
-          Expanded(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(name, style: const TextStyle(
-                fontWeight: FontWeight.w800, color: ink)),
-              const SizedBox(height: 4),
-              Text(detail, style: TextStyle(
-                color: Colors.blueGrey.shade400, fontSize: 11)),
-            ],
-          )),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: ink,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  detail,
+                  style: TextStyle(
+                    color: Colors.blueGrey.shade400,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: pale, borderRadius: BorderRadius.circular(20)),
-            child: const Text('Follow', style: TextStyle(
-              color: blue, fontWeight: FontWeight.w700, fontSize: 12)),
+              color: pale,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text(
+              'Follow',
+              style: TextStyle(
+                color: blue,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
           ),
         ],
       ),
@@ -357,35 +514,59 @@ class VideoPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(child: ListView(
-      padding: const EdgeInsets.all(18),
-      children: [
-        pageTitle('Video Rooms', subtitle: 'Discover videos and creators',
-            trailing: roundIcon(Icons.search_rounded)),
-        const Wrap(spacing: 10, children: [
-          Chip(label: Text('Following'), backgroundColor: Color(0xFFDFF3FF)),
-          Chip(label: Text('For You')),
-          Chip(label: Text('Popular')),
-        ]),
-        const SizedBox(height: 12),
-        const VideoCard(title: 'Beautiful Souls 💙',
-            subtitle: 'Live • 3.2K watching', icon: Icons.favorite_rounded),
-        const SizedBox(height: 15),
-        const VideoCard(title: 'Love & Talk',
-            subtitle: 'Meet new friends', icon: Icons.people_rounded),
-        const SizedBox(height: 15),
-        const VideoCard(title: 'Cool Vibes ✨',
-            subtitle: 'Trending now', icon: Icons.auto_awesome_rounded),
-      ],
-    ));
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          pageTitle(
+            'Video Rooms',
+            subtitle: 'Discover videos and creators',
+            trailing: roundIcon(Icons.search_rounded),
+          ),
+          const Wrap(
+            spacing: 10,
+            children: [
+              Chip(
+                label: Text('Following'),
+                backgroundColor: Color(0xFFDFF3FF),
+              ),
+              Chip(label: Text('For You')),
+              Chip(label: Text('Popular')),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const VideoCard(
+            title: 'Beautiful Souls 💙',
+            subtitle: 'Live • 3.2K watching',
+            icon: Icons.favorite_rounded,
+          ),
+          const SizedBox(height: 15),
+          const VideoCard(
+            title: 'Love & Talk',
+            subtitle: 'Meet new friends',
+            icon: Icons.people_rounded,
+          ),
+          const SizedBox(height: 15),
+          const VideoCard(
+            title: 'Cool Vibes ✨',
+            subtitle: 'Trending now',
+            icon: Icons.auto_awesome_rounded,
+          ),
+        ],
+      ),
+    );
   }
 }
 
 class VideoCard extends StatelessWidget {
   final String title, subtitle;
   final IconData icon;
-  const VideoCard({super.key, required this.title,
-    required this.subtitle, required this.icon});
+  const VideoCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -395,21 +576,36 @@ class VideoCard extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFF168FFF), Color(0xFF8BDEFF)],
-          begin: Alignment.bottomLeft, end: Alignment.topRight),
+          begin: Alignment.bottomLeft,
+          end: Alignment.topRight,
+        ),
         borderRadius: BorderRadius.circular(24),
       ),
       child: Stack(
         children: [
-          Positioned(right: 4, top: 2, child: Icon(icon,
-              size: 100, color: Colors.white.withValues(alpha: 0.23))),
+          Positioned(
+            right: 4,
+            top: 2,
+            child: Icon(
+              icon,
+              size: 100,
+              color: Colors.white.withValues(alpha: 0.23),
+            ),
+          ),
           Align(
             alignment: Alignment.bottomLeft,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(
-                  color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 const SizedBox(height: 6),
                 Text(subtitle, style: const TextStyle(color: Colors.white)),
                 const SizedBox(height: 10),
@@ -422,7 +618,6 @@ class VideoCard extends StatelessWidget {
     );
   }
 }
-
 
 class VoicePage extends StatefulWidget {
   const VoicePage({super.key});
@@ -457,10 +652,12 @@ class _VoicePageState extends State<VoicePage> {
         return;
       }
 
-      final response = await http.get(
-        Uri.parse('$lovelyApi/voice/rooms?tab=$selectedTab'),
-        headers: {'Authorization': 'Bearer $token'},
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .get(
+            Uri.parse('$lovelyApi/voice/rooms?tab=$selectedTab'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -547,19 +744,35 @@ class _VoicePageState extends State<VoicePage> {
         return;
       }
 
-      final response = await http.post(
-        Uri.parse('$lovelyApi/voice/rooms'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(details),
-      ).timeout(const Duration(seconds: 20));
+      final response = await http
+          .post(
+            Uri.parse('$lovelyApi/voice/rooms'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(details),
+          )
+          .timeout(const Duration(seconds: 20));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        final createdRoom = data is Map ? data['room'] : null;
+
+        if (createdRoom is! Map) {
+          setState(() => selectedTab = 'visit');
+          await _loadRooms();
+          _message(
+            'Room ban gaya, lekin room details response mein nahi milin.',
+          );
+          return;
+        }
+
         setState(() => selectedTab = 'visit');
-        _message('Room created successfully!');
         await _loadRooms();
+        if (!mounted) return;
+
+        await _joinRoom(Map<String, dynamic>.from(createdRoom));
       } else {
         var error = 'Room create nahi hua (${response.statusCode}).';
         try {
@@ -589,18 +802,18 @@ class _VoicePageState extends State<VoicePage> {
         _message('Please log in first.');
         return;
       }
-      final response = await http.post(
-        Uri.parse('$lovelyApi/voice/rooms/$id/join'),
-        headers: {'Authorization': 'Bearer $token'},
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(
+            Uri.parse('$lovelyApi/voice/rooms/$id/join'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         if (!mounted) return;
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => VoiceRoomScreen(room: room),
-          ),
-        );
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => VoiceRoomScreen(room: room)));
         if (mounted) await _loadRooms();
       } else {
         _message('Room join nahi hua (${response.statusCode}).');
@@ -612,9 +825,7 @@ class _VoicePageState extends State<VoicePage> {
 
   void _message(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
   Widget _tab(String label, String value) {
@@ -623,10 +834,12 @@ class _VoicePageState extends State<VoicePage> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: FilledButton(
-          onPressed: loading ? null : () {
-            setState(() => selectedTab = value);
-            _loadRooms();
-          },
+          onPressed: loading
+              ? null
+              : () {
+                  setState(() => selectedTab = value);
+                  _loadRooms();
+                },
           style: FilledButton.styleFrom(
             backgroundColor: active ? blue : Colors.white,
             foregroundColor: active ? Colors.white : blue,
@@ -637,7 +850,10 @@ class _VoicePageState extends State<VoicePage> {
               side: BorderSide(color: blue.withValues(alpha: 0.2)),
             ),
           ),
-          child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+          child: Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
         ),
       ),
     );
@@ -683,14 +899,18 @@ class _VoicePageState extends State<VoicePage> {
                 padding: const EdgeInsets.symmetric(vertical: 35),
                 child: Column(
                   children: [
-                    Icon(Icons.mic_none_rounded, size: 48, color: blue.withValues(alpha: 0.6)),
+                    Icon(
+                      Icons.mic_none_rounded,
+                      size: 48,
+                      color: blue.withValues(alpha: 0.6),
+                    ),
                     const SizedBox(height: 10),
                     Text(
                       selectedTab == 'following'
                           ? 'Follow users to see their rooms here.'
                           : selectedTab == 'visit'
-                              ? 'No visited rooms yet. Your own rooms will appear here.'
-                              : 'Abhi koi active voice room nahi hai.',
+                          ? 'No visited rooms yet. Your own rooms will appear here.'
+                          : 'Abhi koi active voice room nahi hai.',
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: ink),
                     ),
@@ -731,43 +951,70 @@ class _VoicePageState extends State<VoicePage> {
                               height: 58,
                               width: 58,
                               decoration: BoxDecoration(
-                                gradient: const LinearGradient(colors: [blue, sky]),
+                                gradient: const LinearGradient(
+                                  colors: [blue, sky],
+                                ),
                                 borderRadius: BorderRadius.circular(16),
                               ),
-                              child: const Icon(Icons.mic_rounded, color: Colors.white, size: 30),
+                              child: const Icon(
+                                Icons.mic_rounded,
+                                color: Colors.white,
+                                size: 30,
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(name, style: const TextStyle(
-                                    color: ink, fontWeight: FontWeight.w800, fontSize: 14,
-                                  )),
+                                  Text(
+                                    name,
+                                    style: const TextStyle(
+                                      color: ink,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                    ),
+                                  ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    description.isEmpty ? 'Room #${room['id']}' : description,
+                                    description.isEmpty
+                                        ? 'Room #${room['id']}'
+                                        : description,
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(color: Colors.blueGrey.shade400, fontSize: 11),
+                                    style: TextStyle(
+                                      color: Colors.blueGrey.shade400,
+                                      fontSize: 11,
+                                    ),
                                   ),
                                   const SizedBox(height: 5),
                                   Text(
                                     '● $count members${owner.isEmpty ? '' : '  •  Host #$owner'}',
-                                    style: const TextStyle(color: Color(0xFF14B88A), fontSize: 10),
+                                    style: const TextStyle(
+                                      color: Color(0xFF14B88A),
+                                      fontSize: 10,
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
                             const SizedBox(width: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-                              decoration: BoxDecoration(
-                                color: blue, borderRadius: BorderRadius.circular(22),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 13,
+                                vertical: 9,
                               ),
-                              child: const Text('Join', style: TextStyle(
-                                color: Colors.white, fontWeight: FontWeight.w700,
-                              )),
+                              decoration: BoxDecoration(
+                                color: blue,
+                                borderRadius: BorderRadius.circular(22),
+                              ),
+                              child: const Text(
+                                'Join',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -795,32 +1042,41 @@ class ChatPage extends StatelessWidget {
       ['Sara 🌷', 'Typing...', '2', '🌷'],
       ['Ali Khan', 'Nice to meet you!', '0', '✨'],
     ];
-    return SafeArea(child: ListView(
-      padding: const EdgeInsets.all(18),
-      children: [
-        pageTitle('Messages', subtitle: 'Stay close to your friends',
-            trailing: roundIcon(Icons.add_comment_rounded)),
-        TextField(
-          decoration: InputDecoration(
-            hintText: 'Search conversations',
-            prefixIcon: const Icon(Icons.search, color: blue),
-            filled: true, fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: BorderSide.none),
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          pageTitle(
+            'Messages',
+            subtitle: 'Stay close to your friends',
+            trailing: roundIcon(Icons.add_comment_rounded),
           ),
-        ),
-        const SizedBox(height: 18),
-        const Wrap(spacing: 8, children: [
-          Chip(label: Text('All'), backgroundColor: pale),
-          Chip(label: Text('Friends')),
-          Chip(label: Text('Groups')),
-        ]),
-        const SizedBox(height: 10),
-        ...people.map((p) => UserRow(
-          name: p[0], detail: p[1], avatar: p[3])),
+          TextField(
+            decoration: InputDecoration(
+              hintText: 'Search conversations',
+              prefixIcon: const Icon(Icons.search, color: blue),
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          const Wrap(
+            spacing: 8,
+            children: [
+              Chip(label: Text('All'), backgroundColor: pale),
+              Chip(label: Text('Friends')),
+              Chip(label: Text('Groups')),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...people.map((p) => UserRow(name: p[0], detail: p[1], avatar: p[3])),
         ],
-      ));
+      ),
+    );
   }
 }
 
@@ -853,10 +1109,12 @@ class _ProfilePageState extends State<ProfilePage> {
         return;
       }
 
-      final response = await http.get(
-        Uri.parse('$lovelyApi/me'),
-        headers: {'Authorization': 'Bearer $token'},
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .get(
+            Uri.parse('$lovelyApi/me'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
@@ -869,8 +1127,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
               if (name.isNotEmpty) displayName = name;
               if (code.isNotEmpty) userCode = code;
-              if (photo.startsWith('https://') ||
-                  photo.startsWith('http://')) {
+              if (photo.startsWith('https://') || photo.startsWith('http://')) {
                 profilePhoto = photo;
               }
               profileLoading = false;
@@ -922,11 +1179,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         : null,
                   ),
                   child: profilePhoto.isEmpty
-                      ? const Icon(
-                          Icons.person_rounded,
-                          size: 55,
-                          color: blue,
-                        )
+                      ? const Icon(Icons.person_rounded, size: 55, color: blue)
                       : null,
                 ),
                 const SizedBox(height: 12),
@@ -944,8 +1197,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   profileLoading
                       ? 'ID: Loading...'
                       : userCode.isNotEmpty
-                          ? 'ID: $userCode'
-                          : 'ID: Not available — login again',
+                      ? 'ID: $userCode'
+                      : 'ID: Not available — login again',
                   style: const TextStyle(color: Colors.white),
                 ),
                 const SizedBox(height: 20),
@@ -1024,28 +1277,38 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-
 class StatItem extends StatelessWidget {
   final String value, label;
   const StatItem({super.key, required this.value, required this.label});
 
   @override
   Widget build(BuildContext context) {
-    return Column(children: [
-      Text(value, style: const TextStyle(
-        fontSize: 21, color: Colors.white, fontWeight: FontWeight.w900)),
-      const SizedBox(height: 4),
-      Text(label, style: const TextStyle(
-        color: Colors.white, fontSize: 11)),
-    ]);
+    return Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 21,
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(label, style: const TextStyle(color: Colors.white, fontSize: 11)),
+      ],
+    );
   }
 }
 
 class MenuTile extends StatelessWidget {
   final IconData icon;
   final String title, subtitle;
-  const MenuTile({super.key, required this.icon,
-    required this.title, required this.subtitle});
+  const MenuTile({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1056,20 +1319,35 @@ class MenuTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFE4F3FF)),
       ),
-      child: Row(children: [
-        Icon(icon, color: blue, size: 25),
-        const SizedBox(width: 10),
-        Expanded(child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: const TextStyle(
-              color: ink, fontWeight: FontWeight.w800, fontSize: 12)),
-            const SizedBox(height: 5),
-            Text(subtitle, style: TextStyle(
-              color: Colors.blueGrey.shade400, fontSize: 10)),
-          ],
-        )),
-      ]),
+      child: Row(
+        children: [
+          Icon(icon, color: blue, size: 25),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: ink,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: Colors.blueGrey.shade400,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1089,15 +1367,195 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
 
   bool micOn = true;
   bool speakerOn = true;
+  List<Map<String, dynamic>> seats = [];
+  bool seatsLoading = true;
+  bool seatRequestInProgress = false;
+  Timer? seatRefreshTimer;
 
   static const Color purple = Color(0xFF7728E8);
   static const Color pink = Color(0xFFFF4FA3);
   static const Color background = Color(0xFF160D2B);
 
-  void showMessage(String text) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text)),
+  @override
+  void initState() {
+    super.initState();
+    _loadSeats();
+    seatRefreshTimer = Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => _loadSeats(),
     );
+  }
+
+  Future<void> _loadSeats() async {
+    if (seatRequestInProgress) return;
+    seatRequestInProgress = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('lovely_token');
+      if (token == null || token.isEmpty) return;
+
+      final response = await http
+          .get(
+            Uri.parse('$lovelyApi/voice/rooms/${widget.room['id']}/seats'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 12));
+
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final loaded = List<Map<String, dynamic>>.from(
+          (data['seats'] as List).map(
+            (item) => Map<String, dynamic>.from(item as Map),
+          ),
+        );
+        setState(() {
+          seats = loaded;
+          seatsLoading = false;
+        });
+      } else {
+        setState(() => seatsLoading = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => seatsLoading = false);
+    } finally {
+      seatRequestInProgress = false;
+    }
+  }
+
+  Future<void> _tapSeat(int number) async {
+    final seat = seats.firstWhere(
+      (item) => item['seat_number'] == number,
+      orElse: () => <String, dynamic>{},
+    );
+
+    if (seat['is_mine'] == true) {
+      await _leaveSeat();
+      return;
+    }
+    if (seat['is_occupied'] == true) {
+      showMessage('Yeh seat pehle se occupied hai.');
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('lovely_token');
+    if (token == null || token.isEmpty) {
+      showMessage('Please log in first.');
+      return;
+    }
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse(
+              '$lovelyApi/voice/rooms/${widget.room['id']}/seats/$number/sit',
+            ),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        showMessage('Aap seat $number par baith gaye.');
+      } else if (response.statusCode == 409) {
+        showMessage('Yeh seat available nahi hai.');
+      } else {
+        showMessage('Seat book nahi hui (${response.statusCode}).');
+      }
+      await _loadSeats();
+    } catch (_) {
+      if (mounted) showMessage('Seat book karte waqt connection error aaya.');
+    }
+  }
+
+  Future<void> _leaveSeat() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('lovely_token');
+    if (token == null || token.isEmpty) return;
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse(
+              '$lovelyApi/voice/rooms/${widget.room['id']}/seats/leave',
+            ),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        showMessage('Aap seat se uth gaye.');
+        await _loadSeats();
+      } else {
+        showMessage('Seat khali nahi hui.');
+      }
+    } catch (_) {
+      if (mounted) showMessage('Connection error aaya.');
+    }
+  }
+
+  Widget _buildSeat(int number, {bool large = false}) {
+    final seat = seats.firstWhere(
+      (item) => item['seat_number'] == number,
+      orElse: () => <String, dynamic>{},
+    );
+    final occupied = seat['is_occupied'] == true;
+    final mine = seat['is_mine'] == true;
+    final size = large ? 58.0 : 44.0;
+
+    return InkWell(
+      onTap: () => _tapSeat(number),
+      borderRadius: BorderRadius.circular(size),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: mine ? const LinearGradient(colors: [pink, purple]) : null,
+          color: mine
+              ? null
+              : occupied
+              ? const Color(0xFF49345E)
+              : Colors.white.withValues(alpha: 0.07),
+          border: Border.all(
+            color: mine
+                ? pink
+                : occupied
+                ? purple
+                : Colors.white24,
+            width: large ? 2.5 : 1.2,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              occupied ? Icons.person : Icons.event_seat,
+              color: Colors.white,
+              size: large ? 23 : 17,
+            ),
+            if (occupied)
+              Text(
+                mine ? 'You' : (seat['user_code'] ?? '').toString(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: large ? 9 : 7,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void showMessage(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
   void sendMessage() {
@@ -1105,10 +1563,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     if (text.isEmpty) return;
 
     setState(() {
-      messages.add({
-        'text': text,
-        'time': TimeOfDay.now().format(context),
-      });
+      messages.add({'text': text, 'time': TimeOfDay.now().format(context)});
       messageController.clear();
     });
   }
@@ -1124,10 +1579,12 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
 
     try {
       final roomId = widget.room['id'];
-      final response = await http.post(
-        Uri.parse('$lovelyApi/voice/rooms/$roomId/leave'),
-        headers: {'Authorization': 'Bearer $token'},
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(
+            Uri.parse('$lovelyApi/voice/rooms/$roomId/leave'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (!mounted) return;
 
@@ -1144,6 +1601,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
 
   @override
   void dispose() {
+    seatRefreshTimer?.cancel();
     messageController.dispose();
     super.dispose();
   }
@@ -1164,15 +1622,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
           children: [
             Text(
               name,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            Text(
-              'Room #$roomId',
-              style: const TextStyle(fontSize: 11),
-            ),
+            Text('Room #$roomId', style: const TextStyle(fontSize: 11)),
           ],
         ),
         actions: [
@@ -1182,9 +1634,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
             icon: SizedBox(
               width: 28,
               height: 28,
-              child: CustomPaint(
-                painter: _OpenCircleInfoPainter(),
-              ),
+              child: CustomPaint(painter: _OpenCircleInfoPainter()),
             ),
           ),
         ],
@@ -1244,6 +1694,45 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 20),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Voice Seats',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  if (seatsLoading && seats.isEmpty)
+                    const Center(child: CircularProgressIndicator(color: pink))
+                  else
+                    Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _buildSeat(1),
+                            _buildSeat(2, large: true),
+                            _buildSeat(3),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        for (final first in [4, 9, 14]) ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: List.generate(
+                              5,
+                              (index) => _buildSeat(first + index),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                      ],
+                    ),
                   const SizedBox(height: 20),
                   const Text(
                     'Room Messages',
@@ -1309,151 +1798,180 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
               ),
             ),
             Container(
-              padding: const EdgeInsets.fromLTRB(10, 12, 10, 14),
+              padding: const EdgeInsets.fromLTRB(6, 8, 6, 10),
               decoration: const BoxDecoration(
                 color: Color(0xFF211438),
-                border: Border(
-                  top: BorderSide(color: Color(0x447728E8)),
-                ),
+                border: Border(top: BorderSide(color: Color(0x447728E8))),
               ),
-              child: Column(
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: messageController,
-                          style: const TextStyle(color: Colors.white),
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) => sendMessage(),
-                          decoration: InputDecoration(
-                            hintText: 'Write a message...',
-                            hintStyle: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 13,
-                            ),
-                            filled: true,
-                            fillColor: background,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 12,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(25),
-                              borderSide: BorderSide.none,
-                            ),
-                          ),
+                  Expanded(
+                    child: TextField(
+                      controller: messageController,
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => sendMessage(),
+                      decoration: InputDecoration(
+                        hintText: 'Message...',
+                        hintStyle: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 12,
+                        ),
+                        isDense: true,
+                        filled: true,
+                        fillColor: background,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 11,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: BorderSide.none,
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'Send',
-                        onPressed: sendMessage,
-                        icon: const Icon(
-                          Icons.send_rounded,
-                          color: pink,
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Emoji',
-                        onPressed: () {
-                          messageController.text += '😊';
-                          messageController.selection =
-                              TextSelection.collapsed(
-                            offset: messageController.text.length,
-                          );
-                        },
-                        icon: const Icon(
-                          Icons.emoji_emotions_outlined,
-                          color: Colors.amber,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _roomButton(
-                        icon: micOn ? Icons.mic : Icons.mic_off,
-                        label: 'Mic',
-                        active: micOn,
-                        onTap: () {
-                          setState(() => micOn = !micOn);
-                          showMessage(
-                            micOn ? 'Mic On' : 'Mic Off',
-                          );
-                        },
-                      ),
-                      _roomButton(
-                        icon: Icons.card_giftcard_rounded,
-                        label: 'Gift',
-                        active: false,
-                        onTap: () => showMessage(
-                          'Gift feature abhi connect karna hai.',
-                        ),
-                      ),
-                      _roomButton(
-                        icon: speakerOn
-                            ? Icons.volume_up_rounded
-                            : Icons.volume_off_rounded,
-                        label: 'Speaker',
-                        active: speakerOn,
-                        onTap: () {
-                          setState(() => speakerOn = !speakerOn);
-                          showMessage(
-                            speakerOn ? 'Speaker On' : 'Speaker Off',
-                          );
-                        },
-                      ),
-                      _roomButton(
-                        icon: Icons.inbox_rounded,
-                        label: 'Inbox',
-                        active: false,
-                        onTap: () => showMessage(
-                          'Inbox feature abhi connect karna hai.',
-                        ),
-                      ),
-                      _roomButton(
-                        icon: Icons.apps_rounded,
-                        label: 'More',
-                        active: false,
-                        onTap: () => showModalBottomSheet(
-                          context: context,
-                          backgroundColor: background,
-                          builder: (ctx) => SafeArea(
-                            child: Wrap(
-                              children: [
-                                ListTile(
-                                  leading: const Icon(
-                                    Icons.info_outline,
-                                    color: Colors.white,
-                                  ),
-                                  title: const Text(
-                                    'Room Information',
-                                    style: TextStyle(color: Colors.white),
-                                  ),
-                                  onTap: () => Navigator.pop(ctx),
-                                ),
-                                ListTile(
-                                  leading: const Icon(
-                                    Icons.exit_to_app,
-                                    color: Colors.redAccent,
-                                  ),
-                                  title: const Text(
-                                    'Leave Room',
-                                    style: TextStyle(color: Colors.white),
-                                  ),
-                                  onTap: () {
-                                    Navigator.pop(ctx);
-                                    _leaveRoom();
-                                  },
-                                ),
-                              ],
+                  IconButton(
+                    tooltip: 'Emoji',
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 40,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: () {
+                      messageController.text += '😊';
+                      messageController.selection = TextSelection.collapsed(
+                        offset: messageController.text.length,
+                      );
+                    },
+                    icon: const Icon(
+                      Icons.emoji_emotions_outlined,
+                      color: Colors.amber,
+                      size: 21,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Mic',
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 40,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: () {
+                      setState(() => micOn = !micOn);
+                      showMessage(micOn ? 'Mic On' : 'Mic Off');
+                    },
+                    icon: Icon(
+                      micOn ? Icons.mic : Icons.mic_off,
+                      color: micOn ? pink : Colors.white54,
+                      size: 21,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Gift',
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 40,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: () =>
+                        showMessage('Gift feature abhi connect karna hai.'),
+                    icon: const Icon(
+                      Icons.card_giftcard_rounded,
+                      color: pink,
+                      size: 21,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Speaker',
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 40,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: () {
+                      setState(() => speakerOn = !speakerOn);
+                      showMessage(speakerOn ? 'Speaker On' : 'Speaker Off');
+                    },
+                    icon: Icon(
+                      speakerOn
+                          ? Icons.volume_up_rounded
+                          : Icons.volume_off_rounded,
+                      color: speakerOn ? pink : Colors.white54,
+                      size: 21,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Inbox',
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 40,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: () =>
+                        showMessage('Inbox feature abhi connect karna hai.'),
+                    icon: const Icon(
+                      Icons.inbox_rounded,
+                      color: Colors.white,
+                      size: 21,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'More',
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 40,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: () => showModalBottomSheet(
+                      context: context,
+                      backgroundColor: background,
+                      builder: (ctx) => SafeArea(
+                        child: Wrap(
+                          children: [
+                            ListTile(
+                              leading: const Icon(
+                                Icons.info_outline,
+                                color: Colors.white,
+                              ),
+                              title: const Text(
+                                'Room Information',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              onTap: () {
+                                Navigator.pop(ctx);
+                                showMessage('Room information');
+                              },
                             ),
-                          ),
+                            ListTile(
+                              leading: const Icon(
+                                Icons.exit_to_app,
+                                color: Colors.redAccent,
+                              ),
+                              title: const Text(
+                                'Leave Room',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              onTap: () {
+                                Navigator.pop(ctx);
+                                _leaveRoom();
+                              },
+                            ),
+                          ],
                         ),
                       ),
-                    ],
+                    ),
+                    icon: const Icon(
+                      Icons.more_vert,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                   ),
                 ],
               ),
@@ -1463,52 +1981,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       ),
     );
   }
-
-  Widget _roomButton({
-    required IconData icon,
-    required String label,
-    required bool active,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 5),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              height: 43,
-              width: 43,
-              decoration: BoxDecoration(
-                gradient: active
-                    ? const LinearGradient(colors: [purple, pink])
-                    : null,
-                color: active ? null : Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Icon(
-                icon,
-                color: Colors.white,
-                size: 23,
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 10,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
-
 
 class _OpenCircleInfoPainter extends CustomPainter {
   @override
