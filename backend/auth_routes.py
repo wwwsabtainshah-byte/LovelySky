@@ -9,9 +9,9 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 try:
-    from database import get_connection, initialize_database
+    from database import DB_PATH, get_connection, initialize_database
 except ModuleNotFoundError:
-    from backend.database import get_connection, initialize_database
+    from backend.database import DB_PATH, get_connection, initialize_database
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -570,6 +570,64 @@ def unfollow_voice_user(
     finally:
         db.close()
 
+
+
+@router.get("/owner/database-diagnostic")
+def owner_database_diagnostic(
+    authorization: str | None = Header(default=None),
+):
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Bearer token required")
+
+    token = authorization.split(" ", 1)[1].strip()
+    claims = verify_token(token)
+
+    email = str(claims.get("email", "")).strip().lower()
+    if email != OWNER_EMAIL.lower() or claims.get("email_verified") is not True:
+        raise HTTPException(403, "Owner access required")
+
+    result = {
+        "database_file_exists": DB_PATH.is_file(),
+        "database_readable": False,
+        "database_size_bytes": DB_PATH.stat().st_size if DB_PATH.is_file() else 0,
+        "users_count": None,
+        "voice_rooms_count": None,
+        "note": "Read-only diagnostic; database path is not exposed.",
+    }
+
+    if not result["database_file_exists"]:
+        return result
+
+    db = None
+    try:
+        db = sqlite3.connect(
+            f"{DB_PATH.resolve().as_uri()}?mode=ro",
+            uri=True,
+            timeout=5,
+        )
+        tables = {
+            row[0] for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        result["database_readable"] = True
+
+        if "users" in tables:
+            result["users_count"] = db.execute(
+                "SELECT COUNT(*) FROM users"
+            ).fetchone()[0]
+
+        if "voice_rooms" in tables:
+            result["voice_rooms_count"] = db.execute(
+                "SELECT COUNT(*) FROM voice_rooms"
+            ).fetchone()[0]
+
+        return result
+    except sqlite3.Error:
+        raise HTTPException(503, "Database diagnostic could not read the SQLite file")
+    finally:
+        if db is not None:
+            db.close()
 
 @router.get("/me")
 def current_user(authorization: str | None = Header(default=None)):
