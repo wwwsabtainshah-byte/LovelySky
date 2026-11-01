@@ -13,7 +13,7 @@ import 'auth_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  runApp(const LovelyChatApp());
+  runApp(const LovelySkyApp());
 }
 
 const blue = Color(0xFF168FFF);
@@ -21,8 +21,8 @@ const sky = Color(0xFF67D4FF);
 const pale = Color(0xFFEAF8FF);
 const ink = Color(0xFF183B59);
 
-class LovelyChatApp extends StatelessWidget {
-  const LovelyChatApp({super.key});
+class LovelySkyApp extends StatelessWidget {
+  const LovelySkyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
