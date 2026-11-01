@@ -1435,6 +1435,67 @@ def end_video_room(
         db.close()
 
 
+
+@router.post("/video/rooms/{room_id}/token")
+def get_video_room_token(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _video_room_user(authorization)
+
+    livekit_url = os.environ.get("LIVEKIT_URL", "").strip()
+    api_key = os.environ.get("LIVEKIT_API_KEY", "").strip()
+    api_secret = os.environ.get("LIVEKIT_API_SECRET", "").strip()
+    if not livekit_url or not api_key or not api_secret:
+        raise HTTPException(503, "Live video streaming is not configured")
+
+    db = get_connection()
+    try:
+        room = _require_live_video_room(db, room_id)
+        is_host = room["host_uid"] == user["google_uid"]
+
+        if not is_host:
+            member = db.execute(
+                """SELECT 1 FROM video_room_viewers
+                   WHERE room_id = ? AND viewer_uid = ?""",
+                (room_id, user["google_uid"]),
+            ).fetchone()
+            if not member:
+                raise HTTPException(403, "Join this live room before connecting")
+
+        try:
+            from datetime import timedelta
+            from livekit import api
+
+            room_name = f"lovelysky_video_{room_id}"
+            token = (
+                api.AccessToken(api_key, api_secret)
+                .with_identity(f"user_{user['user_code']}")
+                .with_ttl(timedelta(minutes=60))
+                .with_grants(api.VideoGrants(
+                    room_join=True,
+                    room=room_name,
+                    can_publish=is_host,
+                    can_subscribe=True,
+                    can_publish_data=is_host,
+                ))
+            )
+            jwt = token.to_jwt()
+        except Exception as exc:
+            logger.error("LiveKit token generation failed: %s", type(exc).__name__)
+            raise HTTPException(503, "Could not create live video access") from exc
+
+        return {
+            "success": True,
+            "url": livekit_url,
+            "token": jwt,
+            "role": "host" if is_host else "viewer",
+            "room_name": room_name,
+        }
+    finally:
+        db.close()
+
+
 @router.get("/video/rooms/{room_id}/messages")
 def get_video_room_messages(
     room_id: int,

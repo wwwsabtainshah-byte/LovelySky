@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:livekit_client/livekit_client.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -1313,8 +1314,121 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
   bool isHost = false;
   bool busy = false;
   String? error;
+  Room? liveKitRoom;
+  EventsListener<RoomEvent>? liveKitListener;
+  VideoTrack? videoTrack;
+  bool liveConnecting = false;
+  bool cameraEnabled = false;
+  bool microphoneEnabled = false;
 
   int get roomId => (widget.room['id'] as num).toInt();
+
+  Future<void> _connectLiveKit() async {
+    if (liveConnecting || liveKitRoom != null) return;
+    liveConnecting = true;
+    try {
+      final access = await _request('POST', '/video/rooms/$roomId/token');
+      final url = access['url']?.toString() ?? '';
+      final token = access['token']?.toString() ?? '';
+      if (url.isEmpty || token.isEmpty) {
+        throw Exception('Live video access details are missing.');
+      }
+
+      final lkRoom = Room();
+      final listener = lkRoom.createListener();
+      listener.on<TrackSubscribedEvent>((event) {
+        if (event.track is VideoTrack && mounted) {
+          setState(() => videoTrack = event.track as VideoTrack);
+        }
+      });
+      listener.on<TrackUnsubscribedEvent>((event) {
+        if (mounted && identical(videoTrack, event.track)) {
+          setState(() => videoTrack = null);
+        }
+      });
+
+      liveKitRoom = lkRoom;
+      liveKitListener = listener;
+      await lkRoom.connect(url, token);
+
+      if (isHost) {
+        await lkRoom.localParticipant?.setCameraEnabled(true);
+        await lkRoom.localParticipant?.setMicrophoneEnabled(true);
+        cameraEnabled = true;
+        microphoneEnabled = true;
+        for (final pub in lkRoom.localParticipant?.videoTrackPublications ?? []) {
+          if (pub.track != null) {
+            videoTrack = pub.track;
+            break;
+          }
+        }
+      } else {
+        for (final participant in lkRoom.remoteParticipants.values) {
+          for (final pub in participant.videoTrackPublications) {
+            if (pub.track != null) {
+              videoTrack = pub.track;
+              break;
+            }
+          }
+          if (videoTrack != null) break;
+        }
+      }
+      if (mounted) setState(() {});
+    } catch (e) {
+      if (mounted) {
+        setState(() => error =
+            'Live video: ${e.toString().replaceFirst('Exception: ', '')}');
+      }
+    } finally {
+      liveConnecting = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _toggleCamera() async {
+    final room = liveKitRoom;
+    if (room == null) return;
+    try {
+      final enabled = !cameraEnabled;
+      await room.localParticipant?.setCameraEnabled(enabled);
+      cameraEnabled = enabled;
+      if (!enabled) {
+        videoTrack = null;
+      } else {
+        for (final pub in room.localParticipant?.videoTrackPublications ?? []) {
+          if (pub.track != null) {
+            videoTrack = pub.track;
+            break;
+          }
+        }
+      }
+      if (mounted) setState(() {});
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    }
+  }
+
+  Future<void> _toggleMicrophone() async {
+    final room = liveKitRoom;
+    if (room == null) return;
+    try {
+      final enabled = !microphoneEnabled;
+      await room.localParticipant?.setMicrophoneEnabled(enabled);
+      if (mounted) setState(() => microphoneEnabled = enabled);
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    }
+  }
+
+  Future<void> _disconnectLiveKit() async {
+    final listener = liveKitListener;
+    final room = liveKitRoom;
+    liveKitListener = null;
+    liveKitRoom = null;
+    videoTrack = null;
+    await listener?.cancelAll();
+    await room?.disconnect();
+  }
 
   Future<Map<String, dynamic>> _request(
     String method,
@@ -1356,6 +1470,7 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
         isHost = result['role'] == 'host';
       });
       await _loadMessages();
+    await _connectLiveKit();
       refreshTimer = Timer.periodic(
         const Duration(seconds: 4),
         (_) => _loadMessages(),
@@ -1406,6 +1521,7 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
   Future<void> _endRoom() async {
     try {
       await _request('POST', '/video/rooms/$roomId/end');
+      await _disconnectLiveKit();
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
@@ -1419,6 +1535,7 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
   @override
   void dispose() {
     refreshTimer?.cancel();
+    _disconnectLiveKit();
     messageController.dispose();
     if (joined && !isHost) {
       _request(
@@ -1453,38 +1570,56 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
             height: 220,
             width: double.infinity,
             margin: const EdgeInsets.all(14),
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [Color(0xFF087FE8), Color(0xFF63C8FF)],
               ),
               borderRadius: BorderRadius.circular(24),
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.videocam_off_rounded,
-                  color: Colors.white,
-                  size: 52,
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Live video is not connected yet',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
+            child: videoTrack != null
+                ? VideoTrackRenderer(videoTrack!, fit: VideoViewFit.cover)
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        liveConnecting ? Icons.hourglass_top_rounded : Icons.videocam_off_rounded,
+                        color: Colors.white,
+                        size: 52,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        liveConnecting ? 'Connecting live video...' : 'Waiting for live video',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        isHost ? 'Camera stream will appear here.' : 'The host video will appear here.',
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  isHost
-                      ? 'Connect LiveKit to start camera streaming.'
-                      : 'Waiting for the host video stream.',
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-              ],
-            ),
           ),
+          if (isHost && liveKitRoom != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton.filled(
+                    tooltip: cameraEnabled ? 'Turn camera off' : 'Turn camera on',
+                    onPressed: _toggleCamera,
+                    icon: Icon(cameraEnabled ? Icons.videocam : Icons.videocam_off),
+                  ),
+                  const SizedBox(width: 16),
+                  IconButton.filled(
+                    tooltip: microphoneEnabled ? 'Mute microphone' : 'Unmute microphone',
+                    onPressed: _toggleMicrophone,
+                    icon: Icon(microphoneEnabled ? Icons.mic : Icons.mic_off),
+                  ),
+                ],
+              ),
+            ),
           if (error != null)
             Padding(
               padding: const EdgeInsets.all(12),
