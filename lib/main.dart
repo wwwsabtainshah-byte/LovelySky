@@ -2822,12 +2822,26 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
             ),
 
             // Compact bottom row: chat, send, emoji, mic, gift and More.
-            Container(
-              padding: const EdgeInsets.fromLTRB(5, 4, 5, 4),
-              decoration: const BoxDecoration(
-                color: Color(0xFF211438),
-                border: Border(top: BorderSide(color: Color(0x887728E8))),
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                tooltip: 'Games',
+                constraints: const BoxConstraints.tightFor(
+                  width: 38,
+                  height: 29,
+                ),
+                padding: EdgeInsets.zero,
+                onPressed: () => showMessage('Games feature'),
+                icon: const Icon(
+                  Icons.sports_esports,
+                  color: Colors.amber,
+                  size: 22,
+                ),
               ),
+            ),
+            Container(
+              padding: const EdgeInsets.fromLTRB(5, 2, 5, 2),
+              color: Colors.transparent,
               child: Row(
                 children: [
                   Expanded(
@@ -2911,24 +2925,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                       size: 29,
                     ),
                   ),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: 'Games',
-                        constraints: const BoxConstraints.tightFor(
-                          width: 38,
-                          height: 29,
-                        ),
-                        padding: EdgeInsets.zero,
-                        onPressed: () => showMessage('Games feature'),
-                        icon: const Icon(
-                          Icons.sports_esports,
-                          color: Colors.amber,
-                          size: 22,
-                        ),
-                      ),
-                      IconButton(
+                  IconButton(
                         tooltip: 'More',
                         onPressed: () => showModalBottomSheet(
                           context: context,
@@ -2991,8 +2988,6 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           size: 26,
                         ),
                       ),
-                    ],
-                  ),
                 ],
               ),
             ),
