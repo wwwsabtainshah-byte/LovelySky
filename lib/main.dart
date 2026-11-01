@@ -1405,6 +1405,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   bool seatsLoading = true;
   bool seatRequestInProgress = false;
   Timer? seatRefreshTimer;
+  bool inviteDialogShowing = false;
   MediaStream? localAudioStream;
   WebSocket? signalSocket;
   final Map<String, RTCPeerConnection> peerConnections = {};
@@ -1425,6 +1426,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     seatRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       _loadSeats();
       _loadMessages();
+      _checkPendingInvites();
     });
   }
 
@@ -1808,6 +1810,195 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     }
   }
 
+
+
+  Future<void> _checkPendingInvites() async {
+    if (!mounted || inviteDialogShowing) return;
+    inviteDialogShowing = true;
+
+    try {
+      final headers = await _roomHeaders();
+      if (headers == null) return;
+
+      final response = await http.get(
+        Uri.parse('$lovelyApi/voice/rooms/${widget.room['id']}/invites/pending'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 12));
+
+      if (!mounted || response.statusCode != 200) return;
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final invites = List<Map<String, dynamic>>.from(
+        (data['invites'] as List? ?? []).map(
+          (item) => Map<String, dynamic>.from(item as Map),
+        ),
+      );
+
+      if (invites.isEmpty || !mounted) return;
+
+      final invite = invites.first;
+      final inviteId = invite['id'];
+      if (inviteId == null) return;
+
+      final accepted = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Seat Invitation'),
+          content: Text(
+            '${invite['inviter_name'] ?? 'Room Admin'} ne aap ko seat '
+            '${invite['seat_number'] ?? ''} par invite kiya hai.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Reject'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Accept'),
+            ),
+          ],
+        ),
+      );
+
+      if (!mounted || accepted == null) return;
+
+      final result = await http.post(
+        Uri.parse(
+          '$lovelyApi/voice/rooms/${widget.room['id']}/invites/$inviteId/respond',
+        ),
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'accepted': accepted}),
+      ).timeout(const Duration(seconds: 15));
+
+      if (!mounted) return;
+
+      if (result.statusCode == 200) {
+        showMessage(accepted
+            ? 'Invitation accepted!'
+            : 'Invitation rejected.');
+        if (accepted) await _loadSeats();
+      } else {
+        showMessage('Invitation response failed (${result.statusCode}).');
+      }
+    } catch (e) {
+      debugPrint('Pending invite error: $e');
+    } finally {
+      inviteDialogShowing = false;
+    }
+  }
+
+  Future<Map<String, String>?> _roomHeaders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('lovely_token');
+    if (token == null || token.isEmpty) return null;
+    return {'Authorization': 'Bearer $token'};
+  }
+
+  Future<bool> _roomPost(String path, {Map<String, dynamic>? body}) async {
+    final headers = await _roomHeaders();
+    if (headers == null) {
+      showMessage('Please log in first.');
+      return false;
+    }
+    try {
+      final response = await http.post(
+        Uri.parse('$lovelyApi$path'),
+        headers: {
+          ...headers,
+          if (body != null) 'Content-Type': 'application/json',
+        },
+        body: body == null ? null : jsonEncode(body),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) return true;
+      showMessage('Action failed (${response.statusCode}): ${response.body}');
+    } catch (e) {
+      showMessage('Connection error: $e');
+    }
+    return false;
+  }
+
+  Future<void> _inviteRoomMember(int seatNumber) async {
+    final headers = await _roomHeaders();
+    if (headers == null) return;
+
+    try {
+      final response = await http.get(
+        Uri.parse('$lovelyApi/voice/rooms/${widget.room['id']}/members'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200) {
+        showMessage('Room members load nahi huay (${response.statusCode}).');
+        return;
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final members = List<Map<String, dynamic>>.from(
+        (data['members'] as List).map(
+          (item) => Map<String, dynamic>.from(item as Map),
+        ),
+      ).where((m) =>
+          (m['user_uid'] ?? '').toString().isNotEmpty &&
+          m['is_mine'] != true &&
+          m['seat_number'] == null
+      ).toList();
+
+      if (!mounted) return;
+      if (members.isEmpty) {
+        showMessage('Invite ke liye koi available joined member nahi.');
+        return;
+      }
+
+      final selected = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        backgroundColor: background,
+        builder: (ctx) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'Select room member',
+                  style: TextStyle(color: Colors.white, fontSize: 17),
+                ),
+              ),
+              ...members.map((m) => ListTile(
+                leading: const Icon(Icons.person, color: pink),
+                title: Text(
+                  (m['display_name'] ?? 'Room member').toString(),
+                  style: const TextStyle(color: Colors.white),
+                ),
+                subtitle: Text(
+                  'ID: ${(m['user_code'] ?? '').toString()}',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                onTap: () => Navigator.pop(ctx, m),
+              )),
+            ],
+          ),
+        ),
+      );
+
+      if (selected == null || !mounted) return;
+
+      final uid = (selected['user_uid'] ?? '').toString();
+      final ok = await _roomPost(
+        '/voice/rooms/${widget.room['id']}/seats/$seatNumber/invite',
+        body: {'user_uid': uid},
+      );
+      if (ok) showMessage('Seat invitation sent.');
+    } catch (e) {
+      if (mounted) showMessage('Members load error: $e');
+    }
+  }
+
   Future<void> _onSeatTap(int number) async {
     final seat = seats.firstWhere(
       (item) => item['seat_number'] == number,
@@ -1815,35 +2006,44 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     );
 
     final canManage = roomRole == 'owner' || roomRole == 'admin';
+    if (!canManage) {
+      await _tapSeat(number);
+      return;
+    }
 
-    if (canManage &&
-        seat['is_occupied'] == true &&
-        seat['is_mine'] != true) {
-      final targetUid = (seat['user_uid'] ?? '').toString();
+    if (seat['is_mine'] == true) {
+      await _tapSeat(number);
+      return;
+    }
 
-      if (targetUid.isEmpty) {
-        showMessage('Member ki ID nahi mili.');
-        return;
-      }
+    final occupied = seat['is_occupied'] == true;
+    final locked = seat['is_locked'] == true;
+    final targetUid = (seat['user_uid'] ?? '').toString();
+    final memberCode = (seat['user_code'] ?? '').toString();
+    final isMuted = seat['is_muted'] == true;
 
-      final isMuted = seat['is_muted'] == true;
-      final memberCode = (seat['user_code'] ?? '').toString();
+    if (occupied && targetUid.isEmpty) {
+      showMessage('Member ki ID nahi mili.');
+      return;
+    }
 
-      if (!mounted) return;
-
-      showModalBottomSheet<void>(
-        context: context,
-        backgroundColor: background,
-        builder: (sheetContext) => SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.person, color: pink),
-                title: Text(
-                  memberCode.isEmpty ? 'Room member' : 'Member $memberCode',
-                  style: const TextStyle(color: Colors.white),
-                ),
+    if (!mounted) return;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: background,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.event_seat, color: pink),
+              title: Text(
+                occupied
+                    ? 'Seat $number · Member $memberCode'
+                    : 'Seat $number · ${locked ? 'Locked' : 'Available'}',
+                style: const TextStyle(color: Colors.white),
               ),
+            ),
+            if (occupied) ...[
               ListTile(
                 leading: Icon(
                   isMuted ? Icons.mic : Icons.mic_off,
@@ -1858,14 +2058,79 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   _moderateMemberMic(targetUid, isMuted);
                 },
               ),
+              ListTile(
+                leading: const Icon(Icons.person_remove, color: pink),
+                title: const Text(
+                  'Remove from seat',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  final ok = await _roomPost(
+                    '/voice/rooms/${widget.room['id']}/members/$targetUid/seat/remove',
+                  );
+                  if (ok) {
+                    showMessage('Member removed from seat.');
+                    await _loadSeats();
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.block, color: Colors.redAccent),
+                title: const Text(
+                  'Block from room',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  final ok = await _roomPost(
+                    '/voice/rooms/${widget.room['id']}/members/block',
+                    body: {'user_uid': targetUid},
+                  );
+                  if (ok) {
+                    showMessage('Member blocked from room.');
+                    await _loadSeats();
+                  }
+                },
+              ),
             ],
-          ),
+            ListTile(
+              leading: Icon(
+                locked ? Icons.lock_open : Icons.lock,
+                color: pink,
+              ),
+              title: Text(
+                locked ? 'Unlock seat' : 'Lock seat',
+                style: const TextStyle(color: Colors.white),
+              ),
+              onTap: () async {
+                Navigator.pop(sheetContext);
+                final action = locked ? 'unlock' : 'lock';
+                final ok = await _roomPost(
+                  '/voice/rooms/${widget.room['id']}/seats/$number/$action',
+                );
+                if (ok) {
+                  showMessage(locked ? 'Seat unlocked.' : 'Seat locked.');
+                  await _loadSeats();
+                }
+              },
+            ),
+            if (!occupied)
+              ListTile(
+                leading: const Icon(Icons.mail_outline, color: pink),
+                title: const Text(
+                  'Invite member to this seat',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _inviteRoomMember(number);
+                },
+              ),
+          ],
         ),
-      );
-      return;
-    }
-
-    await _tapSeat(number);
+      ),
+    );
   }
 
   Future<void> _tapSeat(int number) async {
@@ -1950,7 +2215,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     final mine = seat['is_mine'] == true;
     final size = large ? 58.0 : 44.0;
     final photo = (seat['profile_photo'] ?? '').toString();
-    final avatarSize = large ? 30.0 : 23.0;
+    final avatarSize = large ? 38.0 : 29.0;
 
     Widget avatar;
     if (photo.startsWith('http://') || photo.startsWith('https://')) {
@@ -1959,7 +2224,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         width: avatarSize,
         height: avatarSize,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Icon(
+        errorBuilder: (_, _, _) => Icon(
           occupied ? Icons.person : Icons.event_seat,
           color: Colors.white,
           size: large ? 23 : 17,
@@ -1972,7 +2237,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
           width: avatarSize,
           height: avatarSize,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) =>
+          errorBuilder: (_, _, _) =>
               const Icon(Icons.person, color: Colors.white),
         );
       } catch (_) {

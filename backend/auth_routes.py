@@ -343,6 +343,13 @@ def join_voice_room(
         if not room:
             raise HTTPException(404, "Voice room not found")
 
+        blocked = db.execute(
+            "SELECT 1 FROM voice_room_blocks WHERE room_id = ? AND user_uid = ?",
+            (room_id, user["google_uid"]),
+        ).fetchone()
+        if blocked:
+            raise HTTPException(403, "You are blocked from this room")
+
         db.execute(
             """
             INSERT INTO voice_room_participants (room_id, user_uid, user_code)
@@ -365,6 +372,39 @@ def join_voice_room(
     except Exception:
         db.rollback()
         raise
+    finally:
+        db.close()
+
+
+@router.get("/voice/rooms/{room_id}/members")
+def get_voice_room_members(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        _require_voice_room_member(db, room_id, user)
+        rows = db.execute(
+            """
+            SELECT
+                p.user_uid,
+                p.user_code,
+                u.display_name,
+                u.profile_photo,
+                p.seat_number,
+                p.is_muted
+            FROM voice_room_participants AS p
+            LEFT JOIN users AS u ON u.google_uid = p.user_uid
+            WHERE p.room_id = ?
+            ORDER BY p.joined_at ASC
+            """,
+            (room_id,),
+        ).fetchall()
+        return {
+            "success": True,
+            "members": [dict(row) for row in rows],
+        }
     finally:
         db.close()
 
@@ -596,7 +636,7 @@ def sit_voice_room_seat(
         if not room:
             raise HTTPException(404, "Voice room not found")
 
-        _require_voice_room_manager(db, room_id, user["google_uid"])
+        _voice_room_role(db, room_id, user["google_uid"])
 
         locked = db.execute(
             "SELECT 1 FROM voice_room_locked_seats WHERE room_id = ? AND seat_number = ?",
@@ -737,6 +777,265 @@ def leave_voice_room_seat(
         )
         db.commit()
         return {"success": True, "room_id": room_id}
+    finally:
+        db.close()
+
+
+
+class VoiceRoomInviteRequest(BaseModel):
+    user_uid: str
+
+
+class VoiceRoomInviteResponse(BaseModel):
+    accepted: bool
+
+
+@router.post("/voice/rooms/{room_id}/seats/{seat_number}/invite")
+def create_voice_room_seat_invite(
+    room_id: int,
+    seat_number: int,
+    payload: VoiceRoomInviteRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    target_uid = payload.user_uid.strip()
+    if not target_uid or target_uid == user["google_uid"]:
+        raise HTTPException(400, "Invalid invitation target")
+    if not 1 <= seat_number <= 18:
+        raise HTTPException(400, "Invalid seat number")
+
+    db = get_connection()
+    try:
+        _require_voice_room_manager(db, room_id, user["google_uid"])
+
+        target = db.execute(
+            "SELECT 1 FROM voice_room_participants WHERE room_id = ? AND user_uid = ?",
+            (room_id, target_uid),
+        ).fetchone()
+        if not target:
+            raise HTTPException(404, "Member has not joined this room")
+
+        blocked = db.execute(
+            "SELECT 1 FROM voice_room_blocks WHERE room_id = ? AND user_uid = ?",
+            (room_id, target_uid),
+        ).fetchone()
+        if blocked:
+            raise HTTPException(403, "This member is blocked from the room")
+
+        occupied = db.execute(
+            "SELECT user_uid FROM voice_room_participants WHERE room_id = ? AND seat_number = ?",
+            (room_id, seat_number),
+        ).fetchone()
+        if occupied:
+            raise HTTPException(409, "This seat is already occupied")
+
+        db.execute(
+            """INSERT INTO voice_room_invites
+            (room_id, inviter_uid, invitee_uid, seat_number, status)
+            VALUES (?, ?, ?, ?, 'pending')""",
+            (room_id, user["google_uid"], target_uid, seat_number),
+        )
+        db.commit()
+        return {"success": True, "message": "Seat invitation sent"}
+    finally:
+        db.close()
+
+
+@router.get("/voice/rooms/{room_id}/invites/pending")
+def get_voice_room_pending_invites(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        _voice_room_role(db, room_id, user["google_uid"])
+        rows = db.execute(
+            """SELECT i.id, i.seat_number, i.created_at,
+                      i.inviter_uid, u.display_name AS inviter_name,
+                      u.user_code AS inviter_code
+               FROM voice_room_invites i
+               LEFT JOIN users u ON u.google_uid = i.inviter_uid
+               WHERE i.room_id = ? AND i.invitee_uid = ?
+                 AND i.status = 'pending'
+               ORDER BY i.id DESC""",
+            (room_id, user["google_uid"]),
+        ).fetchall()
+        return {"success": True, "invites": [dict(row) for row in rows]}
+    finally:
+        db.close()
+
+
+@router.post("/voice/rooms/{room_id}/invites/{invite_id}/respond")
+def respond_voice_room_seat_invite(
+    room_id: int,
+    invite_id: int,
+    payload: VoiceRoomInviteResponse,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        invite = db.execute(
+            """SELECT * FROM voice_room_invites
+               WHERE id = ? AND room_id = ? AND invitee_uid = ?
+                 AND status = 'pending'""",
+            (invite_id, room_id, user["google_uid"]),
+        ).fetchone()
+
+        if not invite:
+            raise HTTPException(404, "Pending invitation not found")
+
+        if payload.accepted:
+            _voice_room_role(db, room_id, user["google_uid"])
+
+            inviter_role = _voice_room_role(
+                db, room_id, invite["inviter_uid"]
+            )
+            if inviter_role not in {"owner", "admin"}:
+                raise HTTPException(403, "Inviter is no longer a room admin")
+
+            participant = db.execute(
+                """SELECT 1 FROM voice_room_participants
+                   WHERE room_id = ? AND user_uid = ?""",
+                (room_id, user["google_uid"]),
+            ).fetchone()
+            if not participant:
+                raise HTTPException(409, "Join the room before accepting")
+
+            occupied = db.execute(
+                """SELECT user_uid FROM voice_room_participants
+                   WHERE room_id = ? AND seat_number = ?""",
+                (room_id, invite["seat_number"]),
+            ).fetchone()
+            if occupied and occupied["user_uid"] != user["google_uid"]:
+                raise HTTPException(409, "This seat is already occupied")
+
+            blocked = db.execute(
+                """SELECT 1 FROM voice_room_blocks
+                   WHERE room_id = ? AND user_uid = ?""",
+                (room_id, user["google_uid"]),
+            ).fetchone()
+            if blocked:
+                raise HTTPException(403, "You are blocked from this room")
+
+            db.execute(
+                """UPDATE voice_room_participants
+                   SET seat_number = NULL
+                   WHERE room_id = ? AND user_uid = ?""",
+                (room_id, user["google_uid"]),
+            )
+            db.execute(
+                """UPDATE voice_room_participants
+                   SET seat_number = ?
+                   WHERE room_id = ? AND user_uid = ?""",
+                (invite["seat_number"], room_id, user["google_uid"]),
+            )
+            status = "accepted"
+        else:
+            status = "rejected"
+
+        db.execute(
+            "UPDATE voice_room_invites SET status = ? WHERE id = ?",
+            (status, invite_id),
+        )
+        db.commit()
+        return {
+            "success": True,
+            "status": status,
+            "seat_number": invite["seat_number"] if payload.accepted else None,
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+
+class VoiceRoomBlockRequest(BaseModel):
+    user_uid: str
+
+
+@router.post("/voice/rooms/{room_id}/members/block")
+def block_voice_room_member(
+    room_id: int,
+    payload: VoiceRoomBlockRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    target_uid = payload.user_uid.strip()
+
+    if not target_uid or target_uid == user["google_uid"]:
+        raise HTTPException(400, "Invalid member")
+
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        actor_role = _require_voice_room_manager(
+            db, room_id, user["google_uid"]
+        )
+
+        target = db.execute(
+            "SELECT google_uid FROM users WHERE google_uid = ?",
+            (target_uid,),
+        ).fetchone()
+        if not target:
+            raise HTTPException(404, "User not found")
+
+        target_role = _voice_room_role(db, room_id, target_uid)
+        if target_role == "owner":
+            raise HTTPException(403, "Room owner cannot be blocked")
+        if target_role == "admin" and actor_role != "owner":
+            raise HTTPException(403, "Only owner can block a room admin")
+
+        db.execute(
+            """INSERT OR REPLACE INTO voice_room_blocks
+               (room_id, user_uid, blocked_by_uid)
+               VALUES (?, ?, ?)""",
+            (room_id, target_uid, user["google_uid"]),
+        )
+        db.execute(
+            "DELETE FROM voice_room_participants WHERE room_id = ? AND user_uid = ?",
+            (room_id, target_uid),
+        )
+        db.execute(
+            """UPDATE voice_room_invites SET status = 'cancelled'
+               WHERE room_id = ? AND invitee_uid = ? AND status = 'pending'""",
+            (room_id, target_uid),
+        )
+        if target_role == "admin":
+            db.execute(
+                "DELETE FROM voice_room_admins WHERE room_id = ? AND user_uid = ?",
+                (room_id, target_uid),
+            )
+
+        db.commit()
+        return {"success": True, "blocked_uid": target_uid}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.delete("/voice/rooms/{room_id}/members/{target_uid}/block")
+def unblock_voice_room_member(
+    room_id: int,
+    target_uid: str,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        _require_voice_room_manager(db, room_id, user["google_uid"])
+        result = db.execute(
+            "DELETE FROM voice_room_blocks WHERE room_id = ? AND user_uid = ?",
+            (room_id, target_uid),
+        )
+        db.commit()
+        return {"success": True, "unblocked": result.rowcount > 0}
     finally:
         db.close()
 

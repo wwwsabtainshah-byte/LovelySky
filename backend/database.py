@@ -1,4 +1,5 @@
 import sqlite3
+
 try:
     from backend.storage import DATA_ROOT, setup_storage
 except ModuleNotFoundError:
@@ -129,7 +130,28 @@ CREATE TABLE IF NOT EXISTS voice_room_locked_seats (
     FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS voice_room_visits (
+    CREATE TABLE IF NOT EXISTS voice_room_invites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id INTEGER NOT NULL,
+    inviter_uid TEXT NOT NULL,
+    invitee_uid TEXT NOT NULL,
+    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 18),
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_voice_invites_user
+ON voice_room_invites(room_id, invitee_uid, status);
+
+CREATE TABLE IF NOT EXISTS voice_room_blocks (
+    room_id INTEGER NOT NULL,
+    user_uid TEXT NOT NULL,
+    blocked_by_uid TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (room_id, user_uid),
+    FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
+);CREATE TABLE IF NOT EXISTS voice_room_visits (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             room_id INTEGER NOT NULL,
             user_uid TEXT NOT NULL,
@@ -155,3 +177,4 @@ CREATE TABLE IF NOT EXISTS voice_room_visits (
 if __name__ == "__main__":
     initialize_database()
     print("LovelySky database tables created:", DB_PATH)
+import sqlite3
