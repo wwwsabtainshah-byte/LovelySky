@@ -748,6 +748,7 @@ class _VideoPageState extends State<VideoPage> {
   List<Map<String, dynamic>> rooms = [];
   bool loading = true;
   bool creating = false;
+  bool openingRoom = false;
   String? loadError;
 
   Future<String?> _token() async {
@@ -916,11 +917,19 @@ class _VideoPageState extends State<VideoPage> {
   }
 
   Future<void> _openRoom(Map<String, dynamic> room) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => VideoRoomPage(room: room)),
-    );
-    if (mounted) _loadRooms();
+    if (openingRoom || creating) return;
+    setState(() => openingRoom = true);
+    try {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => VideoRoomPage(room: room)),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => openingRoom = false);
+        await _loadRooms();
+      }
+    }
   }
 
   @override
@@ -1318,70 +1327,113 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
   EventsListener<RoomEvent>? liveKitListener;
   VideoTrack? videoTrack;
   bool liveConnecting = false;
+  int _connectionGeneration = 0;
+  bool _joiningRoom = false;
+  bool _loadingMessages = false;
   bool cameraEnabled = false;
   bool microphoneEnabled = false;
 
   int get roomId => (widget.room['id'] as num).toInt();
 
   Future<void> _connectLiveKit() async {
-    if (liveConnecting || liveKitRoom != null) return;
+    if (liveConnecting || liveKitRoom != null || !mounted) return;
+
+    final generation = ++_connectionGeneration;
     liveConnecting = true;
+    Room? lkRoom;
+    EventsListener<RoomEvent>? listener;
+
     try {
       final access = await _request('POST', '/video/rooms/$roomId/token');
       final url = access['url']?.toString() ?? '';
       final token = access['token']?.toString() ?? '';
+
       if (url.isEmpty || token.isEmpty) {
         throw Exception('Live video access details are missing.');
       }
+      if (!mounted || generation != _connectionGeneration) return;
 
-      final lkRoom = Room();
-      final listener = lkRoom.createListener();
+      lkRoom = Room();
+      listener = lkRoom.createListener();
+
       listener.on<TrackSubscribedEvent>((event) {
-        if (event.track is VideoTrack && mounted) {
+        if (generation == _connectionGeneration &&
+            identical(liveKitRoom, lkRoom) &&
+            event.track is VideoTrack &&
+            mounted) {
           setState(() => videoTrack = event.track as VideoTrack);
         }
       });
+
       listener.on<TrackUnsubscribedEvent>((event) {
-        if (mounted && identical(videoTrack, event.track)) {
+        if (generation == _connectionGeneration &&
+            identical(liveKitRoom, lkRoom) &&
+            identical(videoTrack, event.track) &&
+            mounted) {
           setState(() => videoTrack = null);
         }
       });
 
       liveKitRoom = lkRoom;
       liveKitListener = listener;
+
       await lkRoom.connect(url, token);
+
+      if (!mounted ||
+          generation != _connectionGeneration ||
+          !identical(liveKitRoom, lkRoom)) {
+        await listener.cancelAll();
+        await lkRoom.disconnect();
+        return;
+      }
 
       if (isHost) {
         await lkRoom.localParticipant?.setCameraEnabled(true);
         await lkRoom.localParticipant?.setMicrophoneEnabled(true);
         cameraEnabled = true;
         microphoneEnabled = true;
-        for (final pub in lkRoom.localParticipant?.videoTrackPublications ?? []) {
-          if (pub.track != null) {
-            videoTrack = pub.track;
+
+        for (final pub
+            in lkRoom.localParticipant?.videoTrackPublications ?? []) {
+          if (pub.track is VideoTrack) {
+            videoTrack = pub.track as VideoTrack;
             break;
           }
         }
       } else {
         for (final participant in lkRoom.remoteParticipants.values) {
           for (final pub in participant.videoTrackPublications) {
-            if (pub.track != null) {
-              videoTrack = pub.track;
+            if (pub.track is VideoTrack) {
+              videoTrack = pub.track as VideoTrack;
               break;
             }
           }
           if (videoTrack != null) break;
         }
       }
-      if (mounted) setState(() {});
+
+      if (mounted &&
+          generation == _connectionGeneration &&
+          identical(liveKitRoom, lkRoom)) {
+        setState(() {});
+      }
     } catch (e) {
-      if (mounted) {
-        setState(() => error =
-            'Live video: ${e.toString().replaceFirst('Exception: ', '')}');
+      if (mounted && generation == _connectionGeneration) {
+        setState(() {
+          error = 'Live video: ${e.toString().replaceFirst('Exception: ', '')}';
+        });
+      }
+      if (lkRoom != null && !identical(liveKitRoom, lkRoom)) {
+        try {
+          await listener?.cancelAll();
+          await lkRoom.disconnect();
+        } catch (_) {}
       }
     } finally {
-      liveConnecting = false;
-      if (mounted) setState(() {});
+      if (generation == _connectionGeneration) {
+        liveConnecting = false;
+        if (mounted) setState(() {});
+      }
     }
   }
 
@@ -1421,13 +1473,26 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
   }
 
   Future<void> _disconnectLiveKit() async {
+    // Invalidate callbacks from this room before disconnecting it.
+    _connectionGeneration++;
+
     final listener = liveKitListener;
     final room = liveKitRoom;
+
     liveKitListener = null;
     liveKitRoom = null;
     videoTrack = null;
-    await listener?.cancelAll();
-    await room?.disconnect();
+    liveConnecting = false;
+    cameraEnabled = false;
+    microphoneEnabled = false;
+
+    try {
+      await listener?.cancelAll();
+    } catch (_) {}
+
+    try {
+      await room?.disconnect();
+    } catch (_) {}
   }
 
   Future<Map<String, dynamic>> _request(
@@ -1462,36 +1527,64 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
   }
 
   Future<void> _joinRoom() async {
+    if (_joiningRoom || joined || !mounted) return;
+    _joiningRoom = true;
+
     try {
       final result = await _request('POST', '/video/rooms/$roomId/join');
-      if (!mounted) return;
+
+      if (!mounted) {
+        await _request('POST', '/video/rooms/$roomId/leave')
+            .catchError((_) => <String, dynamic>{});
+        return;
+      }
+
       setState(() {
         joined = true;
         isHost = result['role'] == 'host';
       });
+
       await _loadMessages();
-    await _connectLiveKit();
-      refreshTimer = Timer.periodic(
-        const Duration(seconds: 4),
-        (_) => _loadMessages(),
-      );
+      if (!mounted || !joined) return;
+
+      await _connectLiveKit();
+
+      if (mounted && joined) {
+        refreshTimer?.cancel();
+        refreshTimer = Timer.periodic(
+          const Duration(seconds: 4),
+          (_) {
+            if (mounted && joined) _loadMessages();
+          },
+        );
+      }
     } catch (e) {
       if (mounted) {
-        setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+        setState(() {
+          error = e.toString().replaceFirst('Exception: ', '');
+        });
       }
+    } finally {
+      _joiningRoom = false;
     }
   }
 
   Future<void> _loadMessages() async {
-    if (!joined) return;
+    if (!joined || _loadingMessages || !mounted) return;
+    _loadingMessages = true;
+
     try {
       final result = await _request('GET', '/video/rooms/$roomId/messages');
       final items = (result['messages'] as List? ?? [])
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
-      if (mounted) setState(() => messages = items);
-    } catch (_) {}
+
+      if (mounted && joined) setState(() => messages = items);
+    } catch (_) {
+    } finally {
+      _loadingMessages = false;
+    }
   }
 
   Future<void> _sendMessage() async {
@@ -1535,7 +1628,7 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
   @override
   void dispose() {
     refreshTimer?.cancel();
-    _disconnectLiveKit();
+    unawaited(_disconnectLiveKit());
     messageController.dispose();
     if (joined && !isHost) {
       _request(
@@ -1549,191 +1642,431 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
   @override
   Widget build(BuildContext context) {
     final title = widget.room['title']?.toString() ?? 'Live Room';
+    final hostName = widget.room['host_name']?.toString() ?? 'Lovely Sky Creator';
+    final hostPhoto = widget.room['host_photo']?.toString() ?? '';
+    final viewerCount = widget.room['viewer_count']?.toString() ?? '0';
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F9FF),
-      appBar: AppBar(
-        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        backgroundColor: Colors.white,
-        foregroundColor: ink,
-        actions: [
-          if (isHost)
-            IconButton(
-              tooltip: 'End live room',
-              onPressed: _endRoom,
-              icon: const Icon(Icons.stop_circle_rounded, color: Colors.red),
-            ),
-        ],
-      ),
-      body: Column(
+      backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: true,
+      body: Stack(
+        fit: StackFit.expand,
         children: [
-          Container(
-            height: 220,
-            width: double.infinity,
-            margin: const EdgeInsets.all(14),
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF087FE8), Color(0xFF63C8FF)],
+          // Full-screen live video
+          if (videoTrack != null)
+            VideoTrackRenderer(
+              videoTrack!,
+              fit: VideoViewFit.cover,
+            )
+          else
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFF071B35),
+                    Color(0xFF087FE8),
+                    Color(0xFF020817),
+                  ],
+                ),
               ),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: videoTrack != null
-                ? VideoTrackRenderer(videoTrack!, fit: VideoViewFit.cover)
-                : Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        liveConnecting ? Icons.hourglass_top_rounded : Icons.videocam_off_rounded,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      liveConnecting
+                          ? Icons.hourglass_top_rounded
+                          : Icons.videocam_off_rounded,
+                      color: Colors.white,
+                      size: 65,
+                    ),
+                    const SizedBox(height: 15),
+                    Text(
+                      liveConnecting
+                          ? 'Connecting to LIVE...'
+                          : 'Waiting for live video',
+                      style: const TextStyle(
                         color: Colors.white,
-                        size: 52,
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
                       ),
+                    ),
+                    if (error != null) ...[
                       const SizedBox(height: 12),
-                      Text(
-                        liveConnecting ? 'Connecting live video...' : 'Waiting for live video',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 25),
+                        child: Text(
+                          error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        isHost ? 'Camera stream will appear here.' : 'The host video will appear here.',
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+          // Dark overlays for readable controls
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 155,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xCC000000), Colors.transparent],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 370,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Color(0xE6000000), Colors.transparent],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          SafeArea(
+            child: Column(
+              children: [
+                // Top creator information
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: blue,
+                        backgroundImage: hostPhoto.isNotEmpty
+                            ? NetworkImage(hostPhoto)
+                            : null,
+                        child: hostPhoto.isEmpty
+                            ? const Icon(Icons.person, color: Colors.white)
+                            : null,
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              hostName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 14,
+                              ),
+                            ),
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          '● LIVE',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black45,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.visibility,
+                                color: Colors.white, size: 15),
+                            const SizedBox(width: 4),
+                            Text(
+                              viewerCount,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          if (isHost) {
+                            _endRoom();
+                          } else {
+                            Navigator.pop(context);
+                          }
+                        },
+                        icon: const Icon(Icons.close_rounded,
+                            color: Colors.white, size: 27),
                       ),
                     ],
                   ),
-          ),
-          if (isHost && liveKitRoom != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton.filled(
-                    tooltip: cameraEnabled ? 'Turn camera off' : 'Turn camera on',
-                    onPressed: _toggleCamera,
-                    icon: Icon(cameraEnabled ? Icons.videocam : Icons.videocam_off),
-                  ),
-                  const SizedBox(width: 16),
-                  IconButton.filled(
-                    tooltip: microphoneEnabled ? 'Mute microphone' : 'Unmute microphone',
-                    onPressed: _toggleMicrophone,
-                    icon: Icon(microphoneEnabled ? Icons.mic : Icons.mic_off),
-                  ),
-                ],
-              ),
-            ),
-          if (error != null)
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(error!, style: const TextStyle(color: Colors.red)),
-            ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                const Icon(Icons.chat_rounded, color: Color(0xFF168FFF)),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'Room chat',
-                    style: TextStyle(color: ink, fontWeight: FontWeight.w900),
+                ),
+
+                const Spacer(),
+
+                // Right-side LIVE action rail
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _liveActionIcon(Icons.favorite_rounded, 'Like',
+                            const Color(0xFFFF4D79)),
+                        const SizedBox(height: 20),
+                        _liveActionIcon(Icons.card_giftcard_rounded, 'Gift',
+                            const Color(0xFFFFC857)),
+                        const SizedBox(height: 20),
+                        _liveActionIcon(Icons.share_rounded, 'Share',
+                            Colors.white),
+                        const SizedBox(height: 20),
+                        _liveActionIcon(Icons.people_alt_rounded, 'Viewers',
+                            const Color(0xFF67D4FF)),
+                      ],
+                    ),
                   ),
                 ),
-                Text(
-                  isHost ? 'HOST' : 'VIEWER',
-                  style: const TextStyle(
-                    color: Color(0xFF168FFF),
-                    fontWeight: FontWeight.w900,
-                    fontSize: 11,
+
+                const Spacer(),
+
+                // Live comments
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    width: MediaQuery.of(context).size.width * 0.77,
+                    constraints: const BoxConstraints(maxHeight: 205),
+                    margin: const EdgeInsets.only(left: 12, bottom: 8),
+                    child: ListView.builder(
+                      reverse: true,
+                      shrinkWrap: true,
+                      itemCount: messages.length > 6 ? 6 : messages.length,
+                      itemBuilder: (context, index) {
+                        final item = messages[messages.length - 1 - index];
+                        final sender =
+                            item['sender_code']?.toString() ?? 'Member';
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 7),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.43),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 11,
+                                vertical: 8,
+                              ),
+                              child: RichText(
+                                text: TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: 'ID $sender  ',
+                                      style: const TextStyle(
+                                        color: Color(0xFF75D5FF),
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: item['message']?.toString() ?? '',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+
+                // Bottom message and LIVE controls
+                Container(
+                  padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+                  color: Colors.black.withValues(alpha: 0.25),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: messageController,
+                              enabled: joined && !busy,
+                              maxLength: 500,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: InputDecoration(
+                                counterText: '',
+                                hintText: 'Say something...',
+                                hintStyle:
+                                    const TextStyle(color: Colors.white70),
+                                filled: true,
+                                fillColor: Colors.white.withValues(alpha: 0.17),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 17,
+                                  vertical: 11,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(28),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                              onSubmitted: (_) => _sendMessage(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          CircleAvatar(
+                            backgroundColor: blue,
+                            child: IconButton(
+                              onPressed:
+                                  joined && !busy ? _sendMessage : null,
+                              icon: const Icon(Icons.send_rounded,
+                                  color: Colors.white, size: 19),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          if (isHost) ...[
+                            _liveControl(
+                              cameraEnabled
+                                  ? Icons.videocam_rounded
+                                  : Icons.videocam_off_rounded,
+                              cameraEnabled ? 'Camera' : 'Camera off',
+                              _toggleCamera,
+                            ),
+                            _liveControl(
+                              microphoneEnabled
+                                  ? Icons.mic_rounded
+                                  : Icons.mic_off_rounded,
+                              microphoneEnabled ? 'Mic on' : 'Mic off',
+                              _toggleMicrophone,
+                            ),
+                          ] else
+                            const Text(
+                              'WATCHING LIVE',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                              ),
+                            ),
+                          _liveControl(
+                            Icons.chat_bubble_outline_rounded,
+                            'Chat',
+                            () => FocusScope.of(context)
+                                .requestFocus(FocusNode()),
+                          ),
+                          _liveControl(
+                            Icons.exit_to_app_rounded,
+                            'Leave',
+                            () {
+                              Navigator.pop(context);
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-          const Divider(height: 18),
-          Expanded(
-            child: !joined && error == null
-                ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      final item = messages[index];
-                      final sender =
-                          item['sender_code']?.toString() ?? 'Member';
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(11),
-                            child: RichText(
-                              text: TextSpan(
-                                style: const TextStyle(
-                                  color: ink,
-                                  fontSize: 13,
-                                ),
-                                children: [
-                                  TextSpan(
-                                    text: 'ID $sender  ',
-                                    style: const TextStyle(
-                                      color: Color(0xFF168FFF),
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                  TextSpan(
-                                    text: item['message']?.toString() ?? '',
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: messageController,
-                      enabled: joined && !busy,
-                      maxLength: 500,
-                      decoration: InputDecoration(
-                        counterText: '',
-                        hintText: joined
-                            ? 'Write a message...'
-                            : 'Joining room...',
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      onSubmitted: (_) => _sendMessage(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    onPressed: joined && !busy ? _sendMessage : null,
-                    icon: const Icon(Icons.send_rounded),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ],
+      ),
+    );
+  }
+
+  Widget _liveActionIcon(IconData icon, String label, Color color) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: color, size: 29),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _liveControl(IconData icon, String label, VoidCallback onPressed) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(15),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 23),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.white, fontSize: 10),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2666,6 +2999,11 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   bool moderationMuted = false;
   String roomRole = 'member';
   bool speakerOn = true;
+  bool roomLiked = false;
+  bool showSendingReport = false;
+  bool showExitOptions = false;
+  int sendingReportTab = 0;
+  bool showGiftTab = false;
   List<Map<String, dynamic>> seats = [];
   bool seatsLoading = true;
   bool seatRequestInProgress = false;
