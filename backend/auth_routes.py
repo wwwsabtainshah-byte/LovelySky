@@ -392,6 +392,132 @@ def leave_voice_room(
 
 
 
+
+class VoiceRoomAdminRequest(BaseModel):
+    user_uid: str
+
+
+def _voice_room_role(db, room_id: int, user_uid: str):
+    room = db.execute(
+        "SELECT owner_uid FROM voice_rooms WHERE id = ? AND is_active = 1",
+        (room_id,),
+    ).fetchone()
+    if not room:
+        raise HTTPException(404, "Voice room not found")
+    if room["owner_uid"] == user_uid:
+        return "owner"
+    admin = db.execute(
+        "SELECT 1 FROM voice_room_admins WHERE room_id = ? AND user_uid = ?",
+        (room_id, user_uid),
+    ).fetchone()
+    return "admin" if admin else "member"
+
+
+def _require_voice_room_manager(db, room_id: int, user_uid: str):
+    role = _voice_room_role(db, room_id, user_uid)
+    if role not in {"owner", "admin"}:
+        raise HTTPException(403, "Only the room owner or appointed admin can manage this room")
+    return role
+
+
+@router.post("/voice/rooms/{room_id}/admins")
+def appoint_voice_room_admin(
+    room_id: int,
+    payload: VoiceRoomAdminRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    target_uid = payload.user_uid.strip()
+    if not target_uid or target_uid == user["google_uid"]:
+        raise HTTPException(400, "Invalid room admin")
+    db = get_connection()
+    try:
+        role = _voice_room_role(db, room_id, user["google_uid"])
+        if role != "owner":
+            raise HTTPException(403, "Only the room owner can appoint admins")
+        target = db.execute(
+            "SELECT google_uid FROM users WHERE google_uid = ?",
+            (target_uid,),
+        ).fetchone()
+        if not target:
+            raise HTTPException(404, "User not found")
+        db.execute(
+            """INSERT OR IGNORE INTO voice_room_admins
+               (room_id, user_uid, appointed_by_uid) VALUES (?, ?, ?)""",
+            (room_id, target_uid, user["google_uid"]),
+        )
+        db.commit()
+        return {"success": True, "room_id": room_id, "admin_uid": target_uid}
+    finally:
+        db.close()
+
+
+@router.delete("/voice/rooms/{room_id}/admins/{target_uid}")
+def remove_voice_room_admin(
+    room_id: int,
+    target_uid: str,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        if _voice_room_role(db, room_id, user["google_uid"]) != "owner":
+            raise HTTPException(403, "Only the room owner can remove admins")
+        db.execute(
+            "DELETE FROM voice_room_admins WHERE room_id = ? AND user_uid = ?",
+            (room_id, target_uid),
+        )
+        db.commit()
+        return {"success": True, "room_id": room_id, "admin_uid": target_uid}
+    finally:
+        db.close()
+
+
+@router.post("/voice/rooms/{room_id}/seats/{seat_number}/lock")
+def lock_voice_room_seat(
+    room_id: int,
+    seat_number: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    if not 1 <= seat_number <= 18:
+        raise HTTPException(400, "Seat number must be between 1 and 18")
+    db = get_connection()
+    try:
+        _require_voice_room_manager(db, room_id, user["google_uid"])
+        db.execute(
+            """INSERT OR IGNORE INTO voice_room_locked_seats
+               (room_id, seat_number, locked_by_uid) VALUES (?, ?, ?)""",
+            (room_id, seat_number, user["google_uid"]),
+        )
+        db.commit()
+        return {"success": True, "room_id": room_id, "seat_number": seat_number, "locked": True}
+    finally:
+        db.close()
+
+
+@router.post("/voice/rooms/{room_id}/seats/{seat_number}/unlock")
+def unlock_voice_room_seat(
+    room_id: int,
+    seat_number: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    if not 1 <= seat_number <= 18:
+        raise HTTPException(400, "Seat number must be between 1 and 18")
+    db = get_connection()
+    try:
+        _require_voice_room_manager(db, room_id, user["google_uid"])
+        db.execute(
+            "DELETE FROM voice_room_locked_seats WHERE room_id = ? AND seat_number = ?",
+            (room_id, seat_number),
+        )
+        db.commit()
+        return {"success": True, "room_id": room_id, "seat_number": seat_number, "locked": False}
+    finally:
+        db.close()
+
+
 @router.get("/voice/rooms/{room_id}/seats")
 def get_voice_room_seats(
     room_id: int,
@@ -407,25 +533,33 @@ def get_voice_room_seats(
         if not room:
             raise HTTPException(404, "Voice room not found")
 
+        role = _voice_room_role(db, room_id, user["google_uid"])
         occupied = db.execute(
             """
-            SELECT p.seat_number, p.user_code,
-                   u.display_name, u.profile_photo
+            SELECT p.seat_number, p.user_uid, p.user_code, p.is_muted, u.display_name, u.profile_photo
             FROM voice_room_participants AS p
             LEFT JOIN users AS u ON u.google_uid = p.user_uid
             WHERE p.room_id = ? AND p.seat_number BETWEEN 1 AND 18
             """,
             (room_id,),
         ).fetchall()
-
         by_seat = {row["seat_number"]: row for row in occupied}
+        locked_rows = db.execute(
+            "SELECT seat_number FROM voice_room_locked_seats WHERE room_id = ?",
+            (room_id,),
+        ).fetchall()
+        locked_seats = {row["seat_number"] for row in locked_rows}
+
         return {
             "success": True,
             "room_id": room_id,
+            "room_role": role,
             "seats": [
                 {
                     "seat_number": n,
+                    "user_uid": by_seat[n]["user_uid"] if n in by_seat else None,
                     "user_code": by_seat[n]["user_code"] if n in by_seat else None,
+                    "is_muted": bool(by_seat[n]["is_muted"]) if n in by_seat else False,
                     "display_name": by_seat[n]["display_name"] if n in by_seat else None,
                     "profile_photo": by_seat[n]["profile_photo"] if n in by_seat else None,
                     "is_occupied": n in by_seat,
@@ -433,6 +567,7 @@ def get_voice_room_seats(
                         n in by_seat
                         and by_seat[n]["user_code"] == str(user["user_code"])
                     ),
+                    "is_locked": n in locked_seats,
                 }
                 for n in range(1, 19)
             ],
@@ -461,40 +596,35 @@ def sit_voice_room_seat(
         if not room:
             raise HTTPException(404, "Voice room not found")
 
+        _require_voice_room_manager(db, room_id, user["google_uid"])
+
+        locked = db.execute(
+            "SELECT 1 FROM voice_room_locked_seats WHERE room_id = ? AND seat_number = ?",
+            (room_id, seat_number),
+        ).fetchone()
+        if locked:
+            raise HTTPException(409, "This seat is locked")
+
         participant = db.execute(
-            """
-            SELECT seat_number FROM voice_room_participants
-            WHERE room_id = ? AND user_uid = ?
-            """,
+            "SELECT user_uid FROM voice_room_participants WHERE room_id = ? AND user_uid = ?",
             (room_id, user["google_uid"]),
         ).fetchone()
         if not participant:
-            raise HTTPException(409, "Join the room before taking a seat")
+            raise HTTPException(409, "Join the room before assigning a seat")
 
         occupied = db.execute(
-            """
-            SELECT user_uid FROM voice_room_participants
-            WHERE room_id = ? AND seat_number = ?
-            """,
+            "SELECT user_uid FROM voice_room_participants WHERE room_id = ? AND seat_number = ?",
             (room_id, seat_number),
         ).fetchone()
         if occupied and occupied["user_uid"] != user["google_uid"]:
             raise HTTPException(409, "This seat is already occupied")
 
         db.execute(
-            """
-            UPDATE voice_room_participants
-            SET seat_number = NULL
-            WHERE room_id = ? AND user_uid = ?
-            """,
+            "UPDATE voice_room_participants SET seat_number = NULL WHERE room_id = ? AND user_uid = ?",
             (room_id, user["google_uid"]),
         )
         db.execute(
-            """
-            UPDATE voice_room_participants
-            SET seat_number = ?
-            WHERE room_id = ? AND user_uid = ?
-            """,
+            "UPDATE voice_room_participants SET seat_number = ? WHERE room_id = ? AND user_uid = ?",
             (seat_number, room_id, user["google_uid"]),
         )
         db.commit()
@@ -502,6 +632,89 @@ def sit_voice_room_seat(
     except Exception:
         db.rollback()
         raise
+    finally:
+        db.close()
+
+
+class VoiceRoomSeatAssignmentRequest(BaseModel):
+    user_uid: str
+
+
+@router.post("/voice/rooms/{room_id}/seats/{seat_number}/assign")
+def assign_voice_room_member_seat(
+    room_id: int,
+    seat_number: int,
+    payload: VoiceRoomSeatAssignmentRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    target_uid = payload.user_uid.strip()
+    if not target_uid:
+        raise HTTPException(400, "Invalid member")
+    if not 1 <= seat_number <= 18:
+        raise HTTPException(400, "Seat number must be between 1 and 18")
+
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        _require_voice_room_manager(db, room_id, user["google_uid"])
+
+        locked = db.execute(
+            "SELECT 1 FROM voice_room_locked_seats WHERE room_id = ? AND seat_number = ?",
+            (room_id, seat_number),
+        ).fetchone()
+        if locked:
+            raise HTTPException(409, "This seat is locked")
+
+        target = db.execute(
+            "SELECT user_uid FROM voice_room_participants WHERE room_id = ? AND user_uid = ?",
+            (room_id, target_uid),
+        ).fetchone()
+        if not target:
+            raise HTTPException(404, "Member has not joined this room")
+
+        occupied = db.execute(
+            "SELECT user_uid FROM voice_room_participants WHERE room_id = ? AND seat_number = ?",
+            (room_id, seat_number),
+        ).fetchone()
+        if occupied and occupied["user_uid"] != target_uid:
+            raise HTTPException(409, "This seat is already occupied")
+
+        db.execute(
+            "UPDATE voice_room_participants SET seat_number = NULL WHERE room_id = ? AND user_uid = ?",
+            (room_id, target_uid),
+        )
+        db.execute(
+            "UPDATE voice_room_participants SET seat_number = ? WHERE room_id = ? AND user_uid = ?",
+            (seat_number, room_id, target_uid),
+        )
+        db.commit()
+        return {"success": True, "room_id": room_id, "seat_number": seat_number, "user_uid": target_uid}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.post("/voice/rooms/{room_id}/members/{target_uid}/seat/remove")
+def remove_voice_room_member_from_seat(
+    room_id: int,
+    target_uid: str,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        _require_voice_room_manager(db, room_id, user["google_uid"])
+        result = db.execute(
+            "UPDATE voice_room_participants SET seat_number = NULL WHERE room_id = ? AND user_uid = ?",
+            (room_id, target_uid),
+        )
+        db.commit()
+        if result.rowcount == 0:
+            raise HTTPException(404, "Member has not joined this room")
+        return {"success": True, "room_id": room_id, "user_uid": target_uid, "seat_removed": True}
     finally:
         db.close()
 
@@ -756,9 +969,10 @@ async def voice_room_signal(websocket: WebSocket, room_id: int):
                 (room_id,),
             ).fetchone()
             member = db.execute(
-                "SELECT 1 FROM voice_room_participants WHERE room_id = ? AND user_uid = ?",
+                """SELECT is_muted FROM voice_room_participants WHERE room_id = ? AND user_uid = ?""",
                 (room_id, user["google_uid"]),
-            ).fetchone()
+).fetchone()
+            saved_muted = bool(member["is_muted"]) if member else False
         finally:
             db.close()
 
@@ -778,6 +992,11 @@ async def voice_room_signal(websocket: WebSocket, room_id: int):
             "type": "existing_peers",
             "payload": {"peers": existing},
         })
+        if saved_muted:
+            await websocket.send_json({
+                "type": "moderation_mic",
+                "payload": False,
+            })
 
         for peer_uid, peer in list(connections.items()):
             if peer_uid == uid:
@@ -799,9 +1018,95 @@ async def voice_room_signal(websocket: WebSocket, room_id: int):
 
             kind = message.get("type")
             target_uid = message.get("target_uid")
+            if kind == "moderator_mute":
+                mic_on = message.get("payload")
+                if (
+                    not isinstance(target_uid, str)
+                    or not target_uid
+                    or target_uid == uid
+                    or not isinstance(mic_on, bool)
+                ):
+                    continue
+
+                db = get_connection()
+                try:
+                    role = _voice_room_role(db, room_id, uid)
+                    if role not in {"owner", "admin"}:
+                        await websocket.send_json({
+                            "type": "moderation_error",
+                            "message": "Only the room owner or appointed admin can moderate microphones",
+                        })
+                        continue
+
+                    target = db.execute(
+                        """SELECT 1 FROM voice_room_participants
+                           WHERE room_id = ? AND user_uid = ?""",
+                        (room_id, target_uid),
+                    ).fetchone()
+                finally:
+                    db.close()
+
+                if not target:
+                    await websocket.send_json({
+                        "type": "moderation_error",
+                        "message": "Target member has not joined this room",
+                    })
+                    continue
+
+                db = get_connection()
+                try:
+                    db.execute(
+                        """UPDATE voice_room_participants
+                           SET is_muted = ?
+                           WHERE room_id = ? AND user_uid = ?""",
+                        (0 if mic_on else 1, room_id, target_uid),
+                    )
+                    db.commit()
+                finally:
+                    db.close()
+
+                target_socket = connections.get(target_uid)
+                if target_socket is None:
+                    await websocket.send_json({
+                        "type": "moderation_error",
+                        "message": "Target member is not connected to voice",
+                    })
+                    continue
+
+                await target_socket.send_json({
+                    "type": "moderation_mic",
+                    "sender_uid": uid,
+                    "sender_code": str(user["user_code"]),
+                    "payload": mic_on,
+                })
+                continue
+
             if kind == "mic_status":
                 mic_on = message.get("payload")
                 if not isinstance(mic_on, bool):
+                    continue
+                db = get_connection()
+                try:
+                    participant = db.execute(
+                        """SELECT is_muted FROM voice_room_participants
+                           WHERE room_id = ? AND user_uid = ?""",
+                        (room_id, uid),
+                    ).fetchone()
+                finally:
+                    db.close()
+
+                if not participant:
+                    await websocket.send_json({
+                        "type": "moderation_error",
+                        "message": "You are not a participant in this voice room",
+                    })
+                    continue
+
+                if participant["is_muted"] and mic_on:
+                    await websocket.send_json({
+                        "type": "moderation_mic",
+                        "payload": False,
+                    })
                     continue
                 broadcast = {
                     "type": "mic_status",

@@ -111,7 +111,25 @@ FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
             FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
         );
 
-        CREATE TABLE IF NOT EXISTS voice_room_visits (
+        CREATE TABLE IF NOT EXISTS voice_room_admins (
+    room_id INTEGER NOT NULL,
+    user_uid TEXT NOT NULL,
+    appointed_by_uid TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (room_id, user_uid),
+    FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS voice_room_locked_seats (
+    room_id INTEGER NOT NULL,
+    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 18),
+    locked_by_uid TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (room_id, seat_number),
+    FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS voice_room_visits (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             room_id INTEGER NOT NULL,
             user_uid TEXT NOT NULL,

@@ -1398,6 +1398,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   final List<Map<String, dynamic>> messages = [];
 
   bool micOn = true;
+  bool moderationMuted = false;
+  String roomRole = 'member';
   bool speakerOn = true;
   List<Map<String, dynamic>> seats = [];
   bool seatsLoading = true;
@@ -1586,7 +1588,36 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         return;
       }
 
-      if (type == 'mic_status') {
+      if (type == 'moderation_mic') {
+      final requestedMicOn = data['payload'];
+      if (requestedMicOn is! bool) return;
+
+      moderationMuted = !requestedMicOn;
+      micOn = requestedMicOn;
+
+      for (final track
+          in localAudioStream?.getAudioTracks() ?? <MediaStreamTrack>[]) {
+        track.enabled = requestedMicOn;
+      }
+
+      if (mounted) setState(() {});
+      final socket = signalSocket;
+      if (socket != null && socket.readyState == WebSocket.open) {
+        socket.add(jsonEncode({
+          'type': 'mic_status',
+          'payload': requestedMicOn,
+        }));
+      }
+
+      showMessage(
+        requestedMicOn
+            ? 'Room owner/admin turned your mic on'
+            : 'Your mic was muted by room owner/admin',
+      );
+      return;
+    }
+
+    if (type == 'mic_status') {
         final senderCode = data['sender_code']?.toString();
         final payload = data['payload'];
         if (senderCode == null || senderCode.isEmpty || payload is! bool) {
@@ -1653,6 +1684,11 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   }
 
   void _toggleMic() {
+    if (moderationMuted) {
+      showMessage('Your mic is muted by room owner/admin');
+      return;
+    }
+
     setState(() => micOn = !micOn);
 
     for (final track
@@ -1665,6 +1701,33 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       socket.add(jsonEncode({'type': 'mic_status', 'payload': micOn}));
     }
     showMessage(micOn ? 'Mic On' : 'Mic Off');
+  }
+
+  Future<void> _moderateMemberMic(
+    String targetUid,
+    bool turnMicOn,
+  ) async {
+    if (roomRole != 'owner' && roomRole != 'admin') {
+      showMessage('Sirf room owner/admin mic control kar sakte hain.');
+      return;
+    }
+
+    if (targetUid.isEmpty) {
+      showMessage('Member ki ID nahi mili.');
+      return;
+    }
+
+    final socket = signalSocket;
+    if (socket == null || socket.readyState != WebSocket.open) {
+      showMessage('Voice connection abhi available nahi hai.');
+      return;
+    }
+
+    socket.add(jsonEncode({
+      'type': 'moderator_mute',
+      'target_uid': targetUid,
+      'payload': turnMicOn,
+    }));
   }
 
   void _toggleSpeaker() {
@@ -1732,6 +1795,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         );
         setState(() {
           seats = loaded;
+            roomRole = (data['room_role'] ?? 'member').toString();
           seatsLoading = false;
         });
       } else {
@@ -1742,6 +1806,66 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     } finally {
       seatRequestInProgress = false;
     }
+  }
+
+  Future<void> _onSeatTap(int number) async {
+    final seat = seats.firstWhere(
+      (item) => item['seat_number'] == number,
+      orElse: () => <String, dynamic>{},
+    );
+
+    final canManage = roomRole == 'owner' || roomRole == 'admin';
+
+    if (canManage &&
+        seat['is_occupied'] == true &&
+        seat['is_mine'] != true) {
+      final targetUid = (seat['user_uid'] ?? '').toString();
+
+      if (targetUid.isEmpty) {
+        showMessage('Member ki ID nahi mili.');
+        return;
+      }
+
+      final isMuted = seat['is_muted'] == true;
+      final memberCode = (seat['user_code'] ?? '').toString();
+
+      if (!mounted) return;
+
+      showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: background,
+        builder: (sheetContext) => SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.person, color: pink),
+                title: Text(
+                  memberCode.isEmpty ? 'Room member' : 'Member $memberCode',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+              ListTile(
+                leading: Icon(
+                  isMuted ? Icons.mic : Icons.mic_off,
+                  color: pink,
+                ),
+                title: Text(
+                  isMuted ? 'Unmute microphone' : 'Mute microphone',
+                  style: const TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _moderateMemberMic(targetUid, isMuted);
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+
+    await _tapSeat(number);
   }
 
   Future<void> _tapSeat(int number) async {
@@ -1867,7 +1991,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     }
 
     return InkWell(
-      onTap: () => _tapSeat(number),
+      onTap: () => _onSeatTap(number),
       borderRadius: BorderRadius.circular(size),
       child: SizedBox(
         width: size,
