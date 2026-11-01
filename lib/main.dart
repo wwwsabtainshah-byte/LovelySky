@@ -2245,6 +2245,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     }
   }
 
+
   Widget _buildSeat(int number, {bool large = false}) {
     final seat = seats.firstWhere(
       (item) => item['seat_number'] == number,
@@ -2253,9 +2254,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     final occupied = seat['is_occupied'] == true;
     final mine = seat['is_mine'] == true;
     final locked = seat['is_locked'] == true;
+    final topSofa = number <= 3;
     final size = large ? 58.0 : 44.0;
+    final avatarSize = large ? 40.0 : 30.0;
     final photo = (seat['profile_photo'] ?? '').toString();
-    final avatarSize = large ? 38.0 : 29.0;
 
     Widget avatar;
     if (photo.startsWith('http://') || photo.startsWith('https://')) {
@@ -2264,11 +2266,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         width: avatarSize,
         height: avatarSize,
         fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => Icon(
-          occupied ? Icons.person : Icons.event_seat,
-          color: Colors.white,
-          size: large ? 23 : 17,
-        ),
+        errorBuilder: (_, _, _) => const Icon(Icons.person, color: Colors.white),
       );
     } else if (photo.startsWith('data:image') && photo.contains(',')) {
       try {
@@ -2277,131 +2275,126 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
           width: avatarSize,
           height: avatarSize,
           fit: BoxFit.cover,
-          errorBuilder: (_, _, _) =>
-              const Icon(Icons.person, color: Colors.white),
+          errorBuilder: (_, _, _) => const Icon(Icons.person, color: Colors.white),
         );
       } catch (_) {
-        avatar = Icon(
-          occupied ? Icons.person : Icons.event_seat,
-          color: Colors.white,
-          size: large ? 23 : 17,
-        );
+        avatar = const Icon(Icons.person, color: Colors.white);
       }
     } else {
-      avatar = Icon(
-        occupied ? Icons.person : Icons.event_seat,
-        color: Colors.white,
-        size: large ? 23 : 17,
-      );
+      avatar = const Icon(Icons.person, color: Colors.white);
     }
+
+    final seatIcon = topSofa ? Icons.weekend_rounded : Icons.chair_alt_rounded;
+    final seatColors = topSofa
+        ? const [Color(0xFFFF5555), Color(0xFFB5122B), Color(0xFF650D24)]
+        : const [Color(0xFF55C878), Color(0xFF16834A), Color(0xFF07512F)];
+    const gold = Color(0xFFFFD778);
 
     return InkWell(
       onTap: () => _onSeatTap(number),
-      borderRadius: BorderRadius.circular(size),
+      borderRadius: BorderRadius.circular(topSofa ? 15 : 12),
       child: SizedBox(
         width: size,
         height: size + (occupied ? 12 : 0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: size,
-                  height: size,
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: occupied
-                          ? const [
-                              Color(0xFFFF4FA3),
-                              Color(0xFF7728E8),
-                              Color(0xFF38D9FF),
-                            ]
-                          : [Colors.white24, Colors.white10],
-                    ),
-                    boxShadow: occupied
-                        ? [
-                            BoxShadow(
-                              color: pink.withValues(alpha: 0.45),
-                              blurRadius: large ? 15 : 9,
-                              spreadRadius: 1,
-                            ),
-                            BoxShadow(
-                              color: purple.withValues(alpha: 0.35),
-                              blurRadius: large ? 19 : 12,
-                            ),
-                          ]
-                        : [],
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: mine
-                          ? const Color(0xFF382052)
-                          : const Color(0xFF241638),
-                      border: Border.all(
-                        color: mine ? pink : Colors.white24,
-                        width: mine ? 1.5 : 1,
-                      ),
-                    ),
-                    child: ClipOval(child: Center(child: avatar)),
-                  ),
+            Container(
+              width: size,
+              height: size,
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [gold, ...seatColors],
                 ),
-                if (locked)
-                  Positioned(
-                    right: -2,
-                    top: -2,
-                    child: Container(
-                      width: large ? 23 : 20,
-                      height: large ? 23 : 20,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF172B45),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 1.5),
-                      ),
-                      child: Icon(
-                        Icons.lock_rounded,
-                        size: large ? 14 : 12,
-                        color: Colors.amberAccent,
-                      ),
-                    ),
+                borderRadius: BorderRadius.circular(topSofa ? 15 : 12),
+                border: Border.all(color: gold, width: large ? 1.8 : 1.2),
+                boxShadow: [
+                  BoxShadow(
+                    color: (topSofa ? const Color(0xFFFF3030) : const Color(0xFF20C878))
+                        .withValues(alpha: 0.32),
+                    blurRadius: large ? 12 : 7,
+                    spreadRadius: 1,
                   ),
-                if (occupied)
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      width: large ? 17 : 14,
-                      height: large ? 17 : 14,
-                      decoration: BoxDecoration(
-                        color: mine
-                            ? (micOn
-                                  ? const Color(0xFF20C997)
-                                  : const Color(0xFFE8415B))
-                            : const Color(0xFF49345E),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFF160D2B),
-                          width: 1.5,
+                ],
+              ),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: seatColors,
+                  ),
+                  borderRadius: BorderRadius.circular(topSofa ? 12 : 9),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(
+                      seatIcon,
+                      size: size * 0.98,
+                      color: gold.withValues(alpha: occupied ? 0.48 : 0.95),
+                    ),
+                    if (occupied)
+                      Container(
+                        width: avatarSize,
+                        height: avatarSize,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF173D2A),
+                          border: Border.all(color: gold, width: 1.5),
+                        ),
+                        child: ClipOval(child: avatar),
+                      ),
+                    if (locked && !occupied)
+                      Container(
+                        width: large ? 27 : 23,
+                        height: large ? 27 : 23,
+                        decoration: BoxDecoration(
+                          color: const Color(0xDD172B25),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: gold, width: 1.2),
+                        ),
+                        child: Icon(
+                          Icons.lock_rounded,
+                          size: large ? 16 : 13,
+                          color: gold,
                         ),
                       ),
-                      child: Icon(
-                        mine
-                            ? (micOn ? Icons.mic : Icons.mic_off)
-                            : ((remoteMicStatus[seat['user_code']?.toString() ??
-                                          ''] ??
-                                      true)
-                                  ? Icons.mic
-                                  : Icons.mic_off),
-                        size: large ? 10 : 8,
-                        color: Colors.white,
+                    if (occupied)
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: large ? 17 : 14,
+                          height: large ? 17 : 14,
+                          decoration: BoxDecoration(
+                            color: mine
+                                ? (micOn
+                                    ? const Color(0xFF20C997)
+                                    : const Color(0xFFE8415B))
+                                : const Color(0xFF315B48),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: gold, width: 1.2),
+                          ),
+                          child: Icon(
+                            mine
+                                ? (micOn ? Icons.mic : Icons.mic_off)
+                                : ((remoteMicStatus[
+                                          seat['user_code']?.toString() ?? ''
+                                        ] ?? true)
+                                    ? Icons.mic
+                                    : Icons.mic_off),
+                            size: large ? 10 : 8,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-              ],
+                  ],
+                ),
+              ),
             ),
             if (occupied)
               SizedBox(
