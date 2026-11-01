@@ -1124,6 +1124,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String userCode = '';
   String profilePhoto = '';
   bool profileLoading = true;
+  bool databaseChecking = false;
 
   @override
   void initState() {
@@ -1173,6 +1174,54 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     if (mounted) setState(() => profileLoading = false);
+  }
+
+  Future<void> _checkCloudDatabase() async {
+    if (databaseChecking) return;
+    setState(() => databaseChecking = true);
+    String message;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('lovely_token');
+      if (token == null || token.isEmpty) {
+        message = 'Login required. Please sign in again.';
+      } else {
+        final response = await http.get(
+          Uri.parse('$lovelyApi/owner/database-diagnostic'),
+          headers: {'Authorization': 'Bearer $token'},
+        ).timeout(const Duration(seconds: 20));
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          message = data is Map
+              ? 'Database file exists: ${data['database_file_exists']}\n'
+                'Database readable: ${data['database_readable']}\n'
+                'Database size: ${data['database_size_bytes']} bytes\n'
+                'Users: ${data['users_count']}\n'
+                'Voice rooms: ${data['voice_rooms_count']}\n\n'
+                '${data['note'] ?? ''}'
+              : 'Unexpected diagnostic response.';
+        } else {
+          message = 'Cloud check failed (${response.statusCode}): ${response.body}';
+        }
+      }
+    } catch (e) {
+      message = 'Cloud database check error: $e';
+    }
+    if (!mounted) return;
+    setState(() => databaseChecking = false);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Lovely Sky Cloud Database'),
+        content: SingleChildScrollView(child: Text(message)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -1303,6 +1352,25 @@ class _ProfilePageState extends State<ProfilePage> {
             title: 'Help & Support',
             subtitle: 'We are here to help',
           ),
+          if (userCode == '1') ...[
+            const SizedBox(height: 10),
+            Card(
+              color: Colors.white,
+              child: ListTile(
+                leading: const Icon(Icons.storage_rounded, color: blue),
+                title: const Text('Cloud Database Check'),
+                subtitle: const Text('Owner-only server diagnostic'),
+                trailing: databaseChecking
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.chevron_right_rounded),
+                onTap: databaseChecking ? null : _checkCloudDatabase,
+              ),
+            ),
+          ],
         ],
       ),
     );
