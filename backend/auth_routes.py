@@ -1141,6 +1141,14 @@ def owner_database_diagnostic(
                 "SELECT COUNT(*) FROM voice_rooms"
             ).fetchone()[0]
 
+        if "voice_rooms" in tables:
+            result["room_details"] = [
+                dict(row) for row in db.execute(
+                    "SELECT id, owner_code, name, is_active "
+                    "FROM voice_rooms ORDER BY id DESC LIMIT 20"
+                ).fetchall()
+            ]
+
         return result
     except sqlite3.Error:
         raise HTTPException(503, "Database diagnostic could not read the SQLite file")
