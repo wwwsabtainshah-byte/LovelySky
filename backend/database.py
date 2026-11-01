@@ -187,7 +187,52 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
 
         CREATE INDEX IF NOT EXISTS idx_voice_rooms_active
             ON voice_rooms(is_active);
-    """)
+
+        CREATE TABLE IF NOT EXISTS video_rooms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            host_uid TEXT NOT NULL,
+            host_code TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            cover_image TEXT NOT NULL DEFAULT '',
+            is_live INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ended_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_video_rooms_live
+            ON video_rooms(is_live, created_at);
+
+        CREATE TABLE IF NOT EXISTS video_room_viewers (
+            room_id INTEGER NOT NULL,
+            viewer_uid TEXT NOT NULL,
+            joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (room_id, viewer_uid),
+            FOREIGN KEY (room_id) REFERENCES video_rooms(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS video_room_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            sender_uid TEXT NOT NULL,
+            sender_code TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (room_id) REFERENCES video_rooms(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_video_messages_room
+            ON video_room_messages(room_id, id);
+        CREATE TABLE IF NOT EXISTS video_room_visits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            user_uid TEXT NOT NULL,
+            visited_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (room_id) REFERENCES video_rooms(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_video_visits_user
+            ON video_room_visits(user_uid, visited_at);
+""")
 
 if __name__ == "__main__":
     initialize_database()

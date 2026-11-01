@@ -94,6 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _hidePassword = true;
   bool _busy = false;
+  bool _showLovelyLogin = false;
   String? _error;
 
   @override
@@ -258,6 +259,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const navy = Color(0xFF183B59);
+    const blue = Color(0xFF168FFF);
+    const pale = Color(0xFFEAF8FF);
+
     return Scaffold(
       body: Container(
         width: double.infinity,
@@ -265,217 +270,294 @@ class _LoginScreenState extends State<LoginScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFFEAF8FF), Color(0xFFD6F1FF), Colors.white],
+            colors: [pale, Color(0xFFD6F1FF), Colors.white],
           ),
         ),
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 24),
+              padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(
-                        width: 94,
-                        height: 94,
-                        alignment: Alignment.center,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 100,
+                        height: 100,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF168FFF),
-                          borderRadius: BorderRadius.circular(30),
+                          gradient: const LinearGradient(
+                            colors: [blue, Color(0xFF67D4FF)],
+                          ),
+                          borderRadius: BorderRadius.circular(32),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF168FFF).withValues(alpha: 0.25),
-                              blurRadius: 24,
-                              offset: const Offset(0, 10),
+                              color: blue.withValues(alpha: 0.25),
+                              blurRadius: 28,
+                              offset: const Offset(0, 12),
                             ),
                           ],
                         ),
                         child: const Icon(
                           Icons.favorite_rounded,
-                          size: 52,
+                          size: 56,
                           color: Colors.white,
                         ),
                       ),
-                      const SizedBox(height: 24),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Lovely Sky',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w900,
+                        color: navy,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _showLovelyLogin
+                          ? 'Apni Lovely ID se login karein'
+                          : 'Your sky, your people, your world',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.blueGrey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 34),
+
+                    if (!_showLovelyLogin) ...[
                       const Text(
-                        'Lovely Sky',
+                        'Welcome to Lovely Sky',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF183B59),
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: navy,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Welcome back! Apne account mein login karein.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.blueGrey.shade600,
-                        ),
-                      ),
-                      const SizedBox(height: 30),
-                      const Text(
-                        'Lovely ID',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF183B59),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _idController,
-                        textInputAction: TextInputAction.next,
-                        autocorrect: false,
-                        decoration: InputDecoration(
-                          hintText: 'Apni Lovely ID enter karein',
-                          prefixIcon: const Icon(Icons.person_outline_rounded),
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                        validator: (value) =>
-                            value == null || value.trim().isEmpty
-                                ? 'Lovely ID enter karein'
-                                : null,
-                      ),
-                      const SizedBox(height: 18),
-                      const Text(
-                        'Password',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF183B59),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _passwordController,
-                        obscureText: _hidePassword,
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) => _login(),
-                        decoration: InputDecoration(
-                          hintText: 'Apna password enter karein',
-                          prefixIcon: const Icon(Icons.lock_outline_rounded),
-                          suffixIcon: IconButton(
-                            onPressed: () => setState(
-                              () => _hidePassword = !_hidePassword,
-                            ),
-                            icon: Icon(
-                              _hidePassword
-                                  ? Icons.visibility_off_rounded
-                                  : Icons.visibility_rounded,
-                            ),
-                          ),
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Password enter karein';
-                          }
-                          if (value.length < 10) {
-                            return 'Password kam az kam 10 characters ka ho';
-                          }
-                          return null;
-                        },
-                      ),
-                      if (_error != null) ...[
-                        const SizedBox(height: 14),
-                        Text(
-                          _error!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
                       const SizedBox(height: 22),
                       SizedBox(
-                        height: 54,
-                        child: FilledButton(
-                          onPressed: _busy ? null : _login,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF168FFF),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                          child: _busy
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text(
-                                  'Login with Lovely ID',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Row(
-                        children: [
-                          Expanded(child: Divider(color: Colors.blueGrey.shade100)),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Text(
-                              'OR',
-                              style: TextStyle(color: Colors.blueGrey.shade500),
-                            ),
-                          ),
-                          Expanded(child: Divider(color: Colors.blueGrey.shade100)),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      SizedBox(
-                        height: 52,
-                        child: OutlinedButton.icon(
+                        height: 60,
+                        child: FilledButton.icon(
                           onPressed: _busy ? null : _googleLogin,
-                          icon: const Icon(Icons.g_mobiledata_rounded, size: 30),
+                          icon: const Icon(
+                            Icons.g_mobiledata_rounded,
+                            size: 34,
+                          ),
                           label: const Text(
                             'Continue with Google',
-                            style: TextStyle(fontWeight: FontWeight.w700),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF183B59),
+                          style: FilledButton.styleFrom(
                             backgroundColor: Colors.white,
-                            side: const BorderSide(color: Color(0xFFD8EAF5)),
+                            foregroundColor: navy,
+                            elevation: 2,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(20),
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Secure login • Lovely Sky',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.blueGrey.shade400,
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        height: 60,
+                        child: FilledButton.icon(
+                          onPressed: _busy
+                              ? null
+                              : () => setState(() {
+                                    _showLovelyLogin = true;
+                                    _error = null;
+                                  }),
+                          icon: const Icon(Icons.favorite_rounded),
+                          label: const Text(
+                            'Lovely Login',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: blue,
+                            foregroundColor: Colors.white,
+                            elevation: 5,
+                            shadowColor: blue.withValues(alpha: 0.3),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                IconButton(
+                                  onPressed: _busy
+                                      ? null
+                                      : () => setState(() {
+                                            _showLovelyLogin = false;
+                                            _error = null;
+                                          }),
+                                  icon: const Icon(
+                                    Icons.arrow_back_rounded,
+                                    color: navy,
+                                  ),
+                                ),
+                                const Expanded(
+                                  child: Text(
+                                    'Lovely Login',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 21,
+                                      fontWeight: FontWeight.w900,
+                                      color: navy,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 48),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            const Text(
+                              'Lovely ID',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: navy,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              controller: _idController,
+                              textInputAction: TextInputAction.next,
+                              autocorrect: false,
+                              decoration: InputDecoration(
+                                hintText: 'Apni Lovely ID enter karein',
+                                prefixIcon: const Icon(
+                                  Icons.person_outline_rounded,
+                                ),
+                                filled: true,
+                                fillColor: Colors.white,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                              validator: (value) =>
+                                  value == null || value.trim().isEmpty
+                                      ? 'Lovely ID enter karein'
+                                      : null,
+                            ),
+                            const SizedBox(height: 18),
+                            const Text(
+                              'Password',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: navy,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              controller: _passwordController,
+                              obscureText: _hidePassword,
+                              textInputAction: TextInputAction.done,
+                              onFieldSubmitted: (_) => _login(),
+                              decoration: InputDecoration(
+                                hintText: 'Apna password enter karein',
+                                prefixIcon: const Icon(
+                                  Icons.lock_outline_rounded,
+                                ),
+                                suffixIcon: IconButton(
+                                  onPressed: () => setState(
+                                    () => _hidePassword = !_hidePassword,
+                                  ),
+                                  icon: Icon(
+                                    _hidePassword
+                                        ? Icons.visibility_off_rounded
+                                        : Icons.visibility_rounded,
+                                  ),
+                                ),
+                                filled: true,
+                                fillColor: Colors.white,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                              validator: (value) =>
+                                  value == null || value.isEmpty
+                                      ? 'Password enter karein'
+                                      : null,
+                            ),
+                            if (_error != null) ...[
+                              const SizedBox(height: 14),
+                              Text(
+                                _error!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 24),
+                            SizedBox(
+                              height: 56,
+                              child: FilledButton(
+                                onPressed: _busy ? null : _login,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: blue,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                ),
+                                child: _busy
+                                    ? const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Text(
+                                        'Confirm Login',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
-                  ),
+                    if (_busy && !_showLovelyLogin) ...[
+                      const SizedBox(height: 20),
+                      const Center(child: CircularProgressIndicator()),
+                    ],
+                    const SizedBox(height: 30),
+                    Text(
+                      'Secure Login  •  Lovely Sky',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blueGrey.shade400,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -484,4 +566,5 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+
 }

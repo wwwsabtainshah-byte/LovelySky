@@ -1243,6 +1243,271 @@ def send_voice_room_message(
         db.close()
 
 
+
+# Lovely Sky video streaming room APIs.
+class CreateVideoRoomRequest(BaseModel):
+    title: str
+    description: str = ""
+
+
+class VideoRoomMessageRequest(BaseModel):
+    message: str
+
+
+def _video_room_user(authorization: str | None):
+    return _voice_authenticated_user(authorization)
+
+
+def _require_live_video_room(db, room_id: int):
+    room = db.execute(
+        """SELECT id, host_uid, host_code, title, description,
+                  cover_image, is_live, created_at
+           FROM video_rooms WHERE id = ? AND is_live = 1""",
+        (room_id,),
+    ).fetchone()
+    if not room:
+        raise HTTPException(404, "Live video room not found")
+    return room
+
+
+@router.post("/video/rooms")
+def start_video_room(
+    payload: CreateVideoRoomRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _video_room_user(authorization)
+    title = payload.title.strip()
+    description = payload.description.strip()
+
+    if not title or len(title) > 60:
+        raise HTTPException(400, "Room title must be 1 to 60 characters")
+    if len(description) > 200:
+        raise HTTPException(400, "Description cannot exceed 200 characters")
+
+    db = get_connection()
+    try:
+        existing = db.execute(
+            "SELECT id FROM video_rooms WHERE host_uid = ? AND is_live = 1",
+            (user["google_uid"],),
+        ).fetchone()
+        if existing:
+            raise HTTPException(409, "You already have an active live room")
+
+        cursor = db.execute(
+            """INSERT INTO video_rooms
+               (host_uid, host_code, title, description)
+               VALUES (?, ?, ?, ?)""",
+            (user["google_uid"], str(user["user_code"]), title, description),
+        )
+        db.commit()
+        return {
+            "success": True,
+            "room_id": cursor.lastrowid,
+            "message": "Live room created. Media streaming must connect separately.",
+        }
+    finally:
+        db.close()
+
+
+@router.get("/video/rooms")
+def list_video_rooms(
+    tab: str = "popular",
+    authorization: str | None = Header(default=None),
+):
+    user = _video_room_user(authorization)
+    tab = tab.strip().lower()
+    if tab not in {"popular", "following", "visit"}:
+        raise HTTPException(400, "tab must be popular, following, or visit")
+
+    db = get_connection()
+    try:
+        where = "r.is_live = 1"
+        params = []
+        if tab == "following":
+            where += """ AND EXISTS (
+                SELECT 1 FROM user_follows f
+                WHERE f.follower_uid = ? AND f.followed_uid = r.host_uid
+            )"""
+            params.append(user["google_uid"])
+        elif tab == "visit":
+            where += """ AND EXISTS (
+                SELECT 1 FROM video_room_visits h
+                WHERE h.user_uid = ? AND h.room_id = r.id
+            )"""
+            params.append(user["google_uid"])
+
+        order = "viewer_count DESC, r.created_at DESC" if tab == "popular" else "r.created_at DESC"
+        rows = db.execute(
+            f"""SELECT r.id, r.host_uid, r.host_code, r.title,
+                       r.description, r.cover_image, r.created_at,
+                       u.display_name AS host_name,
+                       u.profile_photo AS host_photo,
+                       (SELECT COUNT(*) FROM video_room_viewers v
+                        WHERE v.room_id = r.id) AS viewer_count
+                FROM video_rooms r
+                LEFT JOIN users u ON u.google_uid = r.host_uid
+                WHERE {where}
+                ORDER BY {order}""",
+            params,
+        ).fetchall()
+        return {"success": True, "tab": tab, "rooms": [dict(row) for row in rows]}
+    finally:
+        db.close()
+
+
+@router.post("/video/rooms/{room_id}/join")
+def join_video_room(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _video_room_user(authorization)
+    uid = user["google_uid"]
+    db = get_connection()
+    try:
+        room = _require_live_video_room(db, room_id)
+        if room["host_uid"] == uid:
+            return {"success": True, "role": "host", "room_id": room_id}
+
+        db.execute(
+            """INSERT OR IGNORE INTO video_room_viewers (room_id, viewer_uid)
+               VALUES (?, ?)""",
+            (room_id, uid),
+        )
+        db.execute(
+            """INSERT INTO video_room_visits (room_id, user_uid)
+               VALUES (?, ?)""",
+            (room_id, uid),
+        )
+        db.commit()
+        count = db.execute(
+            "SELECT COUNT(*) AS total FROM video_room_viewers WHERE room_id = ?",
+            (room_id,),
+        ).fetchone()["total"]
+        return {"success": True, "role": "viewer", "viewer_count": count}
+    finally:
+        db.close()
+
+
+@router.post("/video/rooms/{room_id}/leave")
+def leave_video_room(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _video_room_user(authorization)
+    db = get_connection()
+    try:
+        db.execute(
+            "DELETE FROM video_room_viewers WHERE room_id = ? AND viewer_uid = ?",
+            (room_id, user["google_uid"]),
+        )
+        db.commit()
+        return {"success": True}
+    finally:
+        db.close()
+
+
+@router.post("/video/rooms/{room_id}/end")
+def end_video_room(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _video_room_user(authorization)
+    db = get_connection()
+    try:
+        room = db.execute(
+            "SELECT host_uid FROM video_rooms WHERE id = ? AND is_live = 1",
+            (room_id,),
+        ).fetchone()
+        if not room:
+            raise HTTPException(404, "Live video room not found")
+        if room["host_uid"] != user["google_uid"]:
+            raise HTTPException(403, "Only the host can end this live room")
+
+        db.execute(
+            """UPDATE video_rooms SET is_live = 0,
+               ended_at = CURRENT_TIMESTAMP WHERE id = ?""",
+            (room_id,),
+        )
+        db.execute("DELETE FROM video_room_viewers WHERE room_id = ?", (room_id,))
+        db.commit()
+        return {"success": True, "message": "Live room ended"}
+    finally:
+        db.close()
+
+
+@router.get("/video/rooms/{room_id}/messages")
+def get_video_room_messages(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _video_room_user(authorization)
+    db = get_connection()
+    try:
+        room = _require_live_video_room(db, room_id)
+        uid = user["google_uid"]
+        is_host = room["host_uid"] == uid
+        is_viewer = db.execute(
+            """SELECT 1 FROM video_room_viewers
+               WHERE room_id = ? AND viewer_uid = ?""",
+            (room_id, uid),
+        ).fetchone()
+        if not is_host and not is_viewer:
+            raise HTTPException(403, "Join this live room before using chat")
+
+        rows = db.execute(
+            """SELECT id, sender_uid, sender_code, message, created_at
+               FROM video_room_messages
+               WHERE room_id = ? ORDER BY id DESC LIMIT 100""",
+            (room_id,),
+        ).fetchall()
+        return {"success": True, "messages": [dict(row) for row in reversed(rows)]}
+    finally:
+        db.close()
+
+
+@router.post("/video/rooms/{room_id}/messages")
+def send_video_room_message(
+    room_id: int,
+    payload: VideoRoomMessageRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _video_room_user(authorization)
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(400, "Message cannot be empty")
+    if len(message) > 500:
+        raise HTTPException(400, "Message cannot exceed 500 characters")
+
+    db = get_connection()
+    try:
+        room = _require_live_video_room(db, room_id)
+        uid = user["google_uid"]
+        is_host = room["host_uid"] == uid
+        is_viewer = db.execute(
+            """SELECT 1 FROM video_room_viewers
+               WHERE room_id = ? AND viewer_uid = ?""",
+            (room_id, uid),
+        ).fetchone()
+        if not is_host and not is_viewer:
+            raise HTTPException(403, "Join this live room before chatting")
+
+        cursor = db.execute(
+            """INSERT INTO video_room_messages
+               (room_id, sender_uid, sender_code, message)
+               VALUES (?, ?, ?, ?)""",
+            (room_id, uid, str(user["user_code"]), message),
+        )
+        db.commit()
+        row = db.execute(
+            """SELECT id, sender_uid, sender_code, message, created_at
+               FROM video_room_messages WHERE id = ?""",
+            (cursor.lastrowid,),
+        ).fetchone()
+        return {"success": True, "message": dict(row)}
+    finally:
+        db.close()
+
+
 # WebRTC signaling connections, indexed by room and user UID.
 VOICE_SIGNAL_CONNECTIONS: dict[int, dict[str, WebSocket]] = {}
 
