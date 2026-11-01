@@ -2006,18 +2006,45 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     );
 
     final canManage = roomRole == 'owner' || roomRole == 'admin';
-    if (!canManage) {
-      await _tapSeat(number);
-      return;
-    }
+    final occupied = seat['is_occupied'] == true;
+    final locked = seat['is_locked'] == true;
 
     if (seat['is_mine'] == true) {
       await _tapSeat(number);
       return;
     }
 
-    final occupied = seat['is_occupied'] == true;
-    final locked = seat['is_locked'] == true;
+    if (occupied && !canManage) {
+      showMessage('Yeh seat pehle se occupied hai.');
+      return;
+    }
+
+    if (!canManage) {
+      if (locked) {
+        showMessage('Yeh seat lock hai.');
+        return;
+      }
+      if (!mounted) return;
+      showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: background,
+        builder: (sheetContext) => SafeArea(
+          child: ListTile(
+            leading: const Icon(Icons.event_seat, color: pink),
+            title: const Text(
+              'Turn on Seat',
+              style: TextStyle(color: Colors.white),
+            ),
+            onTap: () {
+              Navigator.pop(sheetContext);
+              _tapSeat(number);
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
     final targetUid = (seat['user_uid'] ?? '').toString();
     final memberCode = (seat['user_code'] ?? '').toString();
     final isMuted = seat['is_muted'] == true;
@@ -2043,6 +2070,18 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 style: const TextStyle(color: Colors.white),
               ),
             ),
+            if (!occupied && !locked)
+              ListTile(
+                leading: const Icon(Icons.event_seat, color: pink),
+                title: const Text(
+                  'Turn on Seat',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _tapSeat(number);
+                },
+              ),
             if (occupied) ...[
               ListTile(
                 leading: Icon(
@@ -2213,6 +2252,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     );
     final occupied = seat['is_occupied'] == true;
     final mine = seat['is_mine'] == true;
+    final locked = seat['is_locked'] == true;
     final size = large ? 58.0 : 44.0;
     final photo = (seat['profile_photo'] ?? '').toString();
     final avatarSize = large ? 38.0 : 29.0;
@@ -2310,6 +2350,25 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                     child: ClipOval(child: Center(child: avatar)),
                   ),
                 ),
+                if (locked)
+                  Positioned(
+                    right: -2,
+                    top: -2,
+                    child: Container(
+                      width: large ? 23 : 20,
+                      height: large ? 23 : 20,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF172B45),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                      child: Icon(
+                        Icons.lock_rounded,
+                        size: large ? 14 : 12,
+                        color: Colors.amberAccent,
+                      ),
+                    ),
+                  ),
                 if (occupied)
                   Positioned(
                     right: 0,
