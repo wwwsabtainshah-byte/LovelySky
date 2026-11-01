@@ -1186,22 +1186,40 @@ class _ProfilePageState extends State<ProfilePage> {
       if (token == null || token.isEmpty) {
         message = 'Login required. Please sign in again.';
       } else {
-        final response = await http.get(
-          Uri.parse('$lovelyApi/owner/database-diagnostic'),
-          headers: {'Authorization': 'Bearer $token'},
-        ).timeout(const Duration(seconds: 20));
+        final response = await http
+            .get(
+              Uri.parse('$lovelyApi/owner/database-diagnostic'),
+              headers: {'Authorization': 'Bearer $token'},
+            )
+            .timeout(const Duration(seconds: 20));
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
-          message = data is Map
-              ? 'Database file exists: ${data['database_file_exists']}\n'
+          if (data is Map) {
+            final roomDetails = data['room_details'];
+            final roomText = roomDetails is List && roomDetails.isNotEmpty
+                ? roomDetails
+                      .map(
+                        (room) =>
+                            'ID: ${room['id']} | Owner: ${room['owner_code']}\n'
+                            'Name: ${room['name']} | Active: ${room['is_active']}',
+                      )
+                      .join('\n\n')
+                : 'No room details returned.';
+
+            message =
+                'Database file exists: ${data['database_file_exists']}\n'
                 'Database readable: ${data['database_readable']}\n'
                 'Database size: ${data['database_size_bytes']} bytes\n'
                 'Users: ${data['users_count']}\n'
                 'Voice rooms: ${data['voice_rooms_count']}\n\n'
-                '${data['note'] ?? ''}'
-              : 'Unexpected diagnostic response.';
+                'ROOM DETAILS:\n$roomText\n\n'
+                '${data['note'] ?? ''}';
+          } else {
+            message = 'Unexpected diagnostic response.';
+          }
         } else {
-          message = 'Cloud check failed (${response.statusCode}): ${response.body}';
+          message =
+              'Cloud check failed (${response.statusCode}): ${response.body}';
         }
       }
     } catch (e) {
