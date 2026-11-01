@@ -319,7 +319,7 @@ def list_voice_rooms(
                 base + """
                 WHERE r.is_active = 1
                 GROUP BY r.id
-                ORDER BY participant_count DESC, r.id DESC
+                ORDER BY r.is_official DESC, participant_count DESC, r.id DESC
                 """
             ).fetchall()
 
