@@ -260,6 +260,26 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
         );
         CREATE INDEX IF NOT EXISTS idx_video_visits_user
             ON video_room_visits(user_uid, visited_at);
+
+        CREATE TABLE IF NOT EXISTS casino_game_rounds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            round_id TEXT NOT NULL UNIQUE,
+            user_id INTEGER NOT NULL,
+            game TEXT NOT NULL,
+            bet INTEGER NOT NULL CHECK(bet > 0),
+            outcome_json TEXT NOT NULL,
+            payout INTEGER NOT NULL DEFAULT 0 CHECK(payout >= 0),
+            request_id TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_casino_game_request
+            ON casino_game_rounds(user_id, request_id);
+
+        CREATE INDEX IF NOT EXISTS idx_casino_game_user
+            ON casino_game_rounds(user_id, id);
+
 """)
 
 if __name__ == "__main__":

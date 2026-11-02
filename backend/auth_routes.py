@@ -2154,3 +2154,248 @@ def play_fruit_game(
         raise HTTPException(500, "Could not complete game round")
     finally:
         db.close()
+
+class CasinoGamePlayRequest(BaseModel):
+    game: str
+    bet: int
+    request_id: str
+    choice: str | None = None
+    target: float | None = None
+
+
+
+def _casino_deck():
+    deck = [
+        {"rank": rank, "suit": suit}
+        for suit in ["♠", "♥", "♦", "♣"]
+        for rank in range(2, 15)
+    ]
+    secrets.SystemRandom().shuffle(deck)
+    return deck
+
+
+def _casino_hand_value(cards):
+    ranks = sorted((c["rank"] for c in cards), reverse=True)
+    counts = {}
+    for rank in ranks:
+        counts[rank] = counts.get(rank, 0) + 1
+    groups = sorted(((count, rank) for rank, count in counts.items()),
+                    reverse=True)
+    flush = len({c["suit"] for c in cards}) == 1
+    unique = sorted(set(ranks))
+    straight_high = 0
+    if len(unique) == 5:
+        if unique[-1] - unique[0] == 4:
+            straight_high = unique[-1]
+        elif unique == [2, 3, 4, 5, 14]:
+            straight_high = 5
+    if flush and straight_high:
+        return (8, straight_high)
+    if groups[0][0] == 4:
+        return (7, groups[0][1], groups[1][1])
+    if groups[0][0] == 3 and groups[1][0] == 2:
+        return (6, groups[0][1], groups[1][1])
+    if flush:
+        return (5, *ranks)
+    if straight_high:
+        return (4, straight_high)
+    if groups[0][0] == 3:
+        return (3, groups[0][1], *sorted(
+            (r for r in ranks if r != groups[0][1]), reverse=True))
+    if groups[0][0] == 2 and groups[1][0] == 2:
+        pairs = sorted((g[1] for g in groups if g[0] == 2), reverse=True)
+        kicker = next(r for r in ranks if r not in pairs)
+        return (2, *pairs, kicker)
+    if groups[0][0] == 2:
+        pair = groups[0][1]
+        return (1, pair, *sorted((r for r in ranks if r != pair),
+                                 reverse=True))
+    return (0, *ranks)
+
+
+def _casino_blackjack_value(cards):
+    total = 0
+    aces = 0
+    for card in cards:
+        rank = card["rank"]
+        if rank == 14:
+            total += 11
+            aces += 1
+        else:
+            total += min(rank, 10)
+    while total > 21 and aces:
+        total -= 10
+        aces -= 1
+    return total
+
+
+@router.post("/games/casino/play")
+def play_casino_game(
+    payload: CasinoGamePlayRequest,
+    authorization: str | None = Header(default=None),
+):
+    game = str(payload.game or "").strip().lower()
+    allowed_games = {"slots", "roulette", "blackjack", "poker", "plinko", "crash"}
+    allowed_bets = {1000, 10000, 50000, 100000}
+
+    if game not in allowed_games:
+        raise HTTPException(400, "Unknown casino game")
+    if payload.bet not in allowed_bets:
+        raise HTTPException(400, "Invalid bet amount")
+    try:
+        request_id = str(uuid.UUID(payload.request_id))
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(400, "A valid request_id UUID is required")
+
+    if game == "roulette" and payload.choice not in {"red", "black", "green"}:
+        raise HTTPException(400, "Roulette choice must be red, black or green")
+    if game == "crash" and payload.target not in {1.2, 1.5, 2.0, 3.0, 5.0}:
+        raise HTTPException(400, "Invalid Crash target multiplier")
+
+    user = _voice_authenticated_user(authorization)
+    user_id = int(user["id"])
+    outcome = {}
+    payout = 0
+    multiplier = 0.0
+
+    if game == "slots":
+        roll = secrets.randbelow(10000)
+        multiplier = (0 if roll < 7600 else 2 if roll < 9100 else
+                      5 if roll < 9700 else 10 if roll < 9900 else 15)
+        symbols = ["🍒", "🍋", "🍇", "🍊", "💎", "🍉"]
+        outcome = {"symbols": [secrets.choice(symbols) for _ in range(3)],
+                   "multiplier": multiplier}
+    elif game == "roulette":
+        number = secrets.randbelow(37)
+        red_numbers = {1, 3, 5, 7, 9, 12, 14, 16, 18,
+                       19, 21, 23, 25, 27, 30, 32, 34, 36}
+        color = ("green" if number == 0 else
+                 "red" if number in red_numbers else "black")
+        multiplier = 36 if color == "green" else 2 if color == payload.choice else 0
+        outcome = {"number": number, "color": color,
+                   "choice": payload.choice, "multiplier": multiplier}
+    elif game == "plinko":
+        roll = secrets.randbelow(10000)
+        multiplier = (0 if roll < 4800 else 1 if roll < 7300 else
+                      2 if roll < 8800 else 3 if roll < 9600 else 4)
+        outcome = {"slot": secrets.randbelow(9), "multiplier": multiplier}
+    elif game == "crash":
+        roll = secrets.randbelow(10000)
+        crash_point = max(1.0, (0.97 * 10000) / (10000 - roll))
+        crash_point = round(crash_point, 3)
+        multiplier = float(payload.target) if crash_point >= payload.target else 0
+        outcome = {"crash_point": crash_point, "target": payload.target,
+                   "multiplier": multiplier}
+    elif game == "blackjack":
+        deck = _casino_deck()
+        player = [deck.pop(), deck.pop()]
+        dealer = [deck.pop(), deck.pop()]
+        while _casino_blackjack_value(dealer) < 17 and deck:
+            dealer.append(deck.pop())
+        pv, dv = _casino_blackjack_value(player), _casino_blackjack_value(dealer)
+        if pv <= 21 and (dv > 21 or pv > dv):
+            multiplier = 2
+        elif pv == dv:
+            multiplier = 1
+        outcome = {"player": player, "dealer": dealer,
+                   "player_total": pv, "dealer_total": dv,
+                   "result": "win" if multiplier == 2 else
+                             "push" if multiplier == 1 else "loss",
+                   "multiplier": multiplier}
+    elif game == "poker":
+        deck = _casino_deck()
+        player = [deck.pop() for _ in range(5)]
+        dealer = [deck.pop() for _ in range(5)]
+        pv, dv = _casino_hand_value(player), _casino_hand_value(dealer)
+        multiplier = 2 if pv > dv else 1 if pv == dv else 0
+        outcome = {"player": player, "dealer": dealer,
+                   "player_hand_rank": pv[0], "dealer_hand_rank": dv[0],
+                   "result": "win" if multiplier == 2 else
+                             "push" if multiplier == 1 else "loss",
+                   "multiplier": multiplier}
+
+    payout = int(payload.bet * multiplier)
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        previous = db.execute(
+            """SELECT round_id, game, bet, outcome_json, payout
+               FROM casino_game_rounds WHERE user_id=? AND request_id=?""",
+            (user_id, request_id),
+        ).fetchone()
+
+        if previous:
+            if previous["game"] != game or int(previous["bet"]) != payload.bet:
+                raise HTTPException(409, "This request_id was already used")
+            wallet = db.execute(
+                "SELECT coins FROM wallets WHERE user_id=?", (user_id,)
+            ).fetchone()
+            if wallet is None:
+                raise HTTPException(500, "Wallet not found")
+            saved = json.loads(previous["outcome_json"])
+            db.commit()
+            return {
+                "success": True, "duplicate": True,
+                "round_id": previous["round_id"], "game": game,
+                "bet": int(previous["bet"]), "outcome": saved,
+                "multiplier": saved["multiplier"],
+                "payout": int(previous["payout"]),
+                "net_change": int(previous["payout"]) - payload.bet,
+                "coins": int(wallet["coins"]),
+            }
+
+        db.execute("INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
+                   (user_id,))
+        debit = db.execute(
+            """UPDATE wallets SET coins=coins-?
+               WHERE user_id=? AND coins>=?""",
+            (payload.bet, user_id, payload.bet),
+        )
+        if debit.rowcount != 1:
+            raise HTTPException(400, "Not enough coins")
+
+        round_id = str(uuid.uuid4())
+        outcome["multiplier"] = multiplier
+        db.execute(
+            """INSERT INTO casino_game_rounds
+               (round_id,user_id,game,bet,outcome_json,payout,request_id)
+               VALUES (?,?,?,?,?,?,?)""",
+            (round_id, user_id, game, payload.bet,
+             json.dumps(outcome), payout, request_id),
+        )
+        db.execute(
+            """INSERT INTO transactions
+               (user_id,transaction_type,amount,currency,description)
+               VALUES (?, 'casino_bet', ?, 'coins', ?)""",
+            (user_id, payload.bet, f"{game.title()} bet | Round {round_id}"),
+        )
+        if payout:
+            db.execute("UPDATE wallets SET coins=coins+? WHERE user_id=?",
+                       (payout, user_id))
+            db.execute(
+                """INSERT INTO transactions
+                   (user_id,transaction_type,amount,currency,description)
+                   VALUES (?, 'casino_win', ?, 'coins', ?)""",
+                (user_id, payout,
+                 f"{game.title()} payout {multiplier}x | Round {round_id}"),
+            )
+        balance = db.execute(
+            "SELECT coins FROM wallets WHERE user_id=?", (user_id,)
+        ).fetchone()["coins"]
+        db.commit()
+        return {
+            "success": True, "duplicate": False,
+            "round_id": round_id, "game": game, "bet": payload.bet,
+            "outcome": outcome, "multiplier": multiplier,
+            "payout": payout, "net_change": payout - payload.bet,
+            "coins": int(balance),
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception("Casino game round failed")
+        raise HTTPException(500, "Could not complete casino game round")
+    finally:
+        db.close()
