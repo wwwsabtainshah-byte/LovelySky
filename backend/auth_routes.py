@@ -1208,8 +1208,6 @@ def owner_issue_coins(
         raise HTTPException(400, "Invalid User ID")
     if payload.amount not in allowed_amounts:
         raise HTTPException(400, "Select a permitted coin amount")
-    if code == "1":
-        raise HTTPException(400, "Owner cannot issue coins to the Owner ID")
 
     db = get_connection()
     try:
