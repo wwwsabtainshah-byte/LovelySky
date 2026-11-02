@@ -1921,3 +1921,52 @@ async def voice_room_signal(websocket: WebSocket, room_id: int):
             await websocket.close()
         except Exception:
             pass
+
+
+@router.get("/games/wallet")
+def get_games_wallet(authorization: str | None = Header(default=None)):
+    """Return the authenticated user's Lovely Sky coin wallet and recent history."""
+    user = _voice_authenticated_user(authorization)
+    user_id = int(user["id"])
+    db = get_connection()
+
+    try:
+        db.execute("BEGIN IMMEDIATE")
+
+        db.execute(
+            "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
+            (user_id,),
+        )
+
+        wallet = db.execute(
+            "SELECT coins, diamonds FROM wallets WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+
+        transactions = db.execute(
+            """
+            SELECT id, transaction_type, amount, currency,
+                   description, created_at
+            FROM transactions
+            WHERE user_id = ? AND currency = 'coins'
+            ORDER BY id DESC
+            LIMIT 50
+            """,
+            (user_id,),
+        ).fetchall()
+
+        db.commit()
+
+        return {
+            "success": True,
+            "user_code": str(user.get("user_code") or ""),
+            "coins": int(wallet["coins"]),
+            "diamonds": int(wallet["diamonds"]),
+            "transactions": [dict(item) for item in transactions],
+        }
+
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
