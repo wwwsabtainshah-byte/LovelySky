@@ -4254,108 +4254,356 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   }
 
 
+
   void _showGamesPanel() {
-    final games = [
-      {'name': 'Roulette', 'icon': Icons.casino_rounded, 'color': Color(0xFFFFD477)},
-      {'name': 'Slot Machine', 'icon': Icons.stars_rounded, 'color': Color(0xFFFF9D69)},
-      {'name': 'Greedy Star', 'icon': Icons.auto_awesome_rounded, 'color': Color(0xFF8DE4FF)},
-      {'name': 'Greedy King', 'icon': Icons.workspace_premium_rounded, 'color': Color(0xFFFFD477)},
+    final games = <Map<String, dynamic>>[
+      {'name':'Delicious','category':'slots','emoji':'🍇','badge':'HOT','color':0xFFFF0844},
+      {'name':'Lucky 77','category':'slots','emoji':'7️⃣','badge':'TOP','color':0xFFF12711},
+      {'name':'OLYMPUS','category':'slots','emoji':'⚡','badge':'HOT','color':0xFF13547A},
+      {'name':'Fruit Party','category':'slots','emoji':'🍓','badge':'','color':0xFFB224EF},
+      {'name':'Rocket','category':'popular','emoji':'🚀','badge':'NEW','color':0xFF0072FF},
+      {'name':'Fishing Star','category':'popular','emoji':'🎣','badge':'','color':0xFF0BA360},
+      {'name':'Greedy Box','category':'greedy','emoji':'📦','badge':'HOT','color':0xFFF857A6},
+      {'name':'Dragon & Tiger','category':'popular','emoji':'🐉','badge':'TOP','color':0xFFFF416C},
+      {'name':'Bounty Racing','category':'popular','emoji':'🏎️','badge':'','color':0xFFF7971E},
+      {'name':'Greedy Lion','category':'greedy','emoji':'🦁','badge':'HOT','color':0xFFF2994A},
+      {'name':'Mahjong','category':'popular','emoji':'🀄','badge':'','color':0xFF11998E},
+      {'name':'Teen Patti','category':'teenpatti','emoji':'🃏','badge':'TOP','color':0xFF654EA3},
+      {'name':'Super Ace','category':'teenpatti','emoji':'♠️','badge':'','color':0xFF414345},
+      {'name':'Sphinx Legend','category':'slots','emoji':'🏛️','badge':'','color':0xFFD38312},
+      {'name':'Greedy Lion II','category':'greedy','emoji':'👑','badge':'NEW','color':0xFF8A2387},
+      {'name':'Dragon Tiger 2','category':'popular','emoji':'🐅','badge':'','color':0xFFFF0844},
+      {'name':'Greedy Baby','category':'greedy','emoji':'👶','badge':'','color':0xFFFA709A},
+      {'name':'AMG-Egypt Slot','category':'slots','emoji':'🏺','badge':'','color':0xFFFF9966},
+      {'name':'Roulette Pro','category':'popular','emoji':'🎯','badge':'','color':0xFF8E2DE2},
+      {'name':'Fruit Machine','category':'slots','emoji':'🍒','badge':'','color':0xFFEE0979},
+      {'name':'Lava Link','category':'slots','emoji':'🌋','badge':'','color':0xFFF85032},
+      {'name':'Sweet Bonanza','category':'slots','emoji':'🍭','badge':'HOT','color':0xFFE1EEC3},
+      {'name':'Fruit Party 2','category':'slots','emoji':'🍉','badge':'','color':0xFFC33764},
+      {'name':'Lava Slot','category':'slots','emoji':'🔥','badge':'','color':0xFFF12711},
+      {'name':'DJ LIVE','category':'popular','emoji':'🎧','badge':'LIVE','color':0xFF00C6FF},
+      {'name':'20 Super Hot','category':'slots','emoji':'🌶️','badge':'','color':0xFFFF416C},
+      {'name':'Sphinx Fortune','category':'slots','emoji':'🗿','badge':'','color':0xFFF7971E},
+      {'name':'Greedy Star','category':'greedy','emoji':'⭐','badge':'HOT','color':0xFFB47CDE},
+      {'name':'Mahjong Ways','category':'popular','emoji':'🀆','badge':'','color':0xFF0BA360},
+      {'name':'Tarot Tahmin','category':'popular','emoji':'🔮','badge':'','color':0xFF654EA3},
+      {'name':'Mahjong Ways 2','category':'popular','emoji':'🀇','badge':'','color':0xFF11998E},
+      {'name':'Duofuduocai','category':'slots','emoji':'🧧','badge':'','color':0xFFE52D27},
+      {'name':'Limousine','category':'greedy','emoji':'🚘','badge':'','color':0xFF2C3E50},
+      {'name':'Luxury Car','category':'greedy','emoji':'🏎️','badge':'','color':0xFF1E3C72},
+      {'name':'Magic Card','category':'teenpatti','emoji':'🎴','badge':'','color':0xFFFF0844},
+      {'name':'ASOKA','category':'slots','emoji':'👑','badge':'','color':0xFF8A2387},
+      {'name':'Thunder Zeus','category':'slots','emoji':'⚡','badge':'HOT','color':0xFF4B6CB7},
+      {'name':'Fishing Box','category':'popular','emoji':'🐟','badge':'','color':0xFF00C6FF},
+      {'name':'Fortune Box','category':'greedy','emoji':'🎁','badge':'','color':0xFFF857A6},
+      {'name':'Greedy Soccer','category':'greedy','emoji':'⚽','badge':'','color':0xFF11998E},
+      {'name':'Golden Mine','category':'slots','emoji':'⛏️','badge':'','color':0xFFF7971E},
+      {'name':'Bee Slot','category':'slots','emoji':'🐝','badge':'','color':0xFFF12711},
+      {'name':'GLADIATOR','category':'slots','emoji':'⚔️','badge':'','color':0xFF414345},
+      {'name':'HiLo','category':'popular','emoji':'🎲','badge':'','color':0xFF8E2DE2},
+      {'name':'Hide Or Seek','category':'popular','emoji':'🙈','badge':'','color':0xFFEE0979},
+      {'name':'Pirate Chest','category':'slots','emoji':'🏴‍☠️','badge':'','color':0xFF2C3E50},
+      {'name':'Magic Slot','category':'slots','emoji':'🪄','badge':'','color':0xFFB224EF},
+      {'name':'Magic Lamps','category':'slots','emoji':'🪔','badge':'','color':0xFFFF9966},
+      {'name':'Car League','category':'greedy','emoji':'🚙','badge':'','color':0xFF0072FF},
+      {'name':'Gold Fishing','category':'popular','emoji':'🐠','badge':'','color':0xFF0BA360},
+      {'name':'Dice 3','category':'popular','emoji':'🎲','badge':'','color':0xFFFF416C},
+      {'name':'Crash','category':'popular','emoji':'📈','badge':'HOT','color':0xFF11998E},
+      {'name':'Golden Egg','category':'greedy','emoji':'🥚','badge':'','color':0xFFF7971E},
+      {'name':'LUDO','category':'popular','emoji':'🎯','badge':'TOP','color':0xFFE52D27},
     ];
+
+    const categories = <String, String>{
+      'All Games': 'all',
+      'Greedy': 'greedy',
+      'Slots': 'slots',
+      'TeenPatti': 'teenpatti',
+      'Popular': 'popular',
+    };
+
+    String selectedCategory = 'all';
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF102D49),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 42,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white38,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          final filteredGames = games.where((game) {
+            return selectedCategory == 'all' ||
+                game['category'] == selectedCategory;
+          }).toList();
+
+          return Container(
+            height: MediaQuery.of(ctx).size.height * 0.88,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF123C62), Color(0xFF071B30)],
               ),
-              const SizedBox(height: 18),
-              const Row(
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(26),
+              ),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
                 children: [
-                  Icon(Icons.sports_esports_rounded,
-                      color: Color(0xFFFFD477), size: 27),
-                  SizedBox(width: 10),
-                  Text('Gaming Zone',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 21,
-                          fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white38,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 17, 16, 8),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.sports_esports_rounded,
+                          color: Color(0xFFFFD477),
+                          size: 29,
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Lovely Sky Games',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 21,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                'Explore all your favourite games',
+                                style: TextStyle(
+                                  color: Colors.white60,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 11,
+                            vertical: 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFD477).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: const Color(0xFFFFD477).withValues(alpha: 0.5),
+                            ),
+                          ),
+                          child: Text(
+                            '${games.length} Games',
+                            style: const TextStyle(
+                              color: Color(0xFFFFD477),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    height: 48,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      children: categories.entries.map((entry) {
+                        final active = selectedCategory == entry.value;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(22),
+                            onTap: () {
+                              setModalState(() {
+                                selectedCategory = entry.value;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                gradient: active
+                                    ? const LinearGradient(
+                                        colors: [Color(0xFF168FE5), Color(0xFF43C5FF)],
+                                      )
+                                    : null,
+                                color: active ? null : Colors.white.withValues(alpha: 0.07),
+                                borderRadius: BorderRadius.circular(22),
+                                border: Border.all(
+                                  color: active ? const Color(0xFF43C5FF) : Colors.white12,
+                                ),
+                              ),
+                              child: Text(
+                                entry.key,
+                                style: TextStyle(
+                                  color: active ? Colors.white : Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 7, 16, 8),
+                    child: Row(
+                      children: [
+                        const Text(
+                          'GAME COLLECTION',
+                          style: TextStyle(
+                            color: Color(0xFFFFD477),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${filteredGames.length} games',
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: GridView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
+                      itemCount: filteredGames.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 4,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 9,
+                        childAspectRatio: 0.76,
+                      ),
+                      itemBuilder: (context, index) {
+                        final game = filteredGames[index];
+                        final gameColor = Color(game['color'] as int);
+                        final badge = game['badge'] as String;
+
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(15),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            showMessage(
+                              '${game['name']} selected. Game setup will be connected next.',
+                            );
+                          },
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: Container(
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        gameColor,
+                                        gameColor.withValues(alpha: 0.48),
+                                        const Color(0xFF102D49),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(15),
+                                    border: Border.all(
+                                      color: gameColor.withValues(alpha: 0.7),
+                                      width: 1,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: gameColor.withValues(alpha: 0.16),
+                                        blurRadius: 7,
+                                        offset: const Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Text(
+                                        game['emoji'] as String,
+                                        style: const TextStyle(fontSize: 29),
+                                      ),
+                                      if (badge.isNotEmpty)
+                                        Positioned(
+                                          top: 3,
+                                          right: 3,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 4,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: badge == 'LIVE'
+                                                  ? const Color(0xFFE53935)
+                                                  : const Color(0xFFFFB52E),
+                                              borderRadius: BorderRadius.circular(5),
+                                            ),
+                                            child: Text(
+                                              badge,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 7,
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              SizedBox(
+                                height: 27,
+                                child: Center(
+                                  child: Text(
+                                    game['name'] as String,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Choose your game',
-                    style: TextStyle(color: Colors.white60, fontSize: 12)),
-              ),
-              const SizedBox(height: 16),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: games.length,
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.35,
-                ),
-                itemBuilder: (context, index) {
-                  final game = games[index];
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      showMessage(
-                        '${game['name']} selected. Game setup will be connected next.',
-                      );
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF19466B),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: (game['color'] as Color).withValues(alpha: 0.5),
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(game['icon'] as IconData,
-                              color: game['color'] as Color, size: 34),
-                          const SizedBox(height: 9),
-                          Text(game['name'] as String,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600)),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
+
 
   void showMessage(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
