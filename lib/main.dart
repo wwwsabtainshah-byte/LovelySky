@@ -2688,6 +2688,286 @@ class _ProfilePageState extends State<ProfilePage> {
     if (mounted) setState(() => profileLoading = false);
   }
 
+
+  Future<void> _showOwnerCoinPanel() async {
+    final idController = TextEditingController();
+    const amounts = <int>[
+      1000, 2000, 5000, 10000, 100000, 1000000, 5000000,
+    ];
+    const labels = <int, String>{
+      1000: '1,000',
+      2000: '2,000',
+      5000: '5,000',
+      10000: '10,000',
+      100000: '1 Lakh',
+      1000000: '10 Lakh',
+      5000000: '50 Lakh',
+    };
+
+    int selectedAmount = 1000;
+    bool lookingUp = false;
+
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (sheetContext, setSheetState) => Padding(
+            padding: EdgeInsets.fromLTRB(
+              20, 22, 20, MediaQuery.of(sheetContext).viewInsets.bottom + 24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Owner Wallet',
+                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                const Text('Enter the recipient User ID'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: idController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'User ID',
+                    hintText: 'e.g. 1001',
+                    prefixIcon: const Icon(Icons.person_search_rounded),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Select Coins',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: amounts.map((amount) {
+                    return ChoiceChip(
+                      label: Text(labels[amount]!),
+                      selected: selectedAmount == amount,
+                      onSelected: (selected) {
+                        if (selected) {
+                          setSheetState(() => selectedAmount = amount);
+                        }
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: lookingUp
+                        ? null
+                        : () async {
+                            final code = idController.text.trim();
+                            if (code.isEmpty || int.tryParse(code) == null) {
+                              if (!sheetContext.mounted || !mounted) return;
+                              ScaffoldMessenger.of(sheetContext).showSnackBar(
+                                const SnackBar(content: Text('Enter a valid User ID')),
+                              );
+                              return;
+                            }
+                            if (code == '1') {
+                              ScaffoldMessenger.of(sheetContext).showSnackBar(
+                                const SnackBar(content: Text('Owner ID cannot receive issued coins')),
+                              );
+                              return;
+                            }
+
+                            setSheetState(() => lookingUp = true);
+                            try {
+                              final prefs = await SharedPreferences.getInstance();
+                              final token = prefs.getString('lovely_token');
+                              if (token == null || token.isEmpty) {
+                                throw Exception('Login required. Please sign in again.');
+                              }
+
+                              final response = await http.get(
+                                Uri.parse('$lovelyApi/owner/coins/lookup/$code'),
+                                headers: {'Authorization': 'Bearer $token'},
+                              ).timeout(const Duration(seconds: 20));
+
+                              final decoded = jsonDecode(response.body);
+                              if (response.statusCode != 200 ||
+                                  decoded is! Map<String, dynamic> ||
+                                  decoded['user'] is! Map) {
+                                final detail = decoded is Map
+                                    ? decoded['detail']?.toString()
+                                    : null;
+                                throw Exception(detail ?? 'User lookup failed');
+                              }
+
+                              final recipient =
+                                  Map<String, dynamic>.from(decoded['user'] as Map);
+                              final recipientName =
+                                  recipient['display_name']?.toString() ?? 'Lovely User';
+                              final recipientCode =
+                                  recipient['user_code']?.toString() ?? code;
+                              final photo =
+                                  recipient['profile_photo']?.toString() ?? '';
+
+                              if (!mounted) return;
+                              if (!sheetContext.mounted) return;
+                                Navigator.of(sheetContext).pop();
+
+                              bool issuing = false;
+                              await showDialog<void>(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (dialogContext) => StatefulBuilder(
+                                  builder: (dialogContext, setDialogState) =>
+                                      AlertDialog(
+                                    title: const Text('Confirm Coin Issue'),
+                                    content: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 34,
+                                          backgroundImage: photo.startsWith('http')
+                                              ? NetworkImage(photo)
+                                              : null,
+                                          child: photo.startsWith('http')
+                                              ? null
+                                              : const Icon(Icons.person, size: 34),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          recipientName,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 18,
+                                          ),
+                                        ),
+                                        Text('User ID: $recipientCode'),
+                                        const SizedBox(height: 14),
+                                        Text(
+                                          '${labels[selectedAmount]} Coins',
+                                          style: const TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF087FE8),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        const Text(
+                                          'Coins will be issued by the system. '
+                                          'Your personal wallet will not be debited.',
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: issuing
+                                            ? null
+                                            : () => Navigator.of(dialogContext).pop(),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: issuing
+                                            ? null
+                                            : () async {
+                                                setDialogState(() => issuing = true);
+                                                try {
+                                                  final prefs = await SharedPreferences.getInstance();
+                                                  final token = prefs.getString('lovely_token');
+                                                  if (token == null || token.isEmpty) {
+                                                    throw Exception('Login required');
+                                                  }
+
+                                                  final issueResponse = await http.post(
+                                                    Uri.parse('$lovelyApi/owner/coins/issue'),
+                                                    headers: {
+                                                      'Authorization': 'Bearer $token',
+                                                      'Content-Type': 'application/json',
+                                                    },
+                                                    body: jsonEncode({
+                                                      'user_code': recipientCode,
+                                                      'amount': selectedAmount,
+                                                    }),
+                                                  ).timeout(const Duration(seconds: 20));
+
+                                                  final result = jsonDecode(issueResponse.body);
+                                                  if (issueResponse.statusCode != 200 ||
+                                                      result is! Map ||
+                                                      result['success'] != true) {
+                                                    final detail = result is Map
+                                                        ? result['detail']?.toString()
+                                                        : null;
+                                                    throw Exception(detail ?? 'Coin issue failed');
+                                                  }
+
+                                                  final newBalance = result['new_balance'];
+                                                  if (!mounted) return;
+                                                  if (!dialogContext.mounted) return;
+                                                    Navigator.of(dialogContext).pop();
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                        '${labels[selectedAmount]} Coins added to ID $recipientCode. '
+                                                        'New balance: $newBalance',
+                                                      ),
+                                                      duration: const Duration(seconds: 4),
+                                                    ),
+                                                  );
+                                                } catch (e) {
+                                                  setDialogState(() => issuing = false);
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(content: Text(e.toString())),
+                                                  );
+                                                }
+                                              },
+                                        child: issuing
+                                            ? const SizedBox(
+                                                width: 18,
+                                                height: 18,
+                                                child: CircularProgressIndicator(strokeWidth: 2),
+                                              )
+                                            : const Text('Confirm & Issue'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            } catch (e) {
+                                if (!sheetContext.mounted) return;
+                              setSheetState(() => lookingUp = false);
+                              ScaffoldMessenger.of(sheetContext).showSnackBar(
+                                SnackBar(content: Text(e.toString())),
+                              );
+                            }
+                          },
+                    child: lookingUp
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Continue'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } finally {
+      idController.dispose();
+    }
+  }
+
   Future<void> _checkCloudDatabase() async {
     if (databaseChecking) return;
     setState(() => databaseChecking = true);
@@ -2883,6 +3163,17 @@ class _ProfilePageState extends State<ProfilePage> {
             subtitle: 'We are here to help',
           ),
           if (userCode == '1') ...[
+            const SizedBox(height: 10),
+            Card(
+              color: Colors.white,
+              child: ListTile(
+                leading: const Icon(Icons.account_balance_wallet_rounded, color: blue),
+                title: const Text('Owner Wallet'),
+                subtitle: const Text('Issue coins to a user ID'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: _showOwnerCoinPanel,
+              ),
+            ),
             const SizedBox(height: 10),
             Card(
               color: Colors.white,

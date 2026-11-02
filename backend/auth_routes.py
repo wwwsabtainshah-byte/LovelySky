@@ -24,6 +24,11 @@ class GoogleLoginRequest(BaseModel):
     device_id: str | None = None
 
 
+class OwnerCoinIssueRequest(BaseModel):
+    user_code: str
+    amount: int
+
+
 def get_firebase_app():
     try:
         return firebase_admin.get_app()
@@ -264,6 +269,13 @@ def _voice_authenticated_user(authorization: str | None):
     claims = verify_token(authorization.split(" ", 1)[1].strip())
     user = save_google_user(claims)
     ensure_database()
+    return user
+
+
+def _require_coin_owner(authorization: str | None):
+    user = _voice_authenticated_user(authorization)
+    if str(user.get("google_email", "")).lower() != OWNER_EMAIL.lower():
+        raise HTTPException(403, "Owner access required")
     return user
 
 
@@ -1155,6 +1167,101 @@ def owner_database_diagnostic(
     finally:
         if db is not None:
             db.close()
+
+@router.get("/owner/coins/lookup/{user_code}")
+def owner_lookup_coin_recipient(
+    user_code: str,
+    authorization: str | None = Header(default=None),
+):
+    _require_coin_owner(authorization)
+    code = user_code.strip()
+    if not code.isdigit():
+        raise HTTPException(400, "Enter a valid numeric User ID")
+
+    db = get_connection()
+    try:
+        row = db.execute(
+            """SELECT u.user_code, u.display_name, u.profile_photo,
+                      COALESCE(w.coins, 0) AS coins
+               FROM users u
+               LEFT JOIN wallets w ON w.user_id = u.id
+               WHERE u.user_code = ?""",
+            (code,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "User ID not found")
+        return {"success": True, "user": dict(row)}
+    finally:
+        db.close()
+
+
+@router.post("/owner/coins/issue")
+def owner_issue_coins(
+    payload: OwnerCoinIssueRequest,
+    authorization: str | None = Header(default=None),
+):
+    _require_coin_owner(authorization)
+    code = payload.user_code.strip()
+    allowed_amounts = {1000, 2000, 5000, 10000, 100000, 1000000, 5000000}
+
+    if not code.isdigit():
+        raise HTTPException(400, "Invalid User ID")
+    if payload.amount not in allowed_amounts:
+        raise HTTPException(400, "Select a permitted coin amount")
+    if code == "1":
+        raise HTTPException(400, "Owner cannot issue coins to the Owner ID")
+
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        target = db.execute(
+            "SELECT id, user_code FROM users WHERE user_code = ?",
+            (code,),
+        ).fetchone()
+        if not target:
+            raise HTTPException(404, "User ID not found")
+
+        db.execute(
+            "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
+            (target["id"],),
+        )
+        db.execute(
+            "UPDATE wallets SET coins = coins + ? WHERE user_id = ?",
+            (payload.amount, target["id"]),
+        )
+        db.execute(
+            """INSERT INTO transactions
+               (user_id, transaction_type, amount, currency, description)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                target["id"],
+                "owner_coin_issue",
+                payload.amount,
+                "coins",
+                f"Owner ID 1 issued {payload.amount} coins to ID {code}",
+            ),
+        )
+        balance = db.execute(
+            "SELECT coins FROM wallets WHERE user_id = ?",
+            (target["id"],),
+        ).fetchone()["coins"]
+        db.commit()
+        return {
+            "success": True,
+            "user_code": code,
+            "issued_coins": payload.amount,
+            "new_balance": balance,
+            "message": "Coins added successfully",
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
 
 @router.get("/me")
 def current_user(authorization: str | None = Header(default=None)):
