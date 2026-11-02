@@ -3962,6 +3962,110 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     );
   }
 
+
+  void _showGamesPanel() {
+    final games = [
+      {'name': 'Roulette', 'icon': Icons.casino_rounded, 'color': Color(0xFFFFD477)},
+      {'name': 'Slot Machine', 'icon': Icons.stars_rounded, 'color': Color(0xFFFF9D69)},
+      {'name': 'Greedy Star', 'icon': Icons.auto_awesome_rounded, 'color': Color(0xFF8DE4FF)},
+      {'name': 'Greedy King', 'icon': Icons.workspace_premium_rounded, 'color': Color(0xFFFFD477)},
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF102D49),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white38,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Row(
+                children: [
+                  Icon(Icons.sports_esports_rounded,
+                      color: Color(0xFFFFD477), size: 27),
+                  SizedBox(width: 10),
+                  Text('Gaming Zone',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 21,
+                          fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Choose your game',
+                    style: TextStyle(color: Colors.white60, fontSize: 12)),
+              ),
+              const SizedBox(height: 16),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: games.length,
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 1.35,
+                ),
+                itemBuilder: (context, index) {
+                  final game = games[index];
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      showMessage(
+                        '${game['name']} selected. Game setup will be connected next.',
+                      );
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF19466B),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: (game['color'] as Color).withValues(alpha: 0.5),
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(game['icon'] as IconData,
+                              color: game['color'] as Color, size: 34),
+                          const SizedBox(height: 9),
+                          Text(game['name'] as String,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void showMessage(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
@@ -4402,7 +4506,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 child: circleAction(
                   Icons.sports_esports_rounded,
                   'Games',
-                  () => showMessage('Games feature baad mein connect hoga.'),
+                  _showGamesPanel,
                   color: const Color(0xFFFFD477),
                   size: 27,
                 ),
