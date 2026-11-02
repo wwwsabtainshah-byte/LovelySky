@@ -55,6 +55,19 @@ def initialize_database():
             FOREIGN KEY(user_id) REFERENCES users(id)
         );
 
+        CREATE TABLE IF NOT EXISTS fruit_game_rounds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            round_id TEXT NOT NULL UNIQUE,
+            user_id INTEGER NOT NULL,
+            bet INTEGER NOT NULL CHECK(bet > 0),
+            fruit_grid TEXT NOT NULL,
+            multiplier REAL NOT NULL DEFAULT 0,
+            payout INTEGER NOT NULL DEFAULT 0 CHECK(payout >= 0),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_fruit_game_user
+            ON fruit_game_rounds(user_id, id);
         CREATE TABLE IF NOT EXISTS inventory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -74,6 +87,21 @@ def initialize_database():
             FOREIGN KEY(user_id) REFERENCES users(id)
         );
         """)
+        fruit_columns = {
+            row["name"]
+            for row in db.execute("PRAGMA table_info(fruit_game_rounds)")
+        }
+        if "request_id" not in fruit_columns:
+            db.execute(
+                "ALTER TABLE fruit_game_rounds ADD COLUMN request_id TEXT"
+            )
+
+        db.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_fruit_game_request
+            ON fruit_game_rounds(user_id, request_id)
+            WHERE request_id IS NOT NULL
+        """)
+
         db.execute("""
             CREATE TABLE IF NOT EXISTS voice_rooms (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

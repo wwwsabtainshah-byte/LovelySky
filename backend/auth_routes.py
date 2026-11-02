@@ -3,6 +3,8 @@ import json
 import base64
 import logging
 import sqlite3
+import secrets
+import uuid
 import firebase_admin
 from firebase_admin import auth, credentials
 from fastapi import APIRouter, Header, HTTPException, WebSocket, WebSocketDisconnect
@@ -22,6 +24,11 @@ _db_initialized = False
 class GoogleLoginRequest(BaseModel):
     id_token: str
     device_id: str | None = None
+
+
+class FruitGamePlayRequest(BaseModel):
+    bet: int
+    request_id: str
 
 
 class OwnerCoinIssueRequest(BaseModel):
@@ -1968,5 +1975,182 @@ def get_games_wallet(authorization: str | None = Header(default=None)):
     except Exception:
         db.rollback()
         raise
+    finally:
+        db.close()
+
+
+
+@router.post("/games/fruit/play")
+def play_fruit_game(
+    payload: FruitGamePlayRequest,
+    authorization: str | None = Header(default=None),
+):
+    allowed_bets = {1000, 10000, 50000, 100000}
+    if payload.bet not in allowed_bets:
+        raise HTTPException(400, "Invalid bet amount")
+
+    try:
+        request_id = str(uuid.UUID(payload.request_id))
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(400, "A valid request_id UUID is required")
+
+    user = _voice_authenticated_user(authorization)
+    user_id = int(user["id"])
+
+    # Theoretical RTP: (1000*2 + 400*5 + 200*10 + 100*20)/10000 = 80%.
+    outcome = secrets.randbelow(10000)
+    if outcome < 8300:
+        multiplier = 0
+    elif outcome < 9300:
+        multiplier = 2
+    elif outcome < 9700:
+        multiplier = 5
+    elif outcome < 9900:
+        multiplier = 10
+    else:
+        multiplier = 20
+
+    symbols = ["cherry", "lemon", "grape", "orange", "watermelon", "diamond"]
+    win_symbol = {
+        2: "cherry",
+        5: "lemon",
+        10: "grape",
+        20: "orange",
+    }.get(multiplier)
+
+    grid = []
+    for row_index in range(3):
+        if win_symbol is not None and row_index == 1:
+            grid.append([win_symbol, win_symbol, win_symbol])
+            continue
+        row = [secrets.choice(symbols) for _ in range(3)]
+        while row[0] == row[1] == row[2]:
+            row = [secrets.choice(symbols) for _ in range(3)]
+        grid.append(row)
+
+    wins = []
+    if win_symbol is not None:
+        wins.append({
+            "row": 1,
+            "symbol": win_symbol,
+            "multiplier": multiplier,
+        })
+
+    payout = payload.bet * multiplier
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+
+        # Idempotency: a retry returns the existing round, never debits again.
+        previous = db.execute(
+            """SELECT round_id, bet, fruit_grid, multiplier, payout
+               FROM fruit_game_rounds
+               WHERE user_id = ? AND request_id = ?""",
+            (user_id, request_id),
+        ).fetchone()
+
+        if previous:
+            if int(previous["bet"]) != payload.bet:
+                raise HTTPException(
+                    409, "This request_id was already used with another bet"
+                )
+            wallet = db.execute(
+                "SELECT coins FROM wallets WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+            if wallet is None:
+                raise HTTPException(500, "Wallet not found")
+            old_grid = json.loads(previous["fruit_grid"])
+            old_multiplier = int(previous["multiplier"])
+            old_wins = []
+            for index, row in enumerate(old_grid):
+                if row[0] == row[1] == row[2]:
+                    old_wins.append({
+                        "row": index,
+                        "symbol": row[0],
+                        "multiplier": old_multiplier,
+                    })
+            db.commit()
+            return {
+                "success": True,
+                "duplicate": True,
+                "round_id": previous["round_id"],
+                "bet": int(previous["bet"]),
+                "grid": old_grid,
+                "winning_lines": old_wins,
+                "multiplier": old_multiplier,
+                "payout": int(previous["payout"]),
+                "net_change": int(previous["payout"]) - int(previous["bet"]),
+                "coins": int(wallet["coins"]),
+                "rtp_percent": 80,
+            }
+
+        db.execute(
+            "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
+            (user_id,),
+        )
+        debit = db.execute(
+            """UPDATE wallets SET coins = coins - ?
+               WHERE user_id = ? AND coins >= ?""",
+            (payload.bet, user_id, payload.bet),
+        )
+        if debit.rowcount != 1:
+            raise HTTPException(400, "Not enough coins")
+
+        round_id = str(uuid.uuid4())
+        db.execute(
+            """INSERT INTO fruit_game_rounds
+               (round_id, user_id, bet, fruit_grid, multiplier, payout, request_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                round_id, user_id, payload.bet, json.dumps(grid),
+                multiplier, payout, request_id,
+            ),
+        )
+        db.execute(
+            """INSERT INTO transactions
+               (user_id, transaction_type, amount, currency, description)
+               VALUES (?, 'fruit_game_bet', ?, 'coins', ?)""",
+            (user_id, payload.bet, f"Fruit game bet | Round {round_id}"),
+        )
+
+        if payout > 0:
+            db.execute(
+                "UPDATE wallets SET coins = coins + ? WHERE user_id = ?",
+                (payout, user_id),
+            )
+            db.execute(
+                """INSERT INTO transactions
+                   (user_id, transaction_type, amount, currency, description)
+                   VALUES (?, 'fruit_game_win', ?, 'coins', ?)""",
+                (user_id, payout, f"Fruit game win {multiplier}x | Round {round_id}"),
+            )
+
+        balance = db.execute(
+            "SELECT coins FROM wallets WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()["coins"]
+        db.commit()
+
+        return {
+            "success": True,
+            "duplicate": False,
+            "round_id": round_id,
+            "bet": payload.bet,
+            "grid": grid,
+            "winning_lines": wins,
+            "multiplier": multiplier,
+            "payout": payout,
+            "net_change": payout - payload.bet,
+            "coins": int(balance),
+            "rtp_percent": 80,
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception("Fruit game round failed")
+        raise HTTPException(500, "Could not complete game round")
     finally:
         db.close()

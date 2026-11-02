@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:http/http.dart' as http;
-import 'package:webview_flutter/webview_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 
@@ -1535,8 +1535,10 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
       final result = await _request('POST', '/video/rooms/$roomId/join');
 
       if (!mounted) {
-        await _request('POST', '/video/rooms/$roomId/leave')
-            .catchError((_) => <String, dynamic>{});
+        await _request(
+          'POST',
+          '/video/rooms/$roomId/leave',
+        ).catchError((_) => <String, dynamic>{});
         return;
       }
 
@@ -1552,12 +1554,9 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
 
       if (mounted && joined) {
         refreshTimer?.cancel();
-        refreshTimer = Timer.periodic(
-          const Duration(seconds: 4),
-          (_) {
-            if (mounted && joined) _loadMessages();
-          },
-        );
+        refreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+          if (mounted && joined) _loadMessages();
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -1643,7 +1642,8 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
   @override
   Widget build(BuildContext context) {
     final title = widget.room['title']?.toString() ?? 'Live Room';
-    final hostName = widget.room['host_name']?.toString() ?? 'Lovely Sky Creator';
+    final hostName =
+        widget.room['host_name']?.toString() ?? 'Lovely Sky Creator';
     final hostPhoto = widget.room['host_photo']?.toString() ?? '';
     final viewerCount = widget.room['viewer_count']?.toString() ?? '0';
 
@@ -1655,10 +1655,7 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
         children: [
           // Full-screen live video
           if (videoTrack != null)
-            VideoTrackRenderer(
-              videoTrack!,
-              fit: VideoViewFit.cover,
-            )
+            VideoTrackRenderer(videoTrack!, fit: VideoViewFit.cover)
           else
             Container(
               decoration: const BoxDecoration(
@@ -1821,8 +1818,11 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.visibility,
-                                color: Colors.white, size: 15),
+                            const Icon(
+                              Icons.visibility,
+                              color: Colors.white,
+                              size: 15,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               viewerCount,
@@ -1843,8 +1843,11 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
                             Navigator.pop(context);
                           }
                         },
-                        icon: const Icon(Icons.close_rounded,
-                            color: Colors.white, size: 27),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white,
+                          size: 27,
+                        ),
                       ),
                     ],
                   ),
@@ -1860,17 +1863,29 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _liveActionIcon(Icons.favorite_rounded, 'Like',
-                            const Color(0xFFFF4D79)),
+                        _liveActionIcon(
+                          Icons.favorite_rounded,
+                          'Like',
+                          const Color(0xFFFF4D79),
+                        ),
                         const SizedBox(height: 20),
-                        _liveActionIcon(Icons.card_giftcard_rounded, 'Gift',
-                            const Color(0xFFFFC857)),
+                        _liveActionIcon(
+                          Icons.card_giftcard_rounded,
+                          'Gift',
+                          const Color(0xFFFFC857),
+                        ),
                         const SizedBox(height: 20),
-                        _liveActionIcon(Icons.share_rounded, 'Share',
-                            Colors.white),
+                        _liveActionIcon(
+                          Icons.share_rounded,
+                          'Share',
+                          Colors.white,
+                        ),
                         const SizedBox(height: 20),
-                        _liveActionIcon(Icons.people_alt_rounded, 'Viewers',
-                            const Color(0xFF67D4FF)),
+                        _liveActionIcon(
+                          Icons.people_alt_rounded,
+                          'Viewers',
+                          const Color(0xFF67D4FF),
+                        ),
                       ],
                     ),
                   ),
@@ -1951,8 +1966,9 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
                               decoration: InputDecoration(
                                 counterText: '',
                                 hintText: 'Say something...',
-                                hintStyle:
-                                    const TextStyle(color: Colors.white70),
+                                hintStyle: const TextStyle(
+                                  color: Colors.white70,
+                                ),
                                 filled: true,
                                 fillColor: Colors.white.withValues(alpha: 0.17),
                                 contentPadding: const EdgeInsets.symmetric(
@@ -1971,10 +1987,12 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
                           CircleAvatar(
                             backgroundColor: blue,
                             child: IconButton(
-                              onPressed:
-                                  joined && !busy ? _sendMessage : null,
-                              icon: const Icon(Icons.send_rounded,
-                                  color: Colors.white, size: 19),
+                              onPressed: joined && !busy ? _sendMessage : null,
+                              icon: const Icon(
+                                Icons.send_rounded,
+                                color: Colors.white,
+                                size: 19,
+                              ),
                             ),
                           ),
                         ],
@@ -2010,16 +2028,13 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
                           _liveControl(
                             Icons.chat_bubble_outline_rounded,
                             'Chat',
-                            () => FocusScope.of(context)
-                                .requestFocus(FocusNode()),
+                            () =>
+                                FocusScope.of(context)
+                                    .requestFocus(FocusNode()),
                           ),
-                          _liveControl(
-                            Icons.exit_to_app_rounded,
-                            'Leave',
-                            () {
-                              Navigator.pop(context);
-                            },
-                          ),
+                          _liveControl(Icons.exit_to_app_rounded, 'Leave', () {
+                            Navigator.pop(context);
+                          }),
                         ],
                       ),
                     ],
@@ -2689,12 +2704,9 @@ class _ProfilePageState extends State<ProfilePage> {
     if (mounted) setState(() => profileLoading = false);
   }
 
-
   Future<void> _showOwnerCoinPanel() async {
     final idController = TextEditingController();
-    const amounts = <int>[
-      1000, 2000, 5000, 10000, 100000, 1000000, 5000000,
-    ];
+    const amounts = <int>[1000, 2000, 5000, 10000, 100000, 1000000, 5000000];
     const labels = <int, String>{
       1000: '1,000',
       2000: '2,000',
@@ -2719,7 +2731,10 @@ class _ProfilePageState extends State<ProfilePage> {
         builder: (sheetContext) => StatefulBuilder(
           builder: (sheetContext, setSheetState) => Padding(
             padding: EdgeInsets.fromLTRB(
-              20, 22, 20, MediaQuery.of(sheetContext).viewInsets.bottom + 24,
+              20,
+              22,
+              20,
+              MediaQuery.of(sheetContext).viewInsets.bottom + 24,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -2776,29 +2791,32 @@ class _ProfilePageState extends State<ProfilePage> {
                             if (code.isEmpty || int.tryParse(code) == null) {
                               if (!sheetContext.mounted || !mounted) return;
                               ScaffoldMessenger.of(sheetContext).showSnackBar(
-                                const SnackBar(content: Text('Enter a valid User ID')),
-                              );
-                              return;
-                            }
-                            if (code == '1') {
-                              ScaffoldMessenger.of(sheetContext).showSnackBar(
-                                const SnackBar(content: Text('Owner ID cannot receive issued coins')),
+                                const SnackBar(
+                                  content: Text('Enter a valid User ID'),
+                                ),
                               );
                               return;
                             }
 
                             setSheetState(() => lookingUp = true);
                             try {
-                              final prefs = await SharedPreferences.getInstance();
+                              final prefs =
+                                  await SharedPreferences.getInstance();
                               final token = prefs.getString('lovely_token');
                               if (token == null || token.isEmpty) {
-                                throw Exception('Login required. Please sign in again.');
+                                throw Exception(
+                                  'Login required. Please sign in again.',
+                                );
                               }
 
-                              final response = await http.get(
-                                Uri.parse('$lovelyApi/owner/coins/lookup/$code'),
-                                headers: {'Authorization': 'Bearer $token'},
-                              ).timeout(const Duration(seconds: 20));
+                              final response = await http
+                                  .get(
+                                    Uri.parse(
+                                      '$lovelyApi/owner/coins/lookup/$code',
+                                    ),
+                                    headers: {'Authorization': 'Bearer $token'},
+                                  )
+                                  .timeout(const Duration(seconds: 20));
 
                               final decoded = jsonDecode(response.body);
                               if (response.statusCode != 200 ||
@@ -2810,10 +2828,12 @@ class _ProfilePageState extends State<ProfilePage> {
                                 throw Exception(detail ?? 'User lookup failed');
                               }
 
-                              final recipient =
-                                  Map<String, dynamic>.from(decoded['user'] as Map);
+                              final recipient = Map<String, dynamic>.from(
+                                decoded['user'] as Map,
+                              );
                               final recipientName =
-                                  recipient['display_name']?.toString() ?? 'Lovely User';
+                                  recipient['display_name']?.toString() ??
+                                  'Lovely User';
                               final recipientCode =
                                   recipient['user_code']?.toString() ?? code;
                               final photo =
@@ -2821,27 +2841,30 @@ class _ProfilePageState extends State<ProfilePage> {
 
                               if (!mounted) return;
                               if (!sheetContext.mounted) return;
-                                Navigator.of(sheetContext).pop();
+                              Navigator.of(sheetContext).pop();
 
                               bool issuing = false;
                               await showDialog<void>(
                                 context: context,
                                 barrierDismissible: false,
                                 builder: (dialogContext) => StatefulBuilder(
-                                  builder: (dialogContext, setDialogState) =>
-                                      AlertDialog(
+                                  builder: (dialogContext, setDialogState) => AlertDialog(
                                     title: const Text('Confirm Coin Issue'),
                                     content: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         CircleAvatar(
                                           radius: 34,
-                                          backgroundImage: photo.startsWith('http')
+                                          backgroundImage:
+                                              photo.startsWith('http')
                                               ? NetworkImage(photo)
                                               : null,
                                           child: photo.startsWith('http')
                                               ? null
-                                              : const Icon(Icons.person, size: 34),
+                                              : const Icon(
+                                                  Icons.person,
+                                                  size: 34,
+                                                ),
                                         ),
                                         const SizedBox(height: 12),
                                         Text(
@@ -2873,68 +2896,116 @@ class _ProfilePageState extends State<ProfilePage> {
                                       TextButton(
                                         onPressed: issuing
                                             ? null
-                                            : () => Navigator.of(dialogContext).pop(),
+                                            : () =>
+                                                  Navigator.of(dialogContext)
+                                                      .pop(),
                                         child: const Text('Cancel'),
                                       ),
                                       ElevatedButton(
                                         onPressed: issuing
                                             ? null
                                             : () async {
-                                                setDialogState(() => issuing = true);
+                                                setDialogState(
+                                                  () => issuing = true,
+                                                );
                                                 try {
-                                                  final prefs = await SharedPreferences.getInstance();
-                                                  final token = prefs.getString('lovely_token');
-                                                  if (token == null || token.isEmpty) {
-                                                    throw Exception('Login required');
+                                                  final prefs =
+                                                      await SharedPreferences.getInstance();
+                                                  final token = prefs.getString(
+                                                    'lovely_token',
+                                                  );
+                                                  if (token == null ||
+                                                      token.isEmpty) {
+                                                    throw Exception(
+                                                      'Login required',
+                                                    );
                                                   }
 
-                                                  final issueResponse = await http.post(
-                                                    Uri.parse('$lovelyApi/owner/coins/issue'),
-                                                    headers: {
-                                                      'Authorization': 'Bearer $token',
-                                                      'Content-Type': 'application/json',
-                                                    },
-                                                    body: jsonEncode({
-                                                      'user_code': recipientCode,
-                                                      'amount': selectedAmount,
-                                                    }),
-                                                  ).timeout(const Duration(seconds: 20));
+                                                  final issueResponse = await http
+                                                      .post(
+                                                        Uri.parse(
+                                                          '$lovelyApi/owner/coins/issue',
+                                                        ),
+                                                        headers: {
+                                                          'Authorization':
+                                                              'Bearer $token',
+                                                          'Content-Type': 'application/json',
+                                                        },
+                                                        body: jsonEncode({
+                                                          'user_code':
+                                                              recipientCode,
+                                                          'amount':
+                                                              selectedAmount,
+                                                        }),
+                                                      )
+                                                      .timeout(
+                                                        const Duration(
+                                                          seconds: 20,
+                                                        ),
+                                                      );
 
-                                                  final result = jsonDecode(issueResponse.body);
-                                                  if (issueResponse.statusCode != 200 ||
+                                                  final result = jsonDecode(
+                                                    issueResponse.body,
+                                                  );
+                                                  if (issueResponse
+                                                              .statusCode !=
+                                                          200 ||
                                                       result is! Map ||
-                                                      result['success'] != true) {
+                                                      result['success'] !=
+                                                          true) {
                                                     final detail = result is Map
-                                                        ? result['detail']?.toString()
+                                                        ? result['detail']
+                                                              ?.toString()
                                                         : null;
-                                                    throw Exception(detail ?? 'Coin issue failed');
+                                                    throw Exception(
+                                                      detail ??
+                                                          'Coin issue failed',
+                                                    );
                                                   }
 
-                                                  final newBalance = result['new_balance'];
+                                                  final newBalance =
+                                                      result['new_balance'];
                                                   if (!mounted) return;
-                                                  if (!dialogContext.mounted) return;
-                                                    Navigator.of(dialogContext).pop();
-                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                  if (!dialogContext.mounted) {
+                                                    return;
+                                                  }
+                                                  Navigator.of(dialogContext)
+                                                      .pop();
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
                                                     SnackBar(
                                                       content: Text(
                                                         '${labels[selectedAmount]} Coins added to ID $recipientCode. '
                                                         'New balance: $newBalance',
                                                       ),
-                                                      duration: const Duration(seconds: 4),
+                                                      duration: const Duration(
+                                                        seconds: 4,
+                                                      ),
                                                     ),
                                                   );
                                                 } catch (e) {
-                                                  setDialogState(() => issuing = false);
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    SnackBar(content: Text(e.toString())),
+                                                  setDialogState(
+                                                    () => issuing = false,
                                                   );
+                                                  ScaffoldMessenger.of(context)
+                                                      .showSnackBar(
+                                                        SnackBar(
+                                                          content: Text(
+                                                            e.toString(),
+                                                          ),
+                                                        ),
+                                                      );
                                                 }
                                               },
                                         child: issuing
                                             ? const SizedBox(
                                                 width: 18,
                                                 height: 18,
-                                                child: CircularProgressIndicator(strokeWidth: 2),
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
                                               )
                                             : const Text('Confirm & Issue'),
                                       ),
@@ -2943,7 +3014,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               );
                             } catch (e) {
-                                if (!sheetContext.mounted) return;
+                              if (!sheetContext.mounted) return;
                               setSheetState(() => lookingUp = false);
                               ScaffoldMessenger.of(sheetContext).showSnackBar(
                                 SnackBar(content: Text(e.toString())),
@@ -3168,7 +3239,10 @@ class _ProfilePageState extends State<ProfilePage> {
             Card(
               color: Colors.white,
               child: ListTile(
-                leading: const Icon(Icons.account_balance_wallet_rounded, color: blue),
+                leading: const Icon(
+                  Icons.account_balance_wallet_rounded,
+                  color: blue,
+                ),
                 title: const Text('Owner Wallet'),
                 subtitle: const Text('Issue coins to a user ID'),
                 trailing: const Icon(Icons.chevron_right_rounded),
@@ -4254,173 +4328,33 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     );
   }
 
-
-
   Future<Map<String, dynamic>> _getGamesWallet() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('lovely_token');
     if (token == null || token.isEmpty) {
       throw Exception('Please login again.');
     }
-    final response = await http.get(
-      Uri.parse('$lovelyApi/games/wallet'),
-      headers: {'Authorization': 'Bearer $token'},
-    ).timeout(const Duration(seconds: 15));
+    final response = await http
+        .get(
+          Uri.parse('$lovelyApi/games/wallet'),
+          headers: {'Authorization': 'Bearer $token'},
+        )
+        .timeout(const Duration(seconds: 15));
 
     final decoded = jsonDecode(response.body);
     if (decoded is! Map<String, dynamic>) {
       throw Exception('Invalid wallet response.');
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(decoded['detail']?.toString() ?? 'Wallet request failed.');
+      throw Exception(
+        decoded['detail']?.toString() ?? 'Wallet request failed.',
+      );
     }
     return decoded;
   }
 
-
-  Future<List<Map<String, dynamic>>> _getGameCatalog() async {
-    final response = await http.get(
-      Uri.parse(
-        'https://www.gamearter.com/api/v1/catalog/games?limit=100&offset=0',
-      ),
-      headers: {'Accept': 'application/json'},
-    ).timeout(const Duration(seconds: 20));
-
-    if (response.statusCode != 200) {
-      throw Exception('Game catalog failed (${response.statusCode}).');
-    }
-
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('Invalid GameArter catalog response.');
-    }
-
-    final rows = decoded['games'] as List<dynamic>? ?? [];
-    return rows
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .where((game) {
-          final platforms = game['platforms'];
-          return platforms is Map && platforms['mobile'] == true;
-        })
-        .toList();
-  }
-
-  Future<void> _openGame(Map<String, dynamic> game) async {
-    final title = game['name']?.toString() ?? 'Game';
-    final slug = game['slug']?.toString() ?? '';
-
-    if (slug.isEmpty ||
-        !RegExp(r'^[a-zA-Z0-9-]+$').hasMatch(slug)) {
-      showMessage('Invalid game.');
-      return;
-    }
-
-    try {
-      showMessage('Loading $title...');
-
-      final response = await http.get(
-        Uri.parse(
-          'https://www.gamearter.com/api/v1/catalog/games/$slug',
-        ),
-        headers: {'Accept': 'application/json'},
-      ).timeout(const Duration(seconds: 20));
-
-      if (response.statusCode != 200) {
-        throw Exception('Game details unavailable.');
-      }
-
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception('Invalid game details.');
-      }
-
-      final rawUrl = decoded['url']?.toString() ?? '';
-      final uri = Uri.tryParse(rawUrl);
-
-      if (uri == null ||
-          uri.scheme != 'https' ||
-          uri.host != 'www.gamearter.com' ||
-          !uri.path.startsWith('/game/')) {
-        throw Exception('Invalid game URL.');
-      }
-
-      final controller = WebViewController();
-      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
-      await controller.setBackgroundColor(const Color(0xFF071B31));
-      await controller.setNavigationDelegate(
-        NavigationDelegate(
-          onNavigationRequest: (request) {
-            final next = Uri.tryParse(request.url);
-            return next != null && next.scheme == 'https'
-                ? NavigationDecision.navigate
-                : NavigationDecision.prevent;
-          },
-        ),
-      );
-
-      await controller.loadRequest(uri);
-
-      if (!mounted) return;
-
-      showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: const Color(0xFF071B31),
-        useSafeArea: true,
-        builder: (gameContext) => SizedBox(
-          height: MediaQuery.of(gameContext).size.height * 0.94,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.sports_esports_rounded,
-                      color: Color(0xFFFFD477),
-                    ),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Close game',
-                      onPressed: () => Navigator.pop(gameContext),
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(child: WebViewWidget(controller: controller)),
-            ],
-          ),
-        ),
-      );
-    } catch (error) {
-      showMessage(
-        error.toString().replaceFirst('Exception: ', ''),
-      );
-    }
-  }
-
   void _showGamesPanel() {
     Future<Map<String, dynamic>> walletFuture = _getGamesWallet();
-    Future<List<Map<String, dynamic>>> gamesFuture = _getGameCatalog();
-    String gameSearch = '';
-    String selectedGameCategory = 'All';
 
     showModalBottomSheet<void>(
       context: context,
@@ -4454,22 +4388,31 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      const Icon(Icons.sports_esports_rounded,
-                          color: Color(0xFFFFD477), size: 27),
+                      const Icon(
+                        Icons.sports_esports_rounded,
+                        color: Color(0xFFFFD477),
+                        size: 27,
+                      ),
                       const SizedBox(width: 10),
                       const Expanded(
-                        child: Text('Lovely Sky Games',
-                            style: TextStyle(color: Colors.white,
-                                fontSize: 20, fontWeight: FontWeight.w800)),
+                        child: Text(
+                          'Lovely Sky Games',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                       ),
                       IconButton(
                         tooltip: 'Refresh wallet',
                         onPressed: () => setSheetState(() {
                           walletFuture = _getGamesWallet();
-                          gamesFuture = _getGameCatalog();
                         }),
-                        icon: const Icon(Icons.refresh_rounded,
-                            color: Colors.white70),
+                        icon: const Icon(
+                          Icons.refresh_rounded,
+                          color: Colors.white70,
+                        ),
                       ),
                     ],
                   ),
@@ -4482,19 +4425,25 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           padding: EdgeInsets.all(28),
                           child: Center(
                             child: CircularProgressIndicator(
-                                color: Color(0xFFFFD477)),
+                              color: Color(0xFFFFD477),
+                            ),
                           ),
                         );
                       }
                       if (snapshot.hasError) {
                         return Column(
                           children: [
-                            const Icon(Icons.error_outline_rounded,
-                                color: Color(0xFFFFB4AB), size: 30),
+                            const Icon(
+                              Icons.error_outline_rounded,
+                              color: Color(0xFFFFB4AB),
+                              size: 30,
+                            ),
                             const SizedBox(height: 8),
                             Text(
                               snapshot.error.toString().replaceFirst(
-                                  'Exception: ', ''),
+                                'Exception: ',
+                                '',
+                              ),
                               textAlign: TextAlign.center,
                               style: const TextStyle(color: Colors.white70),
                             ),
@@ -4532,376 +4481,173 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('YOUR COINS',
-                                    style: TextStyle(color: Colors.white70,
-                                        fontSize: 11, letterSpacing: 1.4)),
+                                const Text(
+                                  'YOUR COINS',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 11,
+                                    letterSpacing: 1.4,
+                                  ),
+                                ),
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
-                                    const Icon(Icons.monetization_on_rounded,
-                                        color: Color(0xFFFFD477), size: 32),
+                                    const Icon(
+                                      Icons.monetization_on_rounded,
+                                      color: Color(0xFFFFD477),
+                                      size: 32,
+                                    ),
                                     const SizedBox(width: 10),
-                                    Text('$coins',
-                                        style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 30,
-                                            fontWeight: FontWeight.w900)),
+                                    Text(
+                                      '$coins',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 30,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 5),
                                 const Text(
                                   'Virtual coins for use inside Lovely Sky',
                                   style: TextStyle(
-                                      color: Colors.white70, fontSize: 11),
+                                    color: Colors.white70,
+                                    fontSize: 11,
+                                  ),
                                 ),
                               ],
                             ),
                           ),
                           const SizedBox(height: 20),
                           const Text(
-                            'GAMES',
+                            'CASINO GAMES',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
-                          const SizedBox(height: 9),
-                          TextField(
-                            onChanged: (value) {
-                              setSheetState(() => gameSearch = value.trim());
-                            },
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                            ),
-                            decoration: InputDecoration(
-                              hintText: 'Search mobile games...',
-                              hintStyle: const TextStyle(
-                                color: Colors.white54,
-                                fontSize: 12,
-                              ),
-                              prefixIcon: const Icon(
-                                Icons.search_rounded,
-                                color: Colors.white70,
-                              ),
-                              filled: true,
-                              fillColor: Colors.white.withValues(alpha: 0.07),
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 12,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(13),
-                                borderSide: BorderSide.none,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          FutureBuilder<List<Map<String, dynamic>>>(
-                            future: gamesFuture,
-                            builder: (context, gameSnapshot) {
-                              if (gameSnapshot.connectionState.name ==
-                                  'waiting') {
-                                return const Padding(
-                                  padding: EdgeInsets.all(25),
-                                  child: Center(
-                                    child: CircularProgressIndicator(
-                                      color: Color(0xFFFFD477),
-                                    ),
-                                  ),
-                                );
-                              }
-
-                              if (gameSnapshot.hasError) {
-                                return Column(
-                                  children: [
-                                    const Icon(
-                                      Icons.cloud_off_rounded,
-                                      color: Colors.white54,
-                                      size: 32,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      gameSnapshot.error
-                                          .toString()
-                                          .replaceFirst('Exception: ', ''),
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => setSheetState(() {
-                                        gamesFuture = _getGameCatalog();
-                                      }),
-                                      child: const Text('Retry games'),
-                                    ),
-                                  ],
-                                );
-                              }
-
-                              final allGames = gameSnapshot.data ?? [];
-                              final categories = <String>{'All'};
-                              for (final game in allGames) {
-                                final values =
-                                    game['categories'] as List<dynamic>? ?? [];
-                                categories.addAll(
-                                  values.map((value) => value.toString()),
-                                );
-                              }
-
-                              final filteredGames = allGames.where((game) {
-                                final name =
-                                    game['name']?.toString().toLowerCase() ??
-                                        '';
-                                final matchesSearch =
-                                    name.contains(gameSearch.toLowerCase());
-                                final values =
-                                    game['categories'] as List<dynamic>? ?? [];
-                                final matchesCategory =
-                                    selectedGameCategory == 'All' ||
-                                    values.any(
-                                      (value) =>
-                                          value.toString() ==
-                                          selectedGameCategory,
-                                    );
-                                return matchesSearch && matchesCategory;
-                              }).toList();
-
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    child: Row(
-                                      children: categories.map((category) {
-                                        return Padding(
-                                          padding:
-                                              const EdgeInsets.only(right: 7),
-                                          child: ChoiceChip(
-                                            label: Text(category),
-                                            selected:
-                                                selectedGameCategory ==
-                                                    category,
-                                            onSelected: (_) {
-                                              setSheetState(() {
-                                                selectedGameCategory =
-                                                    category;
-                                              });
-                                            },
-                                            backgroundColor: Colors.white10,
-                                            selectedColor:
-                                                const Color(0xFF176B91),
-                                            labelStyle: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 11,
-                                            ),
-                                            side: BorderSide.none,
-                                          ),
-                                        );
-                                      }).toList(),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  if (filteredGames.isEmpty)
-                                    const Padding(
-                                      padding: EdgeInsets.all(22),
-                                      child: Center(
-                                        child: Text(
-                                          'No matching mobile games found.',
-                                          style: TextStyle(
-                                            color: Colors.white60,
-                                          ),
-                                        ),
-                                      ),
-                                    )
-                                  else
-                                    GridView.builder(
-                                      shrinkWrap: true,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      itemCount: filteredGames.length,
-                                      gridDelegate:
-                                          const SliverGridDelegateWithFixedCrossAxisCount(
-                                        crossAxisCount: 2,
-                                        crossAxisSpacing: 10,
-                                        mainAxisSpacing: 10,
-                                        childAspectRatio: 0.82,
-                                      ),
-                                      itemBuilder: (context, index) {
-                                        final game = filteredGames[index];
-                                        final name =
-                                            game['name']?.toString() ??
-                                                'Game';
-                                        final thumbnail =
-                                            game['thumbnail']?.toString() ??
-                                                '';
-                                        final genres =
-                                            game['genres'] as List<dynamic>? ??
-                                                [];
-
-                                        return Material(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.07,
-                                          ),
-                                          borderRadius:
-                                              BorderRadius.circular(14),
-                                          clipBehavior: Clip.antiAlias,
-                                          child: InkWell(
-                                            onTap: () => _openGame(game),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.stretch,
-                                              children: [
-                                                Expanded(
-                                                  child: thumbnail
-                                                          .startsWith('https://')
-                                                      ? Image.network(
-                                                          thumbnail,
-                                                          fit: BoxFit.cover,
-                                                          errorBuilder: (
-                                                            context,
-                                                            error,
-                                                            stackTrace,
-                                                          ) =>
-                                                              const Center(
-                                                            child: Icon(
-                                                              Icons
-                                                                  .videogame_asset_rounded,
-                                                              color:
-                                                                  Colors.white54,
-                                                              size: 38,
-                                                            ),
-                                                          ),
-                                                        )
-                                                      : const Center(
-                                                          child: Icon(
-                                                            Icons
-                                                                .videogame_asset_rounded,
-                                                            color:
-                                                                Colors.white54,
-                                                            size: 38,
-                                                          ),
-                                                        ),
-                                                ),
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.fromLTRB(
-                                                    9,
-                                                    8,
-                                                    9,
-                                                    9,
-                                                  ),
-                                                  child: Column(
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        name,
-                                                        maxLines: 2,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                        style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 12,
-                                                          fontWeight:
-                                                              FontWeight.w700,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 4),
-                                                      Text(
-                                                        genres
-                                                            .take(2)
-                                                            .join(' • '),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                        style: const TextStyle(
-                                                          color: Colors.white60,
-                                                          fontSize: 10,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 5),
-                                                      const Row(
-                                                        children: [
-                                                          Icon(
-                                                            Icons.play_arrow,
-                                                            color: Color(
-                                                              0xFFFFD477,
-                                                            ),
-                                                            size: 15,
-                                                          ),
-                                                          Text(
-                                                            'PLAY',
-                                                            style: TextStyle(
-                                                              color: Color(
-                                                                0xFFFFD477,
-                                                              ),
-                                                              fontSize: 10,
-                                                              fontWeight:
-                                                                  FontWeight.w800,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  const SizedBox(height: 7),
-                                  Text(
-                                    'Mobile games • GameArter • First 100 catalog entries',
-                                    style: const TextStyle(
-                                      color: Colors.white38,
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                ],
+                          const SizedBox(height: 12),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () {
+                              Navigator.of(sheetContext).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const FruitMultiplierPage(),
+                                ),
                               );
                             },
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(18),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFF176B91),
+                                    Color(0xFF17466D),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: const Color(0xFFFFD477)
+                                      .withValues(alpha: 0.45),
+                                ),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(
+                                    Icons.local_florist_rounded,
+                                    color: Color(0xFFFFD477),
+                                    size: 42,
+                                  ),
+                                  SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'FRUIT MULTIPLIER',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                        SizedBox(height: 5),
+                                        Text(
+                                          '3×3 Fruit Game • 80% Theoretical RTP',
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.play_circle_fill_rounded,
+                                    color: Color(0xFFFFD477),
+                                    size: 30,
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 20),
-                          const Text('COIN HISTORY',
-                              style: TextStyle(color: Colors.white,
-                                  fontSize: 14, fontWeight: FontWeight.w800)),
+                          const Text(
+                            'COIN HISTORY',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           if (transactions.isEmpty)
                             const Padding(
                               padding: EdgeInsets.all(18),
                               child: Center(
-                                child: Text('No coin transactions yet.',
-                                    style: TextStyle(color: Colors.white54)),
+                                child: Text(
+                                  'No coin transactions yet.',
+                                  style: TextStyle(color: Colors.white54),
+                                ),
                               ),
                             )
                           else
                             ...transactions.map((item) {
                               final type =
-                                  item['transaction_type']?.toString() ?? 'Coins';
+                                  item['transaction_type']?.toString() ??
+                                  'Coins';
                               final amount =
                                   (item['amount'] as num?)?.toInt() ?? 0;
-                              final debit = type.contains('loss') ||
+                              final debit =
+                                  type.contains('loss') ||
                                   type.contains('debit');
                               final description =
                                   item['description']?.toString() ?? '';
                               return ListTile(
                                 dense: true,
                                 contentPadding: EdgeInsets.zero,
-                                leading: const Icon(Icons.toll_rounded,
-                                    color: Color(0xFFFFD477)),
+                                leading: const Icon(
+                                  Icons.toll_rounded,
+                                  color: Color(0xFFFFD477),
+                                ),
                                 title: Text(
                                   description.isEmpty ? type : description,
-                                  style: const TextStyle(color: Colors.white,
-                                      fontSize: 12),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                  ),
                                 ),
-                                subtitle: Text(type,
-                                    style: const TextStyle(
-                                        color: Colors.white54, fontSize: 10)),
+                                subtitle: Text(
+                                  type,
+                                  style: const TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 10,
+                                  ),
+                                ),
                                 trailing: Text(
                                   '${debit ? '-' : '+'}$amount',
                                   style: TextStyle(
@@ -5479,6 +5225,480 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class FruitMultiplierPage extends StatefulWidget {
+  const FruitMultiplierPage({super.key});
+
+  @override
+  State<FruitMultiplierPage> createState() => _FruitMultiplierPageState();
+}
+
+class _FruitMultiplierPageState extends State<FruitMultiplierPage> {
+  static const List<int> bets = [1000, 10000, 50000, 100000];
+  static const Map<String, String> fruitEmoji = {
+    'cherry': '🍒',
+    'lemon': '🍋',
+    'grape': '🍇',
+    'orange': '🍊',
+    'watermelon': '🍉',
+    'diamond': '💎',
+  };
+
+  int selectedBet = 1000;
+  int coins = 0;
+  bool loadingWallet = true;
+  bool spinning = false;
+  String? walletError;
+  String? gameError;
+  String? pendingRequestId;
+  int? pendingBet;
+  List<List<String>> grid = List.generate(3, (_) => List.filled(3, 'cherry'));
+  Set<int> winningRows = {};
+  int multiplier = 0;
+  int payout = 0;
+  int? lastBet;
+  bool hasPlayed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeGame();
+  }
+
+  Future<void> _initializeGame() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedId = prefs.getString('fruit_pending_request_id');
+    final savedBet = prefs.getInt('fruit_pending_bet');
+
+    if (mounted && savedId != null && savedBet != null) {
+      setState(() {
+        pendingRequestId = savedId;
+        pendingBet = savedBet;
+        selectedBet = savedBet;
+        gameError = 'Pichla round pending hai. Same round retry karein.';
+      });
+    }
+    await _loadWallet();
+  }
+
+  Future<void> _clearPendingRound() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('fruit_pending_request_id');
+    await prefs.remove('fruit_pending_bet');
+  }
+
+  String _newRequestId() {
+    final random = math.Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
+        '${hex.substring(20)}';
+  }
+
+  Future<String> _getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('lovely_token');
+    if (token == null || token.isEmpty) {
+      throw Exception('Please login again.');
+    }
+    return token;
+  }
+
+  Future<void> _loadWallet() async {
+    setState(() {
+      loadingWallet = true;
+      walletError = null;
+    });
+    try {
+      final token = await _getToken();
+      final response = await http
+          .get(
+            Uri.parse('$lovelyApi/games/wallet'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 15));
+      final data = jsonDecode(response.body);
+      if (data is! Map<String, dynamic>) {
+        throw Exception('Invalid wallet response.');
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(data['detail']?.toString() ?? 'Wallet request failed.');
+      }
+      if (!mounted) return;
+      setState(() {
+        coins = (data['coins'] as num?)?.toInt() ?? 0;
+        loadingWallet = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        walletError = e.toString().replaceFirst('Exception: ', '');
+        loadingWallet = false;
+      });
+    }
+  }
+
+  Future<void> _spin() async {
+    if (spinning) return;
+    if (pendingRequestId == null) {
+      pendingRequestId = _newRequestId();
+      pendingBet = selectedBet;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('fruit_pending_request_id', pendingRequestId!);
+      await prefs.setInt('fruit_pending_bet', pendingBet!);
+    } else if (pendingBet != selectedBet) {
+      setState(() {
+        gameError = 'Pehle pichla round retry karein.';
+      });
+      return;
+    }
+
+    setState(() {
+      spinning = true;
+      gameError = null;
+    });
+
+    try {
+      final token = await _getToken();
+      final response = await http
+          .post(
+            Uri.parse('$lovelyApi/games/fruit/play'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'bet': pendingBet,
+              'request_id': pendingRequestId,
+            }),
+          )
+          .timeout(const Duration(seconds: 25));
+
+      final data = jsonDecode(response.body);
+      if (data is! Map<String, dynamic>) {
+        throw Exception('Invalid game response.');
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        // Clear only definitive client errors. For server/auth/network
+        // failures, retain the request ID so a retry cannot debit twice.
+        if ([400, 409, 422].contains(response.statusCode)) {
+          pendingRequestId = null;
+          pendingBet = null;
+          await _clearPendingRound();
+        }
+        throw Exception(data['detail']?.toString() ?? 'Game request failed.');
+      }
+
+      await Future.delayed(const Duration(milliseconds: 850));
+      if (!mounted) return;
+
+      final rawGrid = data['grid'] as List<dynamic>? ?? [];
+      final parsedGrid = rawGrid.map((row) {
+        return (row as List<dynamic>).map((cell) => cell.toString()).toList();
+      }).toList();
+
+      final rawWins = data['winning_lines'] as List<dynamic>? ?? [];
+      final rows = rawWins
+          .whereType<Map>()
+          .map((win) => (win['row'] as num?)?.toInt() ?? -1)
+          .where((row) => row >= 0 && row < 3)
+          .toSet();
+
+      setState(() {
+        grid = parsedGrid.length == 3
+            ? parsedGrid
+            : List.generate(3, (_) => List.filled(3, 'cherry'));
+        winningRows = rows;
+        multiplier = (data['multiplier'] as num?)?.toInt() ?? 0;
+        payout = (data['payout'] as num?)?.toInt() ?? 0;
+        coins = (data['coins'] as num?)?.toInt() ?? coins;
+        lastBet = (data['bet'] as num?)?.toInt() ?? pendingBet;
+        hasPlayed = true;
+        spinning = false;
+        pendingRequestId = null;
+        pendingBet = null;
+      });
+      await _clearPendingRound();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        spinning = false;
+        gameError = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Widget _fruitCell(int row, int col) {
+    final symbol = grid[row][col];
+    final isWin = winningRows.contains(row) && !spinning;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      decoration: BoxDecoration(
+        color: isWin ? const Color(0xFFFFE7A8) : const Color(0xFF17466D),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: isWin ? const Color(0xFFFFD477) : Colors.white24,
+          width: isWin ? 3 : 1,
+        ),
+        boxShadow: isWin
+            ? [
+                BoxShadow(
+                  color: const Color(0xFFFFD477).withValues(alpha: 0.35),
+                  blurRadius: 15,
+                ),
+              ]
+            : [],
+      ),
+      child: Center(
+        child: Text(
+          fruitEmoji[symbol] ?? '🍒',
+          style: const TextStyle(fontSize: 39),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final won = payout > 0;
+    return Scaffold(
+      backgroundColor: const Color(0xFF102D49),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF102D49),
+        foregroundColor: Colors.white,
+        title: const Text(
+          'Fruit Multiplier',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        actions: [
+          IconButton(
+            onPressed: _loadWallet,
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: 'Refresh wallet',
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              padding: const EdgeInsets.all(15),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF176B91), Color(0xFF17466D)],
+                ),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.monetization_on_rounded,
+                    color: Color(0xFFFFD477),
+                    size: 30,
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'YOUR COINS',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (loadingWallet)
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  else
+                    Text(
+                      '$coins',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            if (walletError != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  walletError!,
+                  style: const TextStyle(color: Color(0xFFFFB4AB)),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: const [
+                  Text(
+                    'FRUIT BOARD',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  Text(
+                    '80% THEORETICAL RTP',
+                    style: TextStyle(
+                      color: Color(0xFFFFD477),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.all(17),
+                    child: GridView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: 9,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 9,
+                            mainAxisSpacing: 9,
+                          ),
+                      itemBuilder: (context, index) =>
+                          _fruitCell(index ~/ 3, index % 3),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (hasPlayed)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: Text(
+                  won
+                      ? 'YOU WON ${multiplier}x  •  +$payout COINS'
+                      : 'NO WIN THIS ROUND  •  BET: ${lastBet ?? 0}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: won ? const Color(0xFFFFD477) : Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            if (gameError != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Text(
+                  gameError!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Color(0xFFFFB4AB)),
+                ),
+              ),
+            const SizedBox(height: 14),
+            const Text(
+              'SELECT BET',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const SizedBox(height: 9),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: bets.map((bet) {
+                  final active = selectedBet == bet;
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: OutlinedButton(
+                        onPressed: spinning || pendingRequestId != null
+                            ? null
+                            : () => setState(() => selectedBet = bet),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor: active
+                              ? const Color(0xFFFFD477)
+                              : Colors.transparent,
+                          foregroundColor: active
+                              ? const Color(0xFF183B59)
+                              : Colors.white,
+                          side: BorderSide(
+                            color: active
+                                ? const Color(0xFFFFD477)
+                                : Colors.white38,
+                          ),
+                        ),
+                        child: FittedBox(
+                          child: Text(
+                            bet >= 1000 ? '${bet ~/ 1000}K' : '$bet',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 15, 18, 20),
+              child: SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: ElevatedButton(
+                  onPressed: spinning || loadingWallet ? null : _spin,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFD477),
+                    foregroundColor: const Color(0xFF183B59),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                  ),
+                  child: spinning
+                      ? const SizedBox(
+                          width: 23,
+                          height: 23,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Color(0xFF183B59),
+                          ),
+                        )
+                      : Text(
+                          pendingRequestId != null
+                              ? 'RETRY SAME ROUND'
+                              : 'SPIN  •  $selectedBet COINS',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                ),
               ),
             ),
           ],
