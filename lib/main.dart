@@ -1403,13 +1403,10 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
         games = rawGames
             .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item))
-            .where((item) =>
-                item['id'] != null &&
-                item['slug'] != null &&
-                item['enabled'] == true)
+            .where((item) => item['id'] != null && item['slug'] != null)
             .toList();
         message = games.isEmpty
-            ? 'No active Sandbox games are enabled on your provider account.'
+            ? 'No games are available in your provider catalogue.'
             : '';
       });
     } catch (e) {
@@ -1489,10 +1486,12 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
     final name = game['name']?.toString() ??
         game['slug']?.toString() ??
         'Game';
+    final enabled = game['enabled'] == true &&
+        game['status']?.toString().toUpperCase() == 'ACTIVE';
 
     return InkWell(
       borderRadius: BorderRadius.circular(15),
-      onTap: launching ? null : () => _openGame(game),
+      onTap: launching || !enabled ? null : () => _openGame(game),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,

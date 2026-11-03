@@ -2059,7 +2059,7 @@ async def _casino_provider_games():
     games = []
     cursor = None
     for _ in range(20):
-        path = "/v1/games?limit=200"
+        path = "/v1/games?limit=200&enabled_only=false"
         if cursor:
             from urllib.parse import quote
             path += "&cursor=" + quote(str(cursor), safe="")
@@ -2126,7 +2126,6 @@ async def casino_provider_catalog(authorization: str | None = Header(default=Non
                 "status": str(game.get("status") or ""),
             }
             for game in games
-            if game.get("enabled") is True and str(game.get("status", "")).upper() == "ACTIVE"
         ],
     }
 
