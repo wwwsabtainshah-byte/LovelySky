@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import 'auth_screen.dart';
@@ -1308,6 +1308,338 @@ class _VideoPageState extends State<VideoPage> {
   }
 }
 
+
+
+Future<void> openLovelyCasinoGames(BuildContext context) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => const LovelyCasinoGamesSheet(),
+  );
+}
+
+class LovelyCasinoGamesSheet extends StatefulWidget {
+  const LovelyCasinoGamesSheet({super.key});
+
+  @override
+  State<LovelyCasinoGamesSheet> createState() =>
+      _LovelyCasinoGamesSheetState();
+}
+
+class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
+  List<Map<String, dynamic>> games = [];
+  int coins = 0;
+  bool loading = true;
+  bool launching = false;
+  String message = 'Loading provider games...';
+  Map<String, dynamic>? selectedGame;
+  WebViewController? gameController;
+
+  Future<Map<String, dynamic>> api(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('lovely_token');
+    if (token == null || token.isEmpty) {
+      throw Exception('Please login again.');
+    }
+
+    final uri = Uri.parse('$lovelyApi$path');
+    final headers = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+
+    final response = method == 'POST'
+        ? await http.post(uri, headers: headers, body: jsonEncode(body ?? {}))
+        : await http.get(uri, headers: headers);
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('Invalid server response.');
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final detail = decoded['detail'];
+      if (detail is Map) {
+        throw Exception(detail['message']?.toString() ??
+            detail.toString());
+      }
+      throw Exception(detail?.toString() ??
+          decoded['error']?.toString() ??
+          'Request failed (${response.statusCode}).');
+    }
+    return decoded;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGames();
+  }
+
+  Future<void> _loadGames() async {
+    setState(() {
+      loading = true;
+      message = 'Loading provider games...';
+    });
+
+    try {
+      final results = await Future.wait([
+        api('GET', '/games/wallet'),
+        api('GET', '/games/provider/catalog'),
+      ]);
+
+      final wallet = results[0];
+      final catalog = results[1];
+      final rawGames = catalog['games'] as List? ?? [];
+
+      if (!mounted) return;
+      setState(() {
+        coins = (wallet['coins'] as num?)?.toInt() ?? 0;
+        games = rawGames
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .where((item) =>
+                item['id'] != null &&
+                item['slug'] != null &&
+                item['enabled'] == true)
+            .toList();
+        message = games.isEmpty
+            ? 'No active Sandbox games are enabled on your provider account.'
+            : '';
+      });
+    } catch (e) {
+      if (mounted) setState(() => message = e.toString());
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> _openGame(Map<String, dynamic> game) async {
+    if (launching) return;
+
+    setState(() {
+      launching = true;
+      message = 'Creating secure game session...';
+    });
+
+    try {
+      final data = await api(
+        'POST',
+        '/games/provider/session',
+        body: {'game_id': game['slug'].toString()},
+      );
+
+      final launchUrl = data['launch_url']?.toString() ?? '';
+      final uri = Uri.tryParse(launchUrl);
+      if (uri == null ||
+          uri.scheme != 'https' ||
+          uri.host != 'games.casinoapipro.com') {
+        throw Exception('Provider returned an invalid game link.');
+      }
+
+      final controller = WebViewController();
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.setBackgroundColor(const Color(0xFF071A2D));
+      await controller.setNavigationDelegate(
+        NavigationDelegate(
+          onWebResourceError: (error) {
+            if (mounted && error.isForMainFrame == true) {
+              setState(() {
+                message = 'Game loading error: ${error.description}';
+              });
+            }
+          },
+        ),
+      );
+      await controller.loadRequest(uri);
+
+      if (!mounted) return;
+      setState(() {
+        selectedGame = game;
+        gameController = controller;
+        message = '';
+      });
+    } catch (e) {
+      if (mounted) setState(() => message = e.toString());
+    } finally {
+      if (mounted) setState(() => launching = false);
+    }
+  }
+
+  void _backToGames() {
+    setState(() {
+      selectedGame = null;
+      gameController = null;
+      message = '';
+    });
+  }
+
+  String _formatCoins(int value) => value.toString().replaceAllMapped(
+        RegExp(r'\B(?=(\d{3})+(?!\d))'),
+        (match) => ',',
+      );
+
+  Widget _gameTile(Map<String, dynamic> game) {
+    final imageUrl = game['thumbnail_url']?.toString() ?? '';
+    final name = game['name']?.toString() ??
+        game['slug']?.toString() ??
+        'Game';
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(15),
+      onTap: launching ? null : () => _openGame(game),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: const Color(0xFFD6EDFC)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: imageUrl.startsWith('https://')
+                  ? Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.casino_rounded,
+                        size: 42,
+                        color: Color(0xFF168FFF),
+                      ),
+                    )
+                  : const Icon(
+                      Icons.casino_rounded,
+                      size: 42,
+                      color: Color(0xFF168FFF),
+                    ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text(
+                name,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF183B59),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final game = selectedGame;
+    return SafeArea(
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.94,
+        decoration: const BoxDecoration(
+          color: Color(0xFFF2FAFF),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 10, 10),
+              child: Row(
+                children: [
+                  if (game != null)
+                    IconButton(
+                      onPressed: _backToGames,
+                      icon: const Icon(Icons.arrow_back),
+                    ),
+                  Expanded(
+                    child: Text(
+                      game?['name']?.toString() ?? 'Lovely Sky Games',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF183B59),
+                      ),
+                    ),
+                  ),
+                  if (game == null)
+                    Text(
+                      '🪙 ${_formatCoins(coins)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF168FFF),
+                      ),
+                    ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            if (game != null && gameController != null)
+              Expanded(child: WebViewWidget(controller: gameController!))
+            else if (loading || launching)
+              const Expanded(
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (game == null && games.isNotEmpty)
+              Expanded(
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(14),
+                  itemCount: games.length,
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 1.15,
+                  ),
+                  itemBuilder: (_, index) => _gameTile(games[index]),
+                ),
+              )
+            else
+              Expanded(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.casino_rounded,
+                          size: 58,
+                          color: Color(0xFF168FFF),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(message, textAlign: TextAlign.center),
+                        const SizedBox(height: 16),
+                        FilledButton(
+                          onPressed: _loadGames,
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class VideoRoomPage extends StatefulWidget {
   final Map<String, dynamic> room;
   const VideoRoomPage({super.key, required this.room});
@@ -1875,6 +2207,8 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
                           const Color(0xFFFFC857),
                         ),
                         const SizedBox(height: 20),
+                        _liveGamesAction(),
+                        const SizedBox(height: 20),
                         _liveActionIcon(
                           Icons.share_rounded,
                           'Share',
@@ -2043,6 +2377,25 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _liveGamesAction() {
+    return InkWell(
+      onTap: () => openLovelyCasinoGames(context),
+      borderRadius: BorderRadius.circular(24),
+      child: const Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.casino_rounded, color: Color(0xFF8DE4FF), size: 29),
+          SizedBox(height: 4),
+          Text('Games', style: TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          )),
         ],
       ),
     );
@@ -4328,350 +4681,6 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     );
   }
 
-  Future<Map<String, dynamic>> _getGamesWallet() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('lovely_token');
-    if (token == null || token.isEmpty) {
-      throw Exception('Please login again.');
-    }
-    final response = await http
-        .get(
-          Uri.parse('$lovelyApi/games/wallet'),
-          headers: {'Authorization': 'Bearer $token'},
-        )
-        .timeout(const Duration(seconds: 15));
-
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('Invalid wallet response.');
-    }
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        decoded['detail']?.toString() ?? 'Wallet request failed.',
-      );
-    }
-    return decoded;
-  }
-
-  void _showGamesPanel() {
-    Future<Map<String, dynamic>> walletFuture = _getGamesWallet();
-
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF102D49),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.82,
-            ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 42,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.white30,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.sports_esports_rounded,
-                        color: Color(0xFFFFD477),
-                        size: 27,
-                      ),
-                      const SizedBox(width: 10),
-                      const Expanded(
-                        child: Text(
-                          'Lovely Sky Games',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Refresh wallet',
-                        onPressed: () => setSheetState(() {
-                          walletFuture = _getGamesWallet();
-                        }),
-                        icon: const Icon(
-                          Icons.refresh_rounded,
-                          color: Colors.white70,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  FutureBuilder<Map<String, dynamic>>(
-                    future: walletFuture,
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState.name == 'waiting') {
-                        return const Padding(
-                          padding: EdgeInsets.all(28),
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              color: Color(0xFFFFD477),
-                            ),
-                          ),
-                        );
-                      }
-                      if (snapshot.hasError) {
-                        return Column(
-                          children: [
-                            const Icon(
-                              Icons.error_outline_rounded,
-                              color: Color(0xFFFFB4AB),
-                              size: 30,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              snapshot.error.toString().replaceFirst(
-                                'Exception: ',
-                                '',
-                              ),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.white70),
-                            ),
-                            TextButton(
-                              onPressed: () => setSheetState(
-                                () => walletFuture = _getGamesWallet(),
-                              ),
-                              child: const Text('Try again'),
-                            ),
-                          ],
-                        );
-                      }
-
-                      final data = snapshot.data ?? {};
-                      final coins = (data['coins'] as num?)?.toInt() ?? 0;
-                      final transactions =
-                          (data['transactions'] as List<dynamic>? ?? [])
-                              .whereType<Map>()
-                              .map((e) => Map<String, dynamic>.from(e))
-                              .take(10)
-                              .toList();
-
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF176B91), Color(0xFF17466D)],
-                              ),
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'YOUR COINS',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 11,
-                                    letterSpacing: 1.4,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.monetization_on_rounded,
-                                      color: Color(0xFFFFD477),
-                                      size: 32,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      '$coins',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 30,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 5),
-                                const Text(
-                                  'Virtual coins for use inside Lovely Sky',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          const Text(
-                            'CASINO GAMES',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          InkWell(
-                            borderRadius: BorderRadius.circular(16),
-                            onTap: () {
-                              Navigator.of(sheetContext).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const FruitMultiplierPage(),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(18),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFF176B91),
-                                    Color(0xFF17466D),
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: const Color(0xFFFFD477)
-                                      .withValues(alpha: 0.45),
-                                ),
-                              ),
-                              child: const Row(
-                                children: [
-                                  Icon(
-                                    Icons.local_florist_rounded,
-                                    color: Color(0xFFFFD477),
-                                    size: 42,
-                                  ),
-                                  SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'FRUIT MULTIPLIER',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                                        SizedBox(height: 5),
-                                        Text(
-                                          '3×3 Fruit Game • 80% Theoretical RTP',
-                                          style: TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Icon(
-                                    Icons.play_circle_fill_rounded,
-                                    color: Color(0xFFFFD477),
-                                    size: 30,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          const Text(
-                            'COIN HISTORY',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          if (transactions.isEmpty)
-                            const Padding(
-                              padding: EdgeInsets.all(18),
-                              child: Center(
-                                child: Text(
-                                  'No coin transactions yet.',
-                                  style: TextStyle(color: Colors.white54),
-                                ),
-                              ),
-                            )
-                          else
-                            ...transactions.map((item) {
-                              final type =
-                                  item['transaction_type']?.toString() ??
-                                  'Coins';
-                              final amount =
-                                  (item['amount'] as num?)?.toInt() ?? 0;
-                              final debit =
-                                  type.contains('loss') ||
-                                  type.contains('debit');
-                              final description =
-                                  item['description']?.toString() ?? '';
-                              return ListTile(
-                                dense: true,
-                                contentPadding: EdgeInsets.zero,
-                                leading: const Icon(
-                                  Icons.toll_rounded,
-                                  color: Color(0xFFFFD477),
-                                ),
-                                title: Text(
-                                  description.isEmpty ? type : description,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  type,
-                                  style: const TextStyle(
-                                    color: Colors.white54,
-                                    fontSize: 10,
-                                  ),
-                                ),
-                                trailing: Text(
-                                  '${debit ? '-' : '+'}$amount',
-                                  style: TextStyle(
-                                    color: debit
-                                        ? const Color(0xFFFF9C9C)
-                                        : const Color(0xFF8DE3B1),
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              );
-                            }),
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   void showMessage(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
@@ -5105,19 +5114,6 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 ],
               ),
             ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: 0),
-                child: circleAction(
-                  Icons.sports_esports_rounded,
-                  'Games',
-                  _showGamesPanel,
-                  color: const Color(0xFFFFD477),
-                  size: 27,
-                ),
-              ),
-            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(3, 0, 4, 3),
               child: Row(
@@ -5178,6 +5174,13 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                     size: 25,
                   ),
                   circleAction(
+                    Icons.casino_rounded,
+                    'Games',
+                    () => openLovelyCasinoGames(context),
+                    color: const Color(0xFF8DE4FF),
+                    size: 25,
+                  ),
+                  circleAction(
                     Icons.inbox_rounded,
                     'Inbox',
                     () => showMessage('Inbox feature baad mein connect hoga.'),
@@ -5225,480 +5228,6 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                     ),
                   ),
                 ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class FruitMultiplierPage extends StatefulWidget {
-  const FruitMultiplierPage({super.key});
-
-  @override
-  State<FruitMultiplierPage> createState() => _FruitMultiplierPageState();
-}
-
-class _FruitMultiplierPageState extends State<FruitMultiplierPage> {
-  static const List<int> bets = [1000, 10000, 50000, 100000];
-  static const Map<String, String> fruitEmoji = {
-    'cherry': '🍒',
-    'lemon': '🍋',
-    'grape': '🍇',
-    'orange': '🍊',
-    'watermelon': '🍉',
-    'diamond': '💎',
-  };
-
-  int selectedBet = 1000;
-  int coins = 0;
-  bool loadingWallet = true;
-  bool spinning = false;
-  String? walletError;
-  String? gameError;
-  String? pendingRequestId;
-  int? pendingBet;
-  List<List<String>> grid = List.generate(3, (_) => List.filled(3, 'cherry'));
-  Set<int> winningRows = {};
-  int multiplier = 0;
-  int payout = 0;
-  int? lastBet;
-  bool hasPlayed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeGame();
-  }
-
-  Future<void> _initializeGame() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedId = prefs.getString('fruit_pending_request_id');
-    final savedBet = prefs.getInt('fruit_pending_bet');
-
-    if (mounted && savedId != null && savedBet != null) {
-      setState(() {
-        pendingRequestId = savedId;
-        pendingBet = savedBet;
-        selectedBet = savedBet;
-        gameError = 'Pichla round pending hai. Same round retry karein.';
-      });
-    }
-    await _loadWallet();
-  }
-
-  Future<void> _clearPendingRound() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('fruit_pending_request_id');
-    await prefs.remove('fruit_pending_bet');
-  }
-
-  String _newRequestId() {
-    final random = math.Random.secure();
-    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
-        '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
-        '${hex.substring(20)}';
-  }
-
-  Future<String> _getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('lovely_token');
-    if (token == null || token.isEmpty) {
-      throw Exception('Please login again.');
-    }
-    return token;
-  }
-
-  Future<void> _loadWallet() async {
-    setState(() {
-      loadingWallet = true;
-      walletError = null;
-    });
-    try {
-      final token = await _getToken();
-      final response = await http
-          .get(
-            Uri.parse('$lovelyApi/games/wallet'),
-            headers: {'Authorization': 'Bearer $token'},
-          )
-          .timeout(const Duration(seconds: 15));
-      final data = jsonDecode(response.body);
-      if (data is! Map<String, dynamic>) {
-        throw Exception('Invalid wallet response.');
-      }
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(data['detail']?.toString() ?? 'Wallet request failed.');
-      }
-      if (!mounted) return;
-      setState(() {
-        coins = (data['coins'] as num?)?.toInt() ?? 0;
-        loadingWallet = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        walletError = e.toString().replaceFirst('Exception: ', '');
-        loadingWallet = false;
-      });
-    }
-  }
-
-  Future<void> _spin() async {
-    if (spinning) return;
-    if (pendingRequestId == null) {
-      pendingRequestId = _newRequestId();
-      pendingBet = selectedBet;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('fruit_pending_request_id', pendingRequestId!);
-      await prefs.setInt('fruit_pending_bet', pendingBet!);
-    } else if (pendingBet != selectedBet) {
-      setState(() {
-        gameError = 'Pehle pichla round retry karein.';
-      });
-      return;
-    }
-
-    setState(() {
-      spinning = true;
-      gameError = null;
-    });
-
-    try {
-      final token = await _getToken();
-      final response = await http
-          .post(
-            Uri.parse('$lovelyApi/games/fruit/play'),
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({
-              'bet': pendingBet,
-              'request_id': pendingRequestId,
-            }),
-          )
-          .timeout(const Duration(seconds: 25));
-
-      final data = jsonDecode(response.body);
-      if (data is! Map<String, dynamic>) {
-        throw Exception('Invalid game response.');
-      }
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        // Clear only definitive client errors. For server/auth/network
-        // failures, retain the request ID so a retry cannot debit twice.
-        if ([400, 409, 422].contains(response.statusCode)) {
-          pendingRequestId = null;
-          pendingBet = null;
-          await _clearPendingRound();
-        }
-        throw Exception(data['detail']?.toString() ?? 'Game request failed.');
-      }
-
-      await Future.delayed(const Duration(milliseconds: 850));
-      if (!mounted) return;
-
-      final rawGrid = data['grid'] as List<dynamic>? ?? [];
-      final parsedGrid = rawGrid.map((row) {
-        return (row as List<dynamic>).map((cell) => cell.toString()).toList();
-      }).toList();
-
-      final rawWins = data['winning_lines'] as List<dynamic>? ?? [];
-      final rows = rawWins
-          .whereType<Map>()
-          .map((win) => (win['row'] as num?)?.toInt() ?? -1)
-          .where((row) => row >= 0 && row < 3)
-          .toSet();
-
-      setState(() {
-        grid = parsedGrid.length == 3
-            ? parsedGrid
-            : List.generate(3, (_) => List.filled(3, 'cherry'));
-        winningRows = rows;
-        multiplier = (data['multiplier'] as num?)?.toInt() ?? 0;
-        payout = (data['payout'] as num?)?.toInt() ?? 0;
-        coins = (data['coins'] as num?)?.toInt() ?? coins;
-        lastBet = (data['bet'] as num?)?.toInt() ?? pendingBet;
-        hasPlayed = true;
-        spinning = false;
-        pendingRequestId = null;
-        pendingBet = null;
-      });
-      await _clearPendingRound();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        spinning = false;
-        gameError = e.toString().replaceFirst('Exception: ', '');
-      });
-    }
-  }
-
-  Widget _fruitCell(int row, int col) {
-    final symbol = grid[row][col];
-    final isWin = winningRows.contains(row) && !spinning;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
-      decoration: BoxDecoration(
-        color: isWin ? const Color(0xFFFFE7A8) : const Color(0xFF17466D),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: isWin ? const Color(0xFFFFD477) : Colors.white24,
-          width: isWin ? 3 : 1,
-        ),
-        boxShadow: isWin
-            ? [
-                BoxShadow(
-                  color: const Color(0xFFFFD477).withValues(alpha: 0.35),
-                  blurRadius: 15,
-                ),
-              ]
-            : [],
-      ),
-      child: Center(
-        child: Text(
-          fruitEmoji[symbol] ?? '🍒',
-          style: const TextStyle(fontSize: 39),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final won = payout > 0;
-    return Scaffold(
-      backgroundColor: const Color(0xFF102D49),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF102D49),
-        foregroundColor: Colors.white,
-        title: const Text(
-          'Fruit Multiplier',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        actions: [
-          IconButton(
-            onPressed: _loadWallet,
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Refresh wallet',
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              padding: const EdgeInsets.all(15),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF176B91), Color(0xFF17466D)],
-                ),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.monetization_on_rounded,
-                    color: Color(0xFFFFD477),
-                    size: 30,
-                  ),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      'YOUR COINS',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  if (loadingWallet)
-                    const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  else
-                    Text(
-                      '$coins',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            if (walletError != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  walletError!,
-                  style: const TextStyle(color: Color(0xFFFFB4AB)),
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
-                  Text(
-                    'FRUIT BOARD',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  Text(
-                    '80% THEORETICAL RTP',
-                    style: TextStyle(
-                      color: Color(0xFFFFD477),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Center(
-                child: AspectRatio(
-                  aspectRatio: 1,
-                  child: Padding(
-                    padding: const EdgeInsets.all(17),
-                    child: GridView.builder(
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: 9,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            crossAxisSpacing: 9,
-                            mainAxisSpacing: 9,
-                          ),
-                      itemBuilder: (context, index) =>
-                          _fruitCell(index ~/ 3, index % 3),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (hasPlayed)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                child: Text(
-                  won
-                      ? 'YOU WON ${multiplier}x  •  +$payout COINS'
-                      : 'NO WIN THIS ROUND  •  BET: ${lastBet ?? 0}',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: won ? const Color(0xFFFFD477) : Colors.white70,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            if (gameError != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Text(
-                  gameError!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFFFFB4AB)),
-                ),
-              ),
-            const SizedBox(height: 14),
-            const Text(
-              'SELECT BET',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 9),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: bets.map((bet) {
-                  final active = selectedBet == bet;
-                  return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: OutlinedButton(
-                        onPressed: spinning || pendingRequestId != null
-                            ? null
-                            : () => setState(() => selectedBet = bet),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: active
-                              ? const Color(0xFFFFD477)
-                              : Colors.transparent,
-                          foregroundColor: active
-                              ? const Color(0xFF183B59)
-                              : Colors.white,
-                          side: BorderSide(
-                            color: active
-                                ? const Color(0xFFFFD477)
-                                : Colors.white38,
-                          ),
-                        ),
-                        child: FittedBox(
-                          child: Text(
-                            bet >= 1000 ? '${bet ~/ 1000}K' : '$bet',
-                            style: const TextStyle(fontWeight: FontWeight.w900),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 15, 18, 20),
-              child: SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: ElevatedButton(
-                  onPressed: spinning || loadingWallet ? null : _spin,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFFD477),
-                    foregroundColor: const Color(0xFF183B59),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                  ),
-                  child: spinning
-                      ? const SizedBox(
-                          width: 23,
-                          height: 23,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Color(0xFF183B59),
-                          ),
-                        )
-                      : Text(
-                          pendingRequestId != null
-                              ? 'RETRY SAME ROUND'
-                              : 'SPIN  •  $selectedBet COINS',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                ),
               ),
             ),
           ],

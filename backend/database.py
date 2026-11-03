@@ -261,6 +261,22 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
         CREATE INDEX IF NOT EXISTS idx_video_visits_user
             ON video_room_visits(user_uid, visited_at);
 
+        CREATE TABLE IF NOT EXISTS casino_wallet_transactions (
+            transaction_id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            player_id TEXT NOT NULL,
+            action TEXT NOT NULL CHECK(action IN ('debit','credit','refund','rollback')),
+            amount_coins INTEGER NOT NULL CHECK(amount_coins > 0),
+            delta_coins INTEGER NOT NULL,
+            balance_after INTEGER NOT NULL CHECK(balance_after >= 0),
+            reference_transaction_id TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_casino_wallet_reversal_reference
+            ON casino_wallet_transactions(reference_transaction_id)
+            WHERE reference_transaction_id IS NOT NULL;
+
         CREATE TABLE IF NOT EXISTS casino_game_rounds (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             round_id TEXT NOT NULL UNIQUE,
@@ -279,6 +295,37 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
 
         CREATE INDEX IF NOT EXISTS idx_casino_game_user
             ON casino_game_rounds(user_id, id);
+
+        CREATE TABLE IF NOT EXISTS casino_active_rounds (
+            round_id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            game TEXT NOT NULL,
+            total_bet INTEGER NOT NULL DEFAULT 0 CHECK(total_bet >= 0),
+            status TEXT NOT NULL DEFAULT 'open'
+                CHECK(status IN ('open','resolved')),
+            opened_at INTEGER NOT NULL,
+            closes_at INTEGER NOT NULL,
+            outcome_json TEXT NOT NULL DEFAULT '{}',
+            payout INTEGER NOT NULL DEFAULT 0 CHECK(payout >= 0),
+            resolved_at INTEGER,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_casino_one_open_round
+            ON casino_active_rounds(user_id, game) WHERE status = 'open';
+        CREATE INDEX IF NOT EXISTS idx_casino_round_user
+            ON casino_active_rounds(user_id, opened_at);
+
+        CREATE TABLE IF NOT EXISTS casino_bet_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            round_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            request_id TEXT NOT NULL,
+            amount INTEGER NOT NULL CHECK(amount > 0),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, request_id),
+            FOREIGN KEY(round_id) REFERENCES casino_active_rounds(round_id),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );
 
 """)
 

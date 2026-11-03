@@ -5,6 +5,15 @@ import logging
 import sqlite3
 import secrets
 import uuid
+
+import hashlib
+import hmac
+import re
+import time
+import httpx
+from decimal import Decimal, InvalidOperation
+from fastapi import Request
+from fastapi.responses import JSONResponse
 import firebase_admin
 from firebase_admin import auth, credentials
 from fastapi import APIRouter, Header, HTTPException, WebSocket, WebSocketDisconnect
@@ -24,11 +33,6 @@ _db_initialized = False
 class GoogleLoginRequest(BaseModel):
     id_token: str
     device_id: str | None = None
-
-
-class FruitGamePlayRequest(BaseModel):
-    bet: int
-    request_id: str
 
 
 class OwnerCoinIssueRequest(BaseModel):
@@ -1980,141 +1984,501 @@ def get_games_wallet(authorization: str | None = Header(default=None)):
 
 
 
-@router.post("/games/fruit/play")
-def play_fruit_game(
-    payload: FruitGamePlayRequest,
-    authorization: str | None = Header(default=None),
-):
-    allowed_bets = {1000, 10000, 50000, 100000}
-    if payload.bet not in allowed_bets:
-        raise HTTPException(400, "Invalid bet amount")
+
+
+# Casino API Pro — Sandbox only. Credentials stay on the server.
+_CASINO_PROVIDER_BASE = "https://api.casinoapipro.com"
+_casino_provider_access_token = None
+_casino_provider_token_expires = 0.0
+
+
+async def _casino_provider_token():
+    global _casino_provider_access_token, _casino_provider_token_expires
+
+    if _casino_provider_access_token and time.monotonic() < _casino_provider_token_expires:
+        return _casino_provider_access_token
+
+    api_key = os.environ.get("CASINO_API_KEY", "").strip()
+    api_secret = os.environ.get("CASINO_API_SECRET", "").strip()
+
+    if not api_key.startswith("ck_test_") or not api_secret.startswith("cs_test_"):
+        raise HTTPException(503, "Casino Sandbox credentials are missing or are not test keys.")
 
     try:
-        request_id = str(uuid.UUID(payload.request_id))
-    except (ValueError, TypeError, AttributeError):
-        raise HTTPException(400, "A valid request_id UUID is required")
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                f"{_CASINO_PROVIDER_BASE}/v1/auth/token",
+                json={"api_key": api_key, "api_secret": api_secret},
+            )
+        data = response.json()
+    except (httpx.HTTPError, ValueError):
+        logger.exception("Casino provider authentication request failed")
+        raise HTTPException(502, "Casino provider authentication failed.")
 
+    if response.status_code >= 400 or not isinstance(data, dict) or not data.get("access_token"):
+        logger.error("Casino provider authentication rejected (HTTP %s)", response.status_code)
+        raise HTTPException(502, "Casino provider rejected the Sandbox credentials.")
+
+    _casino_provider_access_token = str(data["access_token"])
+    expires_in = max(60, int(data.get("expires_in", 3600)))
+    _casino_provider_token_expires = time.monotonic() + expires_in - 60
+    return _casino_provider_access_token
+
+
+async def _casino_provider_request(method: str, path: str, payload=None):
+    token = await _casino_provider_token()
+    try:
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            response = await client.request(
+                method,
+                f"{_CASINO_PROVIDER_BASE}{path}",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+                json=payload if payload is not None else None,
+            )
+        data = response.json() if response.content else {}
+    except (httpx.HTTPError, ValueError):
+        logger.exception("Casino provider API request failed: %s", path)
+        raise HTTPException(502, "Casino provider is temporarily unavailable.")
+
+    if response.status_code == 401:
+        global _casino_provider_access_token, _casino_provider_token_expires
+        _casino_provider_access_token = None
+        _casino_provider_token_expires = 0.0
+        raise HTTPException(502, "Casino provider session expired. Please try again.")
+
+    if response.status_code >= 400:
+        logger.error("Casino provider returned HTTP %s for %s", response.status_code, path)
+        raise HTTPException(502, "Casino provider could not complete the request.")
+
+    if not isinstance(data, dict):
+        raise HTTPException(502, "Invalid response from casino provider.")
+    return data
+
+
+async def _casino_provider_games():
+    games = []
+    cursor = None
+    for _ in range(20):
+        path = "/v1/games?limit=200"
+        if cursor:
+            from urllib.parse import quote
+            path += "&cursor=" + quote(str(cursor), safe="")
+        page = await _casino_provider_request("GET", path)
+        rows = page.get("data", [])
+        if not isinstance(rows, list):
+            raise HTTPException(502, "Invalid casino game catalogue.")
+        games.extend(item for item in rows if isinstance(item, dict))
+        if not page.get("has_more"):
+            return games
+        cursor = page.get("next_cursor")
+        if not cursor:
+            break
+    raise HTTPException(502, "Casino game catalogue pagination did not complete.")
+
+
+async def _casino_ensure_pkr_currency(games):
+    currencies = {
+        str(currency).upper()
+        for game in games
+        for currency in (game.get("currencies") or [])
+    }
+
+    if not currencies:
+        raise HTTPException(503, "Could not read Sandbox account currencies.")
+
+    if "PKR" not in currencies:
+        await _casino_provider_request(
+            "PATCH",
+            "/v1/business",
+            {"currencies": sorted(currencies | {"PKR"})},
+        )
+        games = await _casino_provider_games()
+        currencies = {
+            str(currency).upper()
+            for game in games
+            for currency in (game.get("currencies") or [])
+        }
+
+    if "PKR" not in currencies:
+        raise HTTPException(503, "PKR could not be enabled on the Sandbox account.")
+
+    return games
+
+
+@router.get("/games/provider/catalog")
+async def casino_provider_catalog(authorization: str | None = Header(default=None)):
+    _voice_authenticated_user(authorization)
+    games = await _casino_ensure_pkr_currency(await _casino_provider_games())
+    return {
+        "success": True,
+        "games": [
+            {
+                "id": str(game.get("id") or ""),
+                "slug": str(game.get("slug") or ""),
+                "name": str(game.get("name") or game.get("slug") or "Game"),
+                "provider": str(game.get("provider") or ""),
+                "category": str(game.get("category") or ""),
+                "thumbnail_url": game.get("thumbnail_url"),
+                "min_bet": game.get("min_bet"),
+                "max_bet": game.get("max_bet"),
+                "currencies": game.get("currencies") or [],
+                "enabled": game.get("enabled") is True,
+                "status": str(game.get("status") or ""),
+            }
+            for game in games
+            if game.get("enabled") is True and str(game.get("status", "")).upper() == "ACTIVE"
+        ],
+    }
+
+
+@router.post("/games/provider/session")
+async def casino_provider_session(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    game_id = str(payload.get("game_id") or "").strip()
+    if not game_id or len(game_id) > 150:
+        raise HTTPException(400, "A valid game_id is required.")
+
+    games = await _casino_ensure_pkr_currency(await _casino_provider_games())
+    game = next(
+        (
+            item for item in games
+            if game_id in (str(item.get("id") or ""), str(item.get("slug") or ""))
+            and item.get("enabled") is True
+            and str(item.get("status", "")).upper() == "ACTIVE"
+        ),
+        None,
+    )
+    if game is None:
+        raise HTTPException(404, "This game is not enabled for your account.")
+
+    currencies = [str(value).upper() for value in (game.get("currencies") or [])]
+    if "PKR" not in currencies:
+        raise HTTPException(
+            409,
+            {"message": "PKR is not enabled for this provider account.", "available_currencies": currencies},
+        )
+
+    player_id = str(user["user_code"])
+    player_name = str(user["display_name"] or player_id)[:40]
+    session = await _casino_provider_request(
+        "POST",
+        "/v1/sessions",
+        {
+            "game_id": str(game.get("slug") or game_id),
+            "player_id": player_id,
+            "currency": "PKR",
+            "player_name": player_name,
+        },
+    )
+
+    launch_url = str(session.get("launch_url") or "")
+    if not launch_url.startswith("https://games.casinoapipro.com/"):
+        logger.error("Casino provider returned an unexpected launch URL host.")
+        raise HTTPException(502, "Casino provider returned an invalid game launch URL.")
+
+    return {
+        "success": True,
+        "launch_url": launch_url,
+        "session_id": session.get("session_id"),
+        "game": session.get("game") or {"slug": game.get("slug"), "name": game.get("name")},
+    }
+
+
+CASINO_GAMES = [
+    "roulette", "blackjack", "baccarat", "dragon_tiger",
+    "andar_bahar", "sic_bo", "poker", "slots", "hi_lo",
+    "keno", "teen_patti", "seven_up_seven_down",
+    "wheel_of_fortune", "color_prediction", "lucky_dice",
+    "mini_roulette", "caribbean_stud_poker", "video_poker",
+    "red_dog", "crash", "lucky_salmon",
+    "lucky_double_salmon", "double_salmon_lucky",
+    "delishier", "greedy_king", "greedy_star", "greedy_dayan",
+]
+CASINO_BET_AMOUNTS = [10000, 20000, 50000, 100000, 500000, 1000000, 10000000]
+CASINO_ROUND_SECONDS = 20
+
+CASINO_GAME_OPTIONS = {
+    "roulette": [("red","Red",2,4740),("black","Black",2,4740),("green","Zero",36,270)],
+    "blackjack": [("player","Player",2,4200),("dealer","Dealer",2,4900),("tie","Tie",9,900)],
+    "baccarat": [("player","Player",2,4460),("banker","Banker",1.95,4580),("tie","Tie",9,960)],
+    "dragon_tiger": [("dragon","Dragon",2,4850),("tiger","Tiger",2,4850),("tie","Tie",9,300)],
+    "andar_bahar": [("andar","Andar",2,4900),("bahar","Bahar",2,4900)],
+    "sic_bo": [("big","Big",2,4600),("small","Small",2,4600),("triple","Triple",30,100)],
+    "poker": [("pair","Pair",2,4200),("two_pair","Two Pair",3,2400),("three_kind","Three of a Kind",5,1200)],
+    "slots": [("two","Two Match",2,3000),("three","Three Match",8,800),("jackpot","Jackpot",25,100)],
+    "hi_lo": [("higher","Higher",2,4700),("lower","Lower",2,4700),("same","Same",10,600)],
+    "keno": [("one","1 Match",2,5000),("two","2 Matches",4,2500),("three","3 Matches",10,800)],
+    "teen_patti": [("pair","Pair",2,4200),("sequence","Sequence",5,1500),("trail","Trail",20,200)],
+    "seven_up_seven_down": [("below","Below 7",2,4160),("seven","Exactly 7",5,1670),("above","Above 7",2,4160)],
+    "wheel_of_fortune": [("small","Small",2,4500),("medium","Medium",4,2500),("big","Big",8,1000)],
+    "color_prediction": [("red","Red",2,4750),("green","Green",5,1000),("violet","Violet",4,1250)],
+    "lucky_dice": [("odd","Odd",2,4750),("even","Even",2,4750),("six","Six",5,1670)],
+    "mini_roulette": [("red","Red",2,4500),("black","Black",2,4500),("zero","Zero",18,500)],
+    "caribbean_stud_poker": [("pair_plus","Pair+",2,4200),("flush_plus","Flush+",5,1000),("straight_flush","Straight Flush",25,100)],
+    "video_poker": [("pair","Jacks or Better",2,2500),("two_pair","Two Pair",3,1300),("full_house","Full House",8,300)],
+    "red_dog": [("spread_1","Spread 1",2,3000),("spread_2","Spread 2",3,2500),("spread_3","Spread 3+",5,1500)],
+    "crash": [("x15","1.5x",1.5,6500),("x2","2x",2,4500),("x5","5x",5,1800)],
+    "lucky_salmon": [("red","Red Salmon",2,4500),("blue","Blue Salmon",2,4500),("gold","Golden Salmon",8,500)],
+    "lucky_double_salmon": [("red","Red Pair",3,2500),("blue","Blue Pair",3,2500),("gold","Golden Pair",12,300)],
+    "double_salmon_lucky": [("red","Red Double",3,2500),("blue","Blue Double",3,2500),("gold","Golden Double",12,300)],
+    "delishier": [("low","Low",2,4500),("mid","Middle",3,3000),("high","High",5,1500)],
+    "greedy_king": [("king","King",3,2500),("queen","Queen",2,4000),("joker","Joker",8,500)],
+    "greedy_star": [("one_star","1 Star",2,4500),("two_star","2 Stars",4,2000),("three_star","3 Stars",8,800)],
+    "greedy_dayan": [("low","Low",2,4500),("middle","Middle",3,3000),("high","High",5,1500)],
+}
+
+def _casino_option(game, selection):
+    return next((o for o in CASINO_GAME_OPTIONS.get(game, []) if o[0] == selection), None)
+
+
+
+
+@router.get("/games/casino/catalog")
+def casino_catalog():
+    return {
+        "success": True,
+        "round_seconds": CASINO_ROUND_SECONDS,
+        "bet_amounts": CASINO_BET_AMOUNTS,
+        "games": [
+            {
+                "id": game,
+                "name": game.replace("_", " ").title(),
+                "options": [{"id": o[0], "label": o[1]} for o in CASINO_GAME_OPTIONS[game]],
+            }
+            for game in CASINO_GAMES
+        ],
+    }
+
+
+@router.post("/games/casino/bet")
+def casino_place_bet(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+):
     user = _voice_authenticated_user(authorization)
     user_id = int(user["id"])
+    game = str(payload.get("game", "")).strip().lower()
+    request_id = str(payload.get("request_id", "")).strip()
+    try:
+        amount = int(payload.get("amount", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid bet amount")
 
-    # Theoretical RTP: (1000*2 + 400*5 + 200*10 + 100*20)/10000 = 80%.
-    outcome = secrets.randbelow(10000)
-    if outcome < 8300:
-        multiplier = 0
-    elif outcome < 9300:
-        multiplier = 2
-    elif outcome < 9700:
-        multiplier = 5
-    elif outcome < 9900:
-        multiplier = 10
-    else:
-        multiplier = 20
+    if game not in CASINO_GAMES:
+        raise HTTPException(400, "Unknown casino game")
+    if amount not in CASINO_BET_AMOUNTS:
+        raise HTTPException(400, "Bet amount is not allowed")
+    if not request_id or len(request_id) > 100:
+        raise HTTPException(400, "A unique request_id is required")
 
-    symbols = ["cherry", "lemon", "grape", "orange", "watermelon", "diamond"]
-    win_symbol = {
-        2: "cherry",
-        5: "lemon",
-        10: "grape",
-        20: "orange",
-    }.get(multiplier)
+    selection = str(payload.get("selection", "")).strip().lower()
+    if not selection:
+        selection = CASINO_GAME_OPTIONS[game][0][0]
+    if not _casino_option(game, selection):
+        raise HTTPException(400, "Invalid selection for this game")
 
-    grid = []
-    for row_index in range(3):
-        if win_symbol is not None and row_index == 1:
-            grid.append([win_symbol, win_symbol, win_symbol])
-            continue
-        row = [secrets.choice(symbols) for _ in range(3)]
-        while row[0] == row[1] == row[2]:
-            row = [secrets.choice(symbols) for _ in range(3)]
-        grid.append(row)
-
-    wins = []
-    if win_symbol is not None:
-        wins.append({
-            "row": 1,
-            "symbol": win_symbol,
-            "multiplier": multiplier,
-        })
-
-    payout = payload.bet * multiplier
     db = get_connection()
+    db.execute("""CREATE TABLE IF NOT EXISTS casino_bet_selections (
+        request_id TEXT PRIMARY KEY,
+        round_id TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        game TEXT NOT NULL,
+        selection TEXT NOT NULL,
+        amount INTEGER NOT NULL
+    )""")
+    now = int(time.time())
     try:
         db.execute("BEGIN IMMEDIATE")
 
-        # Idempotency: a retry returns the existing round, never debits again.
         previous = db.execute(
-            """SELECT round_id, bet, fruit_grid, multiplier, payout
-               FROM fruit_game_rounds
-               WHERE user_id = ? AND request_id = ?""",
+            "SELECT round_id, amount FROM casino_bet_entries "
+            "WHERE user_id = ? AND request_id = ?",
             (user_id, request_id),
         ).fetchone()
-
         if previous:
-            if int(previous["bet"]) != payload.bet:
-                raise HTTPException(
-                    409, "This request_id was already used with another bet"
-                )
-            wallet = db.execute(
-                "SELECT coins FROM wallets WHERE user_id = ?",
-                (user_id,),
+            round_row = db.execute(
+                "SELECT * FROM casino_active_rounds WHERE round_id = ?",
+                (previous["round_id"],),
             ).fetchone()
-            if wallet is None:
-                raise HTTPException(500, "Wallet not found")
-            old_grid = json.loads(previous["fruit_grid"])
-            old_multiplier = int(previous["multiplier"])
-            old_wins = []
-            for index, row in enumerate(old_grid):
-                if row[0] == row[1] == row[2]:
-                    old_wins.append({
-                        "row": index,
-                        "symbol": row[0],
-                        "multiplier": old_multiplier,
-                    })
+            wallet = db.execute(
+                "SELECT coins FROM wallets WHERE user_id = ?", (user_id,)
+            ).fetchone()
             db.commit()
             return {
-                "success": True,
-                "duplicate": True,
+                "success": True, "duplicate": True,
                 "round_id": previous["round_id"],
-                "bet": int(previous["bet"]),
-                "grid": old_grid,
-                "winning_lines": old_wins,
-                "multiplier": old_multiplier,
-                "payout": int(previous["payout"]),
-                "net_change": int(previous["payout"]) - int(previous["bet"]),
+                "bet_added": int(previous["amount"]),
+                "total_bet": int(round_row["total_bet"]),
+                "closes_at": int(round_row["closes_at"]),
                 "coins": int(wallet["coins"]),
-                "rtp_percent": 80,
             }
 
         db.execute(
-            "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
-            (user_id,),
+            "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)", (user_id,)
         )
-        debit = db.execute(
-            """UPDATE wallets SET coins = coins - ?
-               WHERE user_id = ? AND coins >= ?""",
-            (payload.bet, user_id, payload.bet),
-        )
-        if debit.rowcount != 1:
-            raise HTTPException(400, "Not enough coins")
+        wallet = db.execute(
+            "SELECT coins FROM wallets WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        if int(wallet["coins"]) < amount:
+            raise HTTPException(400, "Not enough Lovely Coins")
 
-        round_id = str(uuid.uuid4())
+        active = db.execute(
+            "SELECT * FROM casino_active_rounds "
+            "WHERE user_id = ? AND game = ? AND status = 'open'",
+            (user_id, game),
+        ).fetchone()
+
+        if active and now >= int(active["closes_at"]):
+            raise HTTPException(409, "Betting closed; resolve this round first")
+
+        if not active:
+            round_id = str(uuid.uuid4())
+            db.execute(
+                """INSERT INTO casino_active_rounds
+                   (round_id, user_id, game, total_bet, status, opened_at, closes_at)
+                   VALUES (?, ?, ?, 0, 'open', ?, ?)""",
+                (round_id, user_id, game, now, now + CASINO_ROUND_SECONDS),
+            )
+        else:
+            round_id = active["round_id"]
+
         db.execute(
-            """INSERT INTO fruit_game_rounds
-               (round_id, user_id, bet, fruit_grid, multiplier, payout, request_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (
-                round_id, user_id, payload.bet, json.dumps(grid),
-                multiplier, payout, request_id,
-            ),
+            "UPDATE wallets SET coins = coins - ? WHERE user_id = ?",
+            (amount, user_id),
+        )
+        db.execute(
+            "UPDATE casino_active_rounds SET total_bet = total_bet + ? "
+            "WHERE round_id = ?",
+            (amount, round_id),
+        )
+        db.execute(
+            """INSERT INTO casino_bet_entries
+               (round_id, user_id, request_id, amount)
+               VALUES (?, ?, ?, ?)""",
+            (round_id, user_id, request_id, amount),
+        )
+        db.execute(
+            """INSERT INTO casino_bet_selections
+               (request_id, round_id, user_id, game, selection, amount)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (request_id, round_id, user_id, game, selection, amount),
         )
         db.execute(
             """INSERT INTO transactions
                (user_id, transaction_type, amount, currency, description)
-               VALUES (?, 'fruit_game_bet', ?, 'coins', ?)""",
-            (user_id, payload.bet, f"Fruit game bet | Round {round_id}"),
+               VALUES (?, 'casino_bet', ?, 'coins', ?)""",
+            (user_id, amount, f"Casino bet: {game}"),
         )
+        round_row = db.execute(
+            "SELECT total_bet, closes_at FROM casino_active_rounds WHERE round_id = ?",
+            (round_id,),
+        ).fetchone()
+        new_balance = int(wallet["coins"]) - amount
+        db.commit()
+        return {
+            "success": True, "duplicate": False,
+            "round_id": round_id, "game": game,
+            "bet_added": amount,
+            "total_bet": int(round_row["total_bet"]),
+            "closes_at": int(round_row["closes_at"]),
+            "seconds_left": max(0, int(round_row["closes_at"]) - now),
+            "coins": new_balance,
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except sqlite3.IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Bet request already processed or round conflict")
+    except Exception:
+        db.rollback()
+        logger.exception("Casino bet failed")
+        raise HTTPException(500, "Could not place casino bet")
+    finally:
+        db.close()
 
-        if payout > 0:
+
+@router.post("/games/casino/resolve")
+def casino_resolve_round(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    user_id = int(user["id"])
+    round_id = str(payload.get("round_id", "")).strip()
+    if not round_id:
+        raise HTTPException(400, "round_id is required")
+
+    db = get_connection()
+    now = int(time.time())
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT * FROM casino_active_rounds WHERE round_id = ? AND user_id = ?",
+            (round_id, user_id),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Round not found")
+
+        if row["status"] == "resolved":
+            wallet = db.execute(
+                "SELECT coins FROM wallets WHERE user_id = ?", (user_id,)
+            ).fetchone()
+            db.commit()
+            return {
+                "success": True, "resolved": True, "duplicate": True,
+                "round_id": round_id, "outcome": json.loads(row["outcome_json"]),
+                "total_bet": int(row["total_bet"]),
+                "payout": int(row["payout"]), "coins": int(wallet["coins"]),
+            }
+
+        seconds_left = int(row["closes_at"]) - now
+        if seconds_left > 0:
+            db.commit()
+            return {
+                "success": True, "resolved": False,
+                "seconds_left": seconds_left, "round_id": round_id,
+            }
+
+        bets = db.execute(
+            """SELECT selection, amount FROM casino_bet_selections
+               WHERE round_id = ? AND user_id = ? ORDER BY rowid""",
+            (round_id, user_id),
+        ).fetchall()
+        if not bets:
+            raise HTTPException(409, "Round has no saved selections")
+
+        bet_results = []
+        payout = 0
+        for bet in bets:
+            option = _casino_option(row["game"], bet["selection"])
+            if option is None:
+                raise HTTPException(409, "Invalid saved game selection")
+            selection, label, multiplier, chance = option
+            won = secrets.randbelow(10000) < chance
+            bet_payout = int(int(bet["amount"]) * multiplier) if won else 0
+            payout += bet_payout
+            bet_results.append({
+                "selection": selection,
+                "label": label,
+                "result": "win" if won else "loss",
+                "multiplier": multiplier if won else 0,
+                "bet": int(bet["amount"]),
+                "payout": bet_payout,
+            })
+
+        total_bet = int(row["total_bet"])
+        outcome = {
+            "label": "Round complete",
+            "bets": bet_results,
+            "total_bet": total_bet,
+            "payout": payout,
+        }
+
+        if payout:
             db.execute(
                 "UPDATE wallets SET coins = coins + ? WHERE user_id = ?",
                 (payout, user_id),
@@ -2122,280 +2486,336 @@ def play_fruit_game(
             db.execute(
                 """INSERT INTO transactions
                    (user_id, transaction_type, amount, currency, description)
-                   VALUES (?, 'fruit_game_win', ?, 'coins', ?)""",
-                (user_id, payout, f"Fruit game win {multiplier}x | Round {round_id}"),
+                   VALUES (?, 'casino_win', ?, 'coins', ?)""",
+                (user_id, payout, f"Casino payout: {row['game']}"),
             )
 
-        balance = db.execute(
-            "SELECT coins FROM wallets WHERE user_id = ?",
-            (user_id,),
-        ).fetchone()["coins"]
+        db.execute(
+            """UPDATE casino_active_rounds
+               SET status = 'resolved', outcome_json = ?, payout = ?, resolved_at = ?
+               WHERE round_id = ? AND status = 'open'""",
+            (json.dumps(outcome), payout, now, round_id),
+        )
+        wallet = db.execute(
+            "SELECT coins FROM wallets WHERE user_id = ?", (user_id,)
+        ).fetchone()
         db.commit()
-
         return {
-            "success": True,
-            "duplicate": False,
-            "round_id": round_id,
-            "bet": payload.bet,
-            "grid": grid,
-            "winning_lines": wins,
-            "multiplier": multiplier,
-            "payout": payout,
-            "net_change": payout - payload.bet,
-            "coins": int(balance),
-            "rtp_percent": 80,
+            "success": True, "resolved": True, "duplicate": False,
+            "round_id": round_id, "game": row["game"],
+            "total_bet": total_bet, "payout": payout,
+            "net": payout - total_bet, "outcome": outcome,
+            "coins": int(wallet["coins"]),
         }
     except HTTPException:
         db.rollback()
         raise
     except Exception:
         db.rollback()
-        logger.exception("Fruit game round failed")
-        raise HTTPException(500, "Could not complete game round")
+        logger.exception("Casino round resolution failed")
+        raise HTTPException(500, "Could not resolve casino round")
     finally:
         db.close()
 
-class CasinoGamePlayRequest(BaseModel):
-    game: str
-    bet: int
-    request_id: str
-    choice: str | None = None
-    target: float | None = None
 
-
-
-def _casino_deck():
-    deck = [
-        {"rank": rank, "suit": suit}
-        for suit in ["♠", "♥", "♦", "♣"]
-        for rank in range(2, 15)
-    ]
-    secrets.SystemRandom().shuffle(deck)
-    return deck
-
-
-def _casino_hand_value(cards):
-    ranks = sorted((c["rank"] for c in cards), reverse=True)
-    counts = {}
-    for rank in ranks:
-        counts[rank] = counts.get(rank, 0) + 1
-    groups = sorted(((count, rank) for rank, count in counts.items()),
-                    reverse=True)
-    flush = len({c["suit"] for c in cards}) == 1
-    unique = sorted(set(ranks))
-    straight_high = 0
-    if len(unique) == 5:
-        if unique[-1] - unique[0] == 4:
-            straight_high = unique[-1]
-        elif unique == [2, 3, 4, 5, 14]:
-            straight_high = 5
-    if flush and straight_high:
-        return (8, straight_high)
-    if groups[0][0] == 4:
-        return (7, groups[0][1], groups[1][1])
-    if groups[0][0] == 3 and groups[1][0] == 2:
-        return (6, groups[0][1], groups[1][1])
-    if flush:
-        return (5, *ranks)
-    if straight_high:
-        return (4, straight_high)
-    if groups[0][0] == 3:
-        return (3, groups[0][1], *sorted(
-            (r for r in ranks if r != groups[0][1]), reverse=True))
-    if groups[0][0] == 2 and groups[1][0] == 2:
-        pairs = sorted((g[1] for g in groups if g[0] == 2), reverse=True)
-        kicker = next(r for r in ranks if r not in pairs)
-        return (2, *pairs, kicker)
-    if groups[0][0] == 2:
-        pair = groups[0][1]
-        return (1, pair, *sorted((r for r in ranks if r != pair),
-                                 reverse=True))
-    return (0, *ranks)
-
-
-def _casino_blackjack_value(cards):
-    total = 0
-    aces = 0
-    for card in cards:
-        rank = card["rank"]
-        if rank == 14:
-            total += 11
-            aces += 1
-        else:
-            total += min(rank, 10)
-    while total > 21 and aces:
-        total -= 10
-        aces -= 1
-    return total
-
-
-@router.post("/games/casino/play")
-def play_casino_game(
-    payload: CasinoGamePlayRequest,
+@router.get("/games/casino/round")
+def casino_current_round(
+    game: str,
     authorization: str | None = Header(default=None),
 ):
-    game = str(payload.game or "").strip().lower()
-    allowed_games = {"slots", "roulette", "blackjack", "poker", "plinko", "crash"}
-    allowed_bets = {1000, 10000, 50000, 100000}
-
-    if game not in allowed_games:
-        raise HTTPException(400, "Unknown casino game")
-    if payload.bet not in allowed_bets:
-        raise HTTPException(400, "Invalid bet amount")
-    try:
-        request_id = str(uuid.UUID(payload.request_id))
-    except (ValueError, TypeError, AttributeError):
-        raise HTTPException(400, "A valid request_id UUID is required")
-
-    if game == "roulette" and payload.choice not in {"red", "black", "green"}:
-        raise HTTPException(400, "Roulette choice must be red, black or green")
-    if game == "crash" and payload.target not in {1.2, 1.5, 2.0, 3.0, 5.0}:
-        raise HTTPException(400, "Invalid Crash target multiplier")
-
     user = _voice_authenticated_user(authorization)
-    user_id = int(user["id"])
-    outcome = {}
-    payout = 0
-    multiplier = 0.0
+    game = game.strip().lower()
+    if game not in CASINO_GAMES:
+        raise HTTPException(400, "Unknown casino game")
+    db = get_connection()
+    try:
+        row = db.execute(
+            """SELECT round_id, game, total_bet, status, opened_at, closes_at,
+                      outcome_json, payout
+               FROM casino_active_rounds
+               WHERE user_id = ? AND game = ?
+               ORDER BY opened_at DESC LIMIT 1""",
+            (int(user["id"]), game),
+        ).fetchone()
+        if not row:
+            return {"success": True, "round": None}
+        result = dict(row)
+        result["seconds_left"] = max(0, int(result["closes_at"]) - int(time.time()))
+        result["outcome"] = json.loads(result.pop("outcome_json"))
+        return {"success": True, "round": result}
+    finally:
+        db.close()
 
-    if game == "slots":
-        roll = secrets.randbelow(10000)
-        multiplier = (0 if roll < 7600 else 2 if roll < 9100 else
-                      5 if roll < 9700 else 10 if roll < 9900 else 15)
-        symbols = ["🍒", "🍋", "🍇", "🍊", "💎", "🍉"]
-        outcome = {"symbols": [secrets.choice(symbols) for _ in range(3)],
-                   "multiplier": multiplier}
-    elif game == "roulette":
-        number = secrets.randbelow(37)
-        red_numbers = {1, 3, 5, 7, 9, 12, 14, 16, 18,
-                       19, 21, 23, 25, 27, 30, 32, 34, 36}
-        color = ("green" if number == 0 else
-                 "red" if number in red_numbers else "black")
-        multiplier = 36 if color == "green" else 2 if color == payload.choice else 0
-        outcome = {"number": number, "color": color,
-                   "choice": payload.choice, "multiplier": multiplier}
-    elif game == "plinko":
-        roll = secrets.randbelow(10000)
-        multiplier = (0 if roll < 4800 else 1 if roll < 7300 else
-                      2 if roll < 8800 else 3 if roll < 9600 else 4)
-        outcome = {"slot": secrets.randbelow(9), "multiplier": multiplier}
-    elif game == "crash":
-        roll = secrets.randbelow(10000)
-        crash_point = max(1.0, (0.97 * 10000) / (10000 - roll))
-        crash_point = round(crash_point, 3)
-        multiplier = float(payload.target) if crash_point >= payload.target else 0
-        outcome = {"crash_point": crash_point, "target": payload.target,
-                   "multiplier": multiplier}
-    elif game == "blackjack":
-        deck = _casino_deck()
-        player = [deck.pop(), deck.pop()]
-        dealer = [deck.pop(), deck.pop()]
-        while _casino_blackjack_value(dealer) < 17 and deck:
-            dealer.append(deck.pop())
-        pv, dv = _casino_blackjack_value(player), _casino_blackjack_value(dealer)
-        if pv <= 21 and (dv > 21 or pv > dv):
-            multiplier = 2
-        elif pv == dv:
-            multiplier = 1
-        outcome = {"player": player, "dealer": dealer,
-                   "player_total": pv, "dealer_total": dv,
-                   "result": "win" if multiplier == 2 else
-                             "push" if multiplier == 1 else "loss",
-                   "multiplier": multiplier}
-    elif game == "poker":
-        deck = _casino_deck()
-        player = [deck.pop() for _ in range(5)]
-        dealer = [deck.pop() for _ in range(5)]
-        pv, dv = _casino_hand_value(player), _casino_hand_value(dealer)
-        multiplier = 2 if pv > dv else 1 if pv == dv else 0
-        outcome = {"player": player, "dealer": dealer,
-                   "player_hand_rank": pv[0], "dealer_hand_rank": dv[0],
-                   "result": "win" if multiplier == 2 else
-                             "push" if multiplier == 1 else "loss",
-                   "multiplier": multiplier}
 
-    payout = int(payload.bet * multiplier)
+# Casino API Pro Sandbox wallet callbacks.
+# Provider PKR amounts are converted to Lovely Coins at 1 PKR = 10,000 coins.
+
+def _casino_error(status: int, code: str):
+    return JSONResponse(status_code=status, content={"error_code": code})
+
+
+async def _casino_read_callback(request: Request):
+    secret = os.environ.get("CASINO_WALLET_HMAC_SECRET", "").strip()
+    if not secret:
+        return None, _casino_error(503, "wallet_not_configured")
+
+    timestamp = request.headers.get("x-timestamp", "").strip()
+    signature = request.headers.get("x-signature", "").strip().lower()
+    if not timestamp.isdigit() or not signature:
+        return None, _casino_error(401, "invalid_signature")
+
+    if abs(int(time.time()) - int(timestamp)) > 300:
+        return None, _casino_error(401, "expired_signature")
+
+    raw = await request.body()
+    signed = timestamp.encode() + b"." + raw
+    expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, signature):
+        return None, _casino_error(401, "invalid_signature")
+
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            raise ValueError("JSON object required")
+    except (ValueError, UnicodeDecodeError):
+        return None, _casino_error(400, "invalid_request")
+
+    if str(data.get("currency") or "").upper() != "PKR":
+        return None, _casino_error(422, "currency_mismatch")
+
+    player_id = str(data.get("playerId") or "").strip()
+    if not player_id:
+        return None, _casino_error(400, "invalid_request")
+
+    return (data, player_id), None
+
+
+def _casino_amount_to_coins(value):
+    if not isinstance(value, (str, int, Decimal)) or isinstance(value, bool):
+        raise ValueError("Invalid amount")
+    raw = str(value).strip()
+    if not re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.[0-9]{1,2})?", raw):
+        raise ValueError("Invalid amount")
+    amount = Decimal(raw)
+    if not amount.is_finite() or amount <= 0:
+        raise ValueError("Invalid amount")
+    coins = amount * Decimal(10000)
+    if coins != coins.to_integral_value():
+        raise ValueError("Invalid amount")
+    return int(coins)
+
+
+def _casino_balance_text(coins: int):
+    return format(Decimal(coins) / Decimal(10000), ".2f")
+
+
+@router.post("/casino/wallet/balance")
+async def casino_wallet_balance(request: Request):
+    parsed, error = await _casino_read_callback(request)
+    if error:
+        return error
+    data, player_id = parsed
+
+    db = get_connection()
+    try:
+        user = db.execute(
+            "SELECT id FROM users WHERE user_code = ?", (player_id,)
+        ).fetchone()
+        if user is None:
+            return _casino_error(403, "player_not_found")
+
+        wallet = db.execute(
+            "SELECT coins FROM wallets WHERE user_id = ?", (int(user["id"]),)
+        ).fetchone()
+        coins = int(wallet["coins"]) if wallet else 0
+        return {
+            "balance": _casino_balance_text(coins),
+            "currency": "PKR",
+            "reference": "lovelysky-balance",
+        }
+    finally:
+        db.close()
+
+
+async def _casino_move_wallet(request: Request, action: str):
+    parsed, error = await _casino_read_callback(request)
+    if error:
+        return error
+    data, player_id = parsed
+
+    transaction_id = str(data.get("transactionId") or "").strip()
+    reference_id = str(data.get("referenceTransactionId") or "").strip() or None
+    if not transaction_id or len(transaction_id) > 200:
+        return _casino_error(400, "invalid_request")
+
+    supplied_amount = data.get("amount")
+    try:
+        if action in ("debit", "credit", "refund") and supplied_amount is None:
+            raise ValueError("Amount required")
+        requested_coins = (
+            _casino_amount_to_coins(supplied_amount)
+            if supplied_amount is not None else None
+        )
+    except (ValueError, InvalidOperation):
+        return _casino_error(400, "invalid_request")
+
     db = get_connection()
     try:
         db.execute("BEGIN IMMEDIATE")
-        previous = db.execute(
-            """SELECT round_id, game, bet, outcome_json, payout
-               FROM casino_game_rounds WHERE user_id=? AND request_id=?""",
-            (user_id, request_id),
-        ).fetchone()
 
+        user = db.execute(
+            "SELECT id FROM users WHERE user_code = ?", (player_id,)
+        ).fetchone()
+        if user is None:
+            db.rollback()
+            return _casino_error(403, "player_not_found")
+        user_id = int(user["id"])
+
+        # Provider retries must never move the same transaction twice.
+        previous = db.execute(
+            "SELECT * FROM casino_wallet_transactions WHERE transaction_id = ?",
+            (transaction_id,),
+        ).fetchone()
         if previous:
-            if previous["game"] != game or int(previous["bet"]) != payload.bet:
-                raise HTTPException(409, "This request_id was already used")
-            wallet = db.execute(
-                "SELECT coins FROM wallets WHERE user_id=?", (user_id,)
-            ).fetchone()
-            if wallet is None:
-                raise HTTPException(500, "Wallet not found")
-            saved = json.loads(previous["outcome_json"])
+            same = (
+                int(previous["user_id"]) == user_id
+                and previous["player_id"] == player_id
+                and previous["action"] == action
+                and (
+                    requested_coins is None
+                    or int(previous["amount_coins"]) == requested_coins
+                )
+                and (
+                    action not in ("refund", "rollback")
+                    or previous["reference_transaction_id"] == reference_id
+                )
+            )
+            if not same:
+                db.rollback()
+                return _casino_error(409, "transaction_id_conflict")
+            balance = int(previous["balance_after"])
             db.commit()
             return {
-                "success": True, "duplicate": True,
-                "round_id": previous["round_id"], "game": game,
-                "bet": int(previous["bet"]), "outcome": saved,
-                "multiplier": saved["multiplier"],
-                "payout": int(previous["payout"]),
-                "net_change": int(previous["payout"]) - payload.bet,
-                "coins": int(wallet["coins"]),
+                "balance": _casino_balance_text(balance),
+                "currency": "PKR",
+                "reference": transaction_id,
+                "duplicate": True,
             }
 
-        db.execute("INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
-                   (user_id,))
-        debit = db.execute(
-            """UPDATE wallets SET coins=coins-?
-               WHERE user_id=? AND coins>=?""",
-            (payload.bet, user_id, payload.bet),
-        )
-        if debit.rowcount != 1:
-            raise HTTPException(400, "Not enough coins")
-
-        round_id = str(uuid.uuid4())
-        outcome["multiplier"] = multiplier
         db.execute(
-            """INSERT INTO casino_game_rounds
-               (round_id,user_id,game,bet,outcome_json,payout,request_id)
-               VALUES (?,?,?,?,?,?,?)""",
-            (round_id, user_id, game, payload.bet,
-             json.dumps(outcome), payout, request_id),
+            "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)", (user_id,)
+        )
+        wallet = db.execute(
+            "SELECT coins FROM wallets WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        current = int(wallet["coins"])
+
+        if action in ("refund", "rollback"):
+            if not reference_id:
+                db.rollback()
+                return _casino_error(400, "invalid_request")
+
+            original = db.execute(
+                """SELECT * FROM casino_wallet_transactions
+                   WHERE transaction_id = ? AND user_id = ?""",
+                (reference_id, user_id),
+            ).fetchone()
+            if original is None or original["action"] not in ("debit", "credit"):
+                db.rollback()
+                return _casino_error(404, "transaction_not_found")
+
+            original_coins = int(original["amount_coins"])
+            if requested_coins is not None and requested_coins != original_coins:
+                db.rollback()
+                return _casino_error(422, "invalid_request")
+            if action == "refund" and original["action"] != "debit":
+                db.rollback()
+                return _casino_error(422, "invalid_request")
+
+            reversed_row = db.execute(
+                """SELECT transaction_id FROM casino_wallet_transactions
+                   WHERE reference_transaction_id = ?""",
+                (reference_id,),
+            ).fetchone()
+            if reversed_row:
+                db.rollback()
+                return _casino_error(409, "already_reversed")
+
+            amount_coins = original_coins
+            if action == "refund" or original["action"] == "debit":
+                delta = amount_coins
+                transaction_type = "casino_refund" if action == "refund" else "casino_rollback"
+            else:
+                delta = -amount_coins
+                transaction_type = "casino_rollback_debit"
+        else:
+            amount_coins = requested_coins
+            delta = -amount_coins if action == "debit" else amount_coins
+            transaction_type = "casino_bet" if action == "debit" else "casino_win"
+
+        new_balance = current + delta
+        if new_balance < 0:
+            db.rollback()
+            return _casino_error(402, "insufficient_funds")
+
+        db.execute(
+            "UPDATE wallets SET coins = ? WHERE user_id = ?",
+            (new_balance, user_id),
         )
         db.execute(
             """INSERT INTO transactions
-               (user_id,transaction_type,amount,currency,description)
-               VALUES (?, 'casino_bet', ?, 'coins', ?)""",
-            (user_id, payload.bet, f"{game.title()} bet | Round {round_id}"),
+               (user_id, transaction_type, amount, currency, description)
+               VALUES (?, ?, ?, 'coins', ?)""",
+            (
+                user_id,
+                transaction_type,
+                amount_coins,
+                "Casino Sandbox " + action,
+            ),
         )
-        if payout:
-            db.execute("UPDATE wallets SET coins=coins+? WHERE user_id=?",
-                       (payout, user_id))
-            db.execute(
-                """INSERT INTO transactions
-                   (user_id,transaction_type,amount,currency,description)
-                   VALUES (?, 'casino_win', ?, 'coins', ?)""",
-                (user_id, payout,
-                 f"{game.title()} payout {multiplier}x | Round {round_id}"),
-            )
-        balance = db.execute(
-            "SELECT coins FROM wallets WHERE user_id=?", (user_id,)
-        ).fetchone()["coins"]
+        db.execute(
+            """INSERT INTO casino_wallet_transactions
+               (transaction_id, user_id, player_id, action, amount_coins,
+                delta_coins, balance_after, reference_transaction_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                transaction_id, user_id, player_id, action, amount_coins,
+                delta, new_balance, reference_id,
+            ),
+        )
         db.commit()
         return {
-            "success": True, "duplicate": False,
-            "round_id": round_id, "game": game, "bet": payload.bet,
-            "outcome": outcome, "multiplier": multiplier,
-            "payout": payout, "net_change": payout - payload.bet,
-            "coins": int(balance),
+            "balance": _casino_balance_text(new_balance),
+            "currency": "PKR",
+            "reference": transaction_id,
+            "duplicate": False,
         }
-    except HTTPException:
+    except sqlite3.IntegrityError:
         db.rollback()
-        raise
+        return _casino_error(409, "already_reversed")
     except Exception:
         db.rollback()
-        logger.exception("Casino game round failed")
-        raise HTTPException(500, "Could not complete casino game round")
+        logger.exception("Casino Sandbox wallet callback failed")
+        return _casino_error(500, "wallet_error")
     finally:
         db.close()
+
+
+@router.post("/casino/wallet/debit")
+async def casino_wallet_debit(request: Request):
+    return await _casino_move_wallet(request, "debit")
+
+
+@router.post("/casino/wallet/credit")
+async def casino_wallet_credit(request: Request):
+    return await _casino_move_wallet(request, "credit")
+
+
+@router.post("/casino/wallet/refund")
+async def casino_wallet_refund(request: Request):
+    return await _casino_move_wallet(request, "refund")
+
+
+@router.post("/casino/wallet/rollback")
+async def casino_wallet_rollback(request: Request):
+    return await _casino_move_wallet(request, "rollback")
