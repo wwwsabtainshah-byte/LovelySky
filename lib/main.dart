@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -3367,69 +3368,73 @@ Future<void> _openLovelyVoiceRoomGiftStore(
                           ? Center(
                               child: Text(
                                 'No $selectedCategory gifts available yet.',
-                                style: const TextStyle(color: Color(0xFF9B8AAE)),
+                                style: const TextStyle(
+                                  color: Color(0xFF9B8AAE),
+                                ),
                               ),
                             )
                           : GridView.builder(
-                          itemCount: visibleGifts.length,
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 4,
-                                crossAxisSpacing: 10,
-                                mainAxisSpacing: 10,
-                                childAspectRatio: 1.08,
-                              ),
-                          itemBuilder: (ctx, index) {
-                            final gift = visibleGifts[index];
-                            final code = '${gift['code']}';
-                            final price =
-                                int.tryParse('${gift['coin_cost']}') ?? 0;
-                            final active = giftCode == code;
-                            return InkWell(
-                              borderRadius: BorderRadius.circular(15),
-                              onTap: () => setSheetState(() => giftCode = code),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: active
-                                      ? const Color(0xFF63358B)
-                                      : const Color(0xFF281A45),
-                                  borderRadius: BorderRadius.circular(15),
-                                  border: Border.all(
-                                    color: active
-                                        ? const Color(0xFF438EDB)
-                                        : const Color(0xFF49345F),
-                                    width: active ? 2 : 1,
+                              itemCount: visibleGifts.length,
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 4,
+                                    crossAxisSpacing: 10,
+                                    mainAxisSpacing: 10,
+                                    childAspectRatio: 1.08,
                                   ),
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      '${gift['emoji'] ?? '🎁'}',
-                                      style: const TextStyle(fontSize: 28),
-                                    ),
-                                    Text(
-                                      '${gift['name']}',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFFF4E9FF),
+                              itemBuilder: (ctx, index) {
+                                final gift = visibleGifts[index];
+                                final code = '${gift['code']}';
+                                final price =
+                                    int.tryParse('${gift['coin_cost']}') ?? 0;
+                                final active = giftCode == code;
+                                return InkWell(
+                                  borderRadius: BorderRadius.circular(15),
+                                  onTap: () =>
+                                      setSheetState(() => giftCode = code),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: active
+                                          ? const Color(0xFF63358B)
+                                          : const Color(0xFF281A45),
+                                      borderRadius: BorderRadius.circular(15),
+                                      border: Border.all(
+                                        color: active
+                                            ? const Color(0xFF438EDB)
+                                            : const Color(0xFF49345F),
+                                        width: active ? 2 : 1,
                                       ),
                                     ),
-                                    Text(
-                                      '$price Coins',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: Color(0xFFC9B5E8),
-                                      ),
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          '${gift['emoji'] ?? '🎁'}',
+                                          style: const TextStyle(fontSize: 28),
+                                        ),
+                                        Text(
+                                          '${gift['name']}',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFFF4E9FF),
+                                          ),
+                                        ),
+                                        Text(
+                                          '$price Coins',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Color(0xFFC9B5E8),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
                     const SizedBox(height: 10),
                     Row(
                       children: [
@@ -4081,9 +4086,9 @@ class _ProfilePageState extends State<ProfilePage> {
       await showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
-constraints: BoxConstraints(
-  maxHeight: MediaQuery.of(context).size.height * 0.38,
-),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.38,
+        ),
         backgroundColor: Colors.white,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -4724,13 +4729,10 @@ constraints: BoxConstraints(
   }
 
   @override
-
-
   Widget build(BuildContext context) {
     void comingSoon(String name) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$name coming soon')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('$name coming soon')));
     }
 
     Widget actionButton({
@@ -4781,7 +4783,10 @@ constraints: BoxConstraints(
                           borderRadius: BorderRadius.all(Radius.circular(8)),
                         ),
                         child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 2,
+                          ),
                           child: Text(
                             'New',
                             style: TextStyle(
@@ -4835,25 +4840,32 @@ constraints: BoxConstraints(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title,
-                          style: const TextStyle(
-                            color: Color(0xFF77768B),
-                            fontSize: 12,
-                          )),
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Color(0xFF77768B),
+                          fontSize: 12,
+                        ),
+                      ),
                       const SizedBox(height: 3),
-                      Text(value,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF25152F),
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                          )),
+                      Text(
+                        value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF25152F),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded,
-                    color: Colors.black54, size: 24),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Colors.black54,
+                  size: 24,
+                ),
               ],
             ),
           ),
@@ -4866,11 +4878,7 @@ constraints: BoxConstraints(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFFE0F4FF),
-            Color(0xFFBDE5FF),
-            Color(0xFFEAF7FF),
-          ],
+          colors: [Color(0xFFE0F4FF), Color(0xFFBDE5FF), Color(0xFFEAF7FF)],
         ),
       ),
       child: SafeArea(
@@ -4919,8 +4927,11 @@ constraints: BoxConstraints(
                               ? NetworkImage(profilePhoto)
                               : null,
                           child: profilePhoto.isEmpty
-                              ? const Icon(Icons.person,
-                                  size: 45, color: Color(0xFF7435A9))
+                              ? const Icon(
+                                  Icons.person,
+                                  size: 45,
+                                  color: Color(0xFF7435A9),
+                                )
                               : null,
                         ),
                       ),
@@ -4942,11 +4953,17 @@ constraints: BoxConstraints(
                             const SizedBox(height: 8),
                             const Row(
                               children: [
-                                Icon(Icons.diamond,
-                                    color: Color(0xFF7DE5FF), size: 28),
+                                Icon(
+                                  Icons.diamond,
+                                  color: Color(0xFF7DE5FF),
+                                  size: 28,
+                                ),
                                 SizedBox(width: 13),
-                                Icon(Icons.female,
-                                    color: Color(0xFFFF8ACB), size: 25),
+                                Icon(
+                                  Icons.female,
+                                  color: Color(0xFFFF8ACB),
+                                  size: 25,
+                                ),
                               ],
                             ),
                             const SizedBox(height: 7),
@@ -4977,16 +4994,22 @@ constraints: BoxConstraints(
                                     ),
                                   ),
                                   const SizedBox(width: 7),
-                                  const Icon(Icons.copy,
-                                      color: Colors.white, size: 17),
+                                  const Icon(
+                                    Icons.copy,
+                                    color: Colors.white,
+                                    size: 17,
+                                  ),
                                 ],
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const Icon(Icons.chevron_right,
-                          color: Colors.white, size: 30),
+                      const Icon(
+                        Icons.chevron_right,
+                        color: Colors.white,
+                        size: 30,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 25),
@@ -5053,8 +5076,11 @@ constraints: BoxConstraints(
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.workspace_premium,
-                        color: Color(0xFFFFE36B), size: 43),
+                    Icon(
+                      Icons.workspace_premium,
+                      color: Color(0xFFFFE36B),
+                      size: 43,
+                    ),
                     SizedBox(width: 10),
                     Text(
                       'Gimme VIP',
@@ -5072,8 +5098,7 @@ constraints: BoxConstraints(
                         style: TextStyle(color: Colors.white, fontSize: 11),
                       ),
                     ),
-                    Icon(Icons.chevron_right,
-                        color: Colors.white, size: 27),
+                    Icon(Icons.chevron_right, color: Colors.white, size: 27),
                   ],
                 ),
               ),
@@ -5234,8 +5259,10 @@ constraints: BoxConstraints(
               Card(
                 color: Colors.white,
                 child: ListTile(
-                  leading: const Icon(Icons.account_balance_wallet,
-                      color: blue),
+                  leading: const Icon(
+                    Icons.account_balance_wallet,
+                    color: blue,
+                  ),
                   title: const Text('Owner Wallet'),
                   subtitle: const Text('Issue coins to a user ID'),
                   trailing: const Icon(Icons.chevron_right),
@@ -5264,7 +5291,6 @@ constraints: BoxConstraints(
       ),
     );
   }
-
 }
 
 class StatItem extends StatelessWidget {
@@ -5359,6 +5385,33 @@ class VoiceRoomScreen extends StatefulWidget {
 
   @override
   State<VoiceRoomScreen> createState() => _VoiceRoomScreenState();
+}
+
+class _RoomMemberBadge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _RoomMemberBadge({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0x665D3B91),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFB98BE8)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: const Color(0xFFFFD477), size: 12),
+          const SizedBox(width: 3),
+          Text(label, style: const TextStyle(color: Colors.white, fontSize: 9)),
+        ],
+      ),
+    );
+  }
 }
 
 class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
@@ -6055,6 +6108,254 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       orElse: () => <String, dynamic>{},
     );
 
+    if (seat['is_mine'] == true) {
+      await _showRoomMemberActions(number);
+      return;
+    }
+
+    if (seat['is_occupied'] != true) {
+      await _showRoomMemberActions(number);
+      return;
+    }
+
+    await _showRoomMemberCard(number, seat);
+  }
+
+  Future<void> _showRoomMemberCard(
+    int number,
+    Map<String, dynamic> member,
+  ) async {
+    if (!mounted) return;
+
+    final name = (member['display_name'] ?? member['name'] ?? 'Room Member')
+        .toString();
+    final code = (member['user_code'] ?? '').toString();
+    final photo = (member['profile_photo'] ?? '').toString();
+    final isMine = member['is_mine'] == true;
+    final canManage = roomRole == 'owner' || roomRole == 'admin';
+
+    Widget avatar() {
+      if (photo.startsWith('http://') || photo.startsWith('https://')) {
+        return ClipOval(
+          child: Image.network(
+            photo,
+            width: 86,
+            height: 86,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) =>
+                const Icon(Icons.person, size: 48, color: Colors.white),
+          ),
+        );
+      }
+
+      if (photo.startsWith('data:image') && photo.contains(',')) {
+        try {
+          return ClipOval(
+            child: Image.memory(
+              base64Decode(photo.substring(photo.indexOf(',') + 1)),
+              width: 86,
+              height: 86,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) =>
+                  const Icon(Icons.person, size: 48, color: Colors.white),
+            ),
+          );
+        } catch (_) {}
+      }
+
+      return const Icon(Icons.person, size: 48, color: Colors.white);
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => SafeArea(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(18, 13, 18, 22),
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF55218B), Color(0xFF17113F)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(27)),
+            border: Border(
+              top: BorderSide(color: Color(0xFFDDA8FF), width: 1.2),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white54,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Container(
+                    width: 94,
+                    height: 94,
+                    padding: const EdgeInsets.all(3),
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [Color(0xFFFF72C6), Color(0xFFFFD477)],
+                      ),
+                    ),
+                    child: CircleAvatar(
+                      backgroundColor: const Color(0xFF32145F),
+                      child: avatar(),
+                    ),
+                  ),
+                  const SizedBox(width: 15),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 19,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                        Text(
+                          'ID: $code',
+                          style: const TextStyle(
+                            color: Color(0xFFE5C9FF),
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 9),
+                        Wrap(
+                          spacing: 5,
+                          children: const [
+                            _RoomMemberBadge(
+                              icon: Icons.verified,
+                              label: 'Member',
+                            ),
+                            _RoomMemberBadge(
+                              icon: Icons.favorite,
+                              label: 'Lovely',
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 19),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(13),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF83C7), Color(0xFFFFC0DE)],
+                  ),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.card_giftcard, color: Color(0xFF70245D)),
+                    SizedBox(width: 9),
+                    Text(
+                      'Gifts & Member Collection',
+                      style: TextStyle(
+                        color: Color(0xFF70245D),
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Spacer(),
+                    Icon(Icons.favorite, color: Color(0xFF70245D)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 17),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        messageController.text = '@$code ';
+                        messageController.selection = TextSelection.collapsed(
+                          offset: messageController.text.length,
+                        );
+                      },
+                      icon: const Icon(Icons.alternate_email),
+                      label: const Text('@Ta'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Color(0xFFB98BE8)),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        openLovelyRoomGiftStore(
+                          context,
+                          roomId: widget.room['id'],
+                        );
+                      },
+                      icon: const Icon(Icons.card_giftcard),
+                      label: const Text('Gift'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF83C7),
+                        foregroundColor: const Color(0xFF42134E),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (canManage && !isMine) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _showRoomMemberActions(number);
+                    },
+                    icon: const Icon(Icons.admin_panel_settings),
+                    label: const Text('Manage Member'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Color(0xFFDDA8FF)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showRoomMemberActions(int number) async {
+    final seat = seats.firstWhere(
+      (item) => item['seat_number'] == number,
+      orElse: () => <String, dynamic>{},
+    );
+
     final canManage = roomRole == 'owner' || roomRole == 'admin';
     final occupied = seat['is_occupied'] == true;
     final locked = seat['is_locked'] == true;
@@ -6576,7 +6877,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: const Color(0xFF527B96), fontSize: 9),
+                  style: const TextStyle(
+                    color: const Color(0xFF527B96),
+                    fontSize: 9,
+                  ),
                 ),
               ],
             ),
@@ -6606,7 +6910,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                               : null,
                           child: ownerPhoto.startsWith('http')
                               ? null
-                              : const Icon(Icons.person, color: const Color(0xFF123B5A)),
+                              : const Icon(
+                                  Icons.person,
+                                  color: const Color(0xFF123B5A),
+                                ),
                         ),
                       ),
                       const SizedBox(width: 9),
@@ -6862,7 +7169,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                   ),
                                   title: const Text(
                                     'Room Information',
-                                    style: TextStyle(color: const Color(0xFF123B5A)),
+                                    style: TextStyle(
+                                      color: const Color(0xFF123B5A),
+                                    ),
                                   ),
                                   onTap: () {
                                     Navigator.pop(ctx);
@@ -6876,7 +7185,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                   ),
                                   title: const Text(
                                     'Leave Room',
-                                    style: TextStyle(color: const Color(0xFF123B5A)),
+                                    style: TextStyle(
+                                      color: const Color(0xFF123B5A),
+                                    ),
                                   ),
                                   onTap: () {
                                     Navigator.pop(ctx);
