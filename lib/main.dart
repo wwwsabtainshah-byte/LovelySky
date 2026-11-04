@@ -4725,356 +4725,537 @@ constraints: BoxConstraints(
 
   @override
 
+
   Widget build(BuildContext context) {
+    void comingSoon(String name) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$name coming soon')),
+      );
+    }
+
+    Widget actionButton({
+      required IconData icon,
+      required String label,
+      required Color color,
+      VoidCallback? onTap,
+      bool isNew = false,
+    }) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 3),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 49,
+                    height: 49,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [color, color.withOpacity(0.72)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(15),
+                      boxShadow: [
+                        BoxShadow(
+                          color: color.withOpacity(0.24),
+                          blurRadius: 9,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Icon(icon, color: Colors.white, size: 29),
+                  ),
+                  if (isNew)
+                    const Positioned(
+                      right: -10,
+                      top: -9,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Color(0xFF13B96B),
+                          borderRadius: BorderRadius.all(Radius.circular(8)),
+                        ),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          child: Text(
+                            'New',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  height: 1.2,
+                  color: Color(0xFF292238),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    Widget walletItem({
+      required IconData icon,
+      required String title,
+      required String value,
+      required Color color,
+      required VoidCallback onTap,
+    }) {
+      return Expanded(
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 5),
+            child: Row(
+              children: [
+                Icon(icon, color: color, size: 35),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: const TextStyle(
+                            color: Color(0xFF77768B),
+                            fontSize: 12,
+                          )),
+                      const SizedBox(height: 3),
+                      Text(value,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF25152F),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          )),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded,
+                    color: Colors.black54, size: 24),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Color(0xFFF4EAFE),
-            Color(0xFFEAF4FF),
-            Color(0xFFF8F5FF),
+            Color(0xFFE0F4FF),
+            Color(0xFFBDE5FF),
+            Color(0xFFEAF7FF),
           ],
         ),
       ),
       child: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+          padding: const EdgeInsets.fromLTRB(16, 15, 16, 28),
           children: [
-            pageTitle(
-              'My Profile',
-              subtitle: 'Your Lovely world',
-              trailing: roundIcon(Icons.settings_rounded),
-            ),
-
-            const SizedBox(height: 16),
-
-            // PREMIUM PROFILE HEADER
+            // Purple profile card
             Container(
-              padding: const EdgeInsets.all(22),
+              padding: const EdgeInsets.fromLTRB(19, 22, 19, 20),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFF410078),
+                    Color(0xFF7900D9),
+                    Color(0xFF31005D),
+                  ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF54258A),
-                    Color(0xFF8549C5),
-                    Color(0xFF438EDB),
-                  ],
                 ),
-                borderRadius: BorderRadius.circular(28),
+                borderRadius: BorderRadius.circular(27),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF63358B).withOpacity(0.25),
-                    blurRadius: 20,
-                    offset: const Offset(0, 9),
+                    color: const Color(0xFF6300A8).withOpacity(0.25),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
                   ),
                 ],
               ),
               child: Column(
                 children: [
-                  Align(
-                    alignment: Alignment.topRight,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.18),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        '💎 LOVELY MEMBER',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  Container(
-                    width: 104,
-                    height: 104,
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: const Color(0xFFFFD978),
-                        width: 3,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.18),
-                          blurRadius: 14,
-                        ),
-                      ],
-                    ),
-                    child: CircleAvatar(
-                      backgroundColor: Colors.white,
-                      backgroundImage: profilePhoto.isNotEmpty
-                          ? NetworkImage(profilePhoto)
-                          : null,
-                      child: profilePhoto.isEmpty
-                          ? const Icon(
-                              Icons.person_rounded,
-                              size: 58,
-                              color: Color(0xFF7542A8),
-                            )
-                          : null,
-                    ),
-                  ),
-
-                  const SizedBox(height: 13),
-
-                  Text(
-                    displayName,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 23,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-
-                  const SizedBox(height: 7),
-
-                  GestureDetector(
-                    onTap: () {
-                      if (userCode.isNotEmpty) {
-                        Clipboard.setData(
-                          ClipboardData(text: userCode),
-                        );
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('User ID copied'),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFFFFD77A),
+                            width: 2.5,
                           ),
-                        );
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 15,
-                        vertical: 7,
+                        ),
+                        child: CircleAvatar(
+                          radius: 43,
+                          backgroundColor: Colors.white,
+                          backgroundImage: profilePhoto.isNotEmpty
+                              ? NetworkImage(profilePhoto)
+                              : null,
+                          child: profilePhoto.isEmpty
+                              ? const Icon(Icons.person,
+                                  size: 45, color: Color(0xFF7435A9))
+                              : null,
+                        ),
                       ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.17),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            profileLoading
-                                ? 'ID: Loading...'
-                                : userCode.isNotEmpty
-                                    ? 'ID: $userCode'
-                                    : 'ID: Not available',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 19,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 7),
-                          const Icon(
-                            Icons.copy_rounded,
-                            color: Colors.white,
-                            size: 15,
-                          ),
-                        ],
+                            const SizedBox(height: 8),
+                            const Row(
+                              children: [
+                                Icon(Icons.diamond,
+                                    color: Color(0xFF7DE5FF), size: 28),
+                                SizedBox(width: 13),
+                                Icon(Icons.female,
+                                    color: Color(0xFFFF8ACB), size: 25),
+                              ],
+                            ),
+                            const SizedBox(height: 7),
+                            GestureDetector(
+                              onTap: () {
+                                if (userCode.isNotEmpty) {
+                                  Clipboard.setData(
+                                    ClipboardData(text: userCode),
+                                  );
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('User ID copied'),
+                                    ),
+                                  );
+                                }
+                              },
+                              child: Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      profileLoading
+                                          ? 'ID: Loading...'
+                                          : 'ID: ${userCode.isEmpty ? 'Not available' : userCode}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 7),
+                                  const Icon(Icons.copy,
+                                      color: Colors.white, size: 17),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+                      const Icon(Icons.chevron_right,
+                          color: Colors.white, size: 30),
+                    ],
                   ),
-
-                  const SizedBox(height: 22),
-
-                  Container(
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.13),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        StatItem(value: '0', label: 'Followers'),
-                        StatItem(value: '0', label: 'Following'),
-                        StatItem(value: '0', label: 'Likes'),
-                      ],
-                    ),
+                  const SizedBox(height: 25),
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      StatItem(value: '0', label: 'Friend'),
+                      StatItem(value: '0', label: 'Fans'),
+                      StatItem(value: '0', label: 'Follow'),
+                    ],
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 23),
+            const SizedBox(height: 13),
 
-            sectionTitle('My Lovely Space'),
-
-            Row(
-              children: [
-                Expanded(
-                  child: MenuTile(
-                    icon: Icons.account_balance_wallet_rounded,
-                    title: 'Wallet',
-                    subtitle: 'Coins & history',
+            // Wallet and benefits
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(19),
+              ),
+              child: Row(
+                children: [
+                  walletItem(
+                    icon: Icons.account_balance_wallet,
+                    title: 'My Wallet',
+                    value: 'View balance',
+                    color: const Color(0xFFFFB900),
                     onTap: _openWallet,
                   ),
+                  Container(width: 1, height: 42, color: Colors.black12),
+                  walletItem(
+                    icon: Icons.diamond,
+                    title: 'My Benefits',
+                    value: 'View benefits',
+                    color: const Color(0xFFDA28E9),
+                    onTap: () => comingSoon('My Benefits'),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // VIP banner
+            InkWell(
+              onTap: () => comingSoon('VIP privileges'),
+              borderRadius: BorderRadius.circular(18),
+              child: Container(
+                height: 69,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF8500FF),
+                      Color(0xFFCB00DC),
+                      Color(0xFFFF19BB),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(18),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: MenuTile(
-                    icon: Icons.storefront_rounded,
-                    title: 'Gift Store',
-                    subtitle: 'Send lovely gifts',
+                child: const Row(
+                  children: [
+                    Icon(Icons.workspace_premium,
+                        color: Color(0xFFFFE36B), size: 43),
+                    SizedBox(width: 10),
+                    Text(
+                      'Gimme VIP',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'View exclusive privileges',
+                        maxLines: 2,
+                        style: TextStyle(color: Colors.white, fontSize: 11),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right,
+                        color: Colors.white, size: 27),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Main profile buttons
+            Container(
+              padding: const EdgeInsets.fromLTRB(8, 7, 8, 9),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: GridView.count(
+                crossAxisCount: 4,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                childAspectRatio: 0.83,
+                children: [
+                  actionButton(
+                    icon: Icons.workspace_premium,
+                    label: 'Badge',
+                    color: const Color(0xFFFF168E),
+                    onTap: () => comingSoon('Badge'),
+                  ),
+                  actionButton(
+                    icon: Icons.shopping_bag,
+                    label: 'Mall',
+                    color: const Color(0xFF268CF4),
+                    onTap: () => comingSoon('Mall'),
+                  ),
+                  actionButton(
+                    icon: Icons.favorite,
+                    label: 'My invitation',
+                    color: const Color(0xFFB500E8),
+                    isNew: true,
+                    onTap: () => comingSoon('My invitation'),
+                  ),
+                  actionButton(
+                    icon: Icons.chat_bubble,
+                    label: 'Chat price',
+                    color: const Color(0xFF00C99A),
+                    onTap: () => comingSoon('Chat price'),
+                  ),
+                  actionButton(
+                    icon: Icons.star,
+                    label: 'My level',
+                    color: const Color(0xFFFF8B22),
+                    onTap: () => comingSoon('My level'),
+                  ),
+                  actionButton(
+                    icon: Icons.groups,
+                    label: 'Agency',
+                    color: const Color(0xFFFF6738),
+                    onTap: () => comingSoon('Agency'),
+                  ),
+                  actionButton(
+                    icon: Icons.bookmark,
+                    label: 'Points Center',
+                    color: const Color(0xFF00B88A),
+                    onTap: () => comingSoon('Points Center'),
+                  ),
+                  actionButton(
+                    icon: Icons.badge,
+                    label: 'Pretty ID',
+                    color: const Color(0xFF9500D9),
+                    onTap: () => comingSoon('Pretty ID'),
+                  ),
+                  actionButton(
+                    icon: Icons.favorite,
+                    label: 'CP List',
+                    color: const Color(0xFFEC00A9),
+                    onTap: () => comingSoon('CP List'),
+                  ),
+                  actionButton(
+                    icon: Icons.stars,
+                    label: 'Daily tasks',
+                    color: const Color(0xFF493BEE),
+                    onTap: () => comingSoon('Daily tasks'),
+                  ),
+                  actionButton(
+                    icon: Icons.receipt_long,
+                    label: 'Material Records',
+                    color: const Color(0xFFFF922E),
+                    onTap: () => comingSoon('Material Records'),
+                  ),
+                  actionButton(
+                    icon: Icons.card_giftcard,
+                    label: 'Gift Store',
+                    color: const Color(0xFFE000B9),
                     onTap: _openGiftStore,
                   ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            Row(
-              children: [
-                Expanded(
-                  child: MenuTile(
+                  actionButton(
                     icon: Icons.card_giftcard_rounded,
-                    title: 'Gift Bag',
-                    subtitle: 'Received gifts',
+                    label: 'Gift Bag',
+                    color: const Color(0xFF7C42E8),
                     onTap: _openGiftBag,
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: MenuTile(
-                    icon: Icons.emoji_events_rounded,
-                    title: 'Rewards',
-                    subtitle: 'Daily rewards',
+                  actionButton(
+                    icon: Icons.account_balance_wallet,
+                    label: 'Wallet',
+                    color: const Color(0xFFFFB51B),
+                    onTap: _openWallet,
                   ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            Row(
-              children: [
-                Expanded(
-                  child: MenuTile(
-                    icon: Icons.shopping_bag_rounded,
-                    title: 'Mall',
-                    subtitle: 'Lovely items',
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Mall coming soon'),
-                        ),
-                      );
-                    },
+                  actionButton(
+                    icon: Icons.emoji_events,
+                    label: 'Rewards',
+                    color: const Color(0xFF00AFCB),
+                    onTap: () => comingSoon('Rewards'),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: MenuTile(
-                    icon: Icons.backpack_rounded,
-                    title: 'Backpack',
-                    subtitle: 'My collection',
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Backpack coming soon'),
-                        ),
-                      );
-                    },
+                  actionButton(
+                    icon: Icons.backpack,
+                    label: 'Backpack',
+                    color: const Color(0xFF22A6B9),
+                    onTap: () => comingSoon('Backpack'),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
 
-            const SizedBox(height: 23),
+            const SizedBox(height: 17),
 
-            sectionTitle('Account'),
-
-            const MenuTile(
-              icon: Icons.edit_rounded,
-              title: 'Edit Profile',
-              subtitle: 'Name and picture',
-            ),
-
-            const SizedBox(height: 10),
-
-            const MenuTile(
-              icon: Icons.shield_rounded,
-              title: 'Privacy & Security',
-              subtitle: 'Protect your account',
-            ),
-
-            const SizedBox(height: 10),
-
-            const MenuTile(
-              icon: Icons.help_outline_rounded,
-              title: 'Help & Support',
-              subtitle: 'We are here to help',
+            // Feedback and settings
+            Container(
+              padding: const EdgeInsets.fromLTRB(8, 9, 8, 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: actionButton(
+                      icon: Icons.help_outline,
+                      label: 'Feedback',
+                      color: const Color(0xFFEC4BB8),
+                      onTap: () => comingSoon('Feedback'),
+                    ),
+                  ),
+                  Expanded(
+                    child: actionButton(
+                      icon: Icons.settings,
+                      label: 'Setting',
+                      color: const Color(0xFF7652C9),
+                      onTap: () => comingSoon('Settings'),
+                    ),
+                  ),
+                  const Expanded(child: SizedBox()),
+                  const Expanded(child: SizedBox()),
+                ],
+              ),
             ),
 
             if (userCode == '1') ...[
-              const SizedBox(height: 20),
-
+              const SizedBox(height: 18),
               sectionTitle('Administration'),
-
               Card(
                 color: Colors.white,
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(17),
-                ),
                 child: ListTile(
-                  leading: const Icon(
-                    Icons.account_balance_wallet_rounded,
-                    color: blue,
-                  ),
+                  leading: const Icon(Icons.account_balance_wallet,
+                      color: blue),
                   title: const Text('Owner Wallet'),
                   subtitle: const Text('Issue coins to a user ID'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
+                  trailing: const Icon(Icons.chevron_right),
                   onTap: _showOwnerCoinPanel,
                 ),
               ),
-
-              const SizedBox(height: 10),
-
               Card(
                 color: Colors.white,
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(17),
-                ),
                 child: ListTile(
-                  leading: const Icon(
-                    Icons.storage_rounded,
-                    color: blue,
-                  ),
+                  leading: const Icon(Icons.storage, color: blue),
                   title: const Text('Cloud Database Check'),
-                  subtitle: const Text(
-                    'Owner-only server diagnostic',
-                  ),
+                  subtitle: const Text('Owner-only server diagnostic'),
                   trailing: databaseChecking
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                          ),
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.chevron_right_rounded),
-                  onTap: databaseChecking
-                      ? null
-                      : _checkCloudDatabase,
+                      : const Icon(Icons.chevron_right),
+                  onTap: databaseChecking ? null : _checkCloudDatabase,
                 ),
               ),
             ],
