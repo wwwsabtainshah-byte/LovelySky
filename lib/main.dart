@@ -4081,6 +4081,9 @@ class _ProfilePageState extends State<ProfilePage> {
       await showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
+constraints: BoxConstraints(
+  maxHeight: MediaQuery.of(context).size.height * 0.38,
+),
         backgroundColor: Colors.white,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
