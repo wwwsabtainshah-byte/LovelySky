@@ -1959,7 +1959,7 @@ def get_games_wallet(authorization: str | None = Header(default=None)):
             SELECT id, transaction_type, amount, currency,
                    description, created_at
             FROM transactions
-            WHERE user_id = ? AND currency = 'coins'
+            WHERE user_id = ?
             ORDER BY id DESC
             LIMIT 50
             """,
@@ -1983,6 +1983,282 @@ def get_games_wallet(authorization: str | None = Header(default=None)):
         db.close()
 
 
+
+
+
+
+
+
+@router.post("/games/wallet/exchange")
+async def exchange_wallet_diamonds(
+    request: Request,
+    authorization: str | None = Header(default=None),
+):
+    """Exchange Diamonds into Coins at 2 Diamonds = 1 Coin."""
+    user = _voice_authenticated_user(authorization)
+
+    try:
+        payload = await request.json()
+        amount = int(payload.get("diamonds", 0))
+    except Exception:
+        raise HTTPException(400, "Invalid diamond amount")
+
+    if amount < 2 or amount % 2 != 0:
+        raise HTTPException(400, "Diamonds must be an even amount of at least 2")
+
+    coins = amount // 2
+    user_id = int(user["id"])
+    db = get_connection()
+
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute(
+            "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
+            (user_id,),
+        )
+
+        debit = db.execute(
+            """UPDATE wallets SET diamonds = diamonds - ?
+               WHERE user_id = ? AND diamonds >= ?""",
+            (amount, user_id, amount),
+        )
+        if debit.rowcount != 1:
+            raise HTTPException(400, "Not enough Diamonds")
+
+        db.execute(
+            "UPDATE wallets SET coins = coins + ? WHERE user_id = ?",
+            (coins, user_id),
+        )
+
+        db.execute(
+            """INSERT INTO transactions
+               (user_id, transaction_type, amount, currency, description)
+               VALUES (?, 'diamond_exchange', ?, 'diamonds', ?)""",
+            (user_id, amount, f"Exchanged {amount} Diamonds for {coins} Coins"),
+        )
+        db.execute(
+            """INSERT INTO transactions
+               (user_id, transaction_type, amount, currency, description)
+               VALUES (?, 'diamond_exchange', ?, 'coins', ?)""",
+            (user_id, coins, f"Received {coins} Coins from {amount} Diamonds"),
+        )
+
+        wallet = db.execute(
+            "SELECT coins, diamonds FROM wallets WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+
+        db.commit()
+        return {
+            "success": True,
+            "diamonds_exchanged": amount,
+            "coins_received": coins,
+            "coins": int(wallet["coins"]),
+            "diamonds": int(wallet["diamonds"]),
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception("Diamond exchange failed")
+        raise HTTPException(500, "Could not exchange Diamonds")
+    finally:
+        db.close()
+
+# Lovely Sky Gifts — 1 Coin spent = 1 Diamond credited.
+GIFT_CATALOG = [
+    {"code": "rose", "name": "Rose", "emoji": "🌹", "coin_cost": 10},
+    {"code": "heart", "name": "Heart", "emoji": "❤️", "coin_cost": 50},
+    {"code": "teddy", "name": "Teddy", "emoji": "🧸", "coin_cost": 100},
+    {"code": "cake", "name": "Cake", "emoji": "🎂", "coin_cost": 200},
+    {"code": "crown", "name": "Crown", "emoji": "👑", "coin_cost": 500},
+    {"code": "rocket", "name": "Rocket", "emoji": "🚀", "coin_cost": 1000},
+]
+GIFT_BY_CODE = {item["code"]: item for item in GIFT_CATALOG}
+
+
+@router.get("/gifts/catalog")
+def get_gift_catalog(authorization: str | None = Header(default=None)):
+    _voice_authenticated_user(authorization)
+    return {"success": True, "gifts": GIFT_CATALOG, "coin_to_diamond_rate": 1}
+
+
+@router.post("/gifts/send")
+async def send_gift(
+    request: Request,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Invalid JSON body")
+
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "JSON body must be an object")
+
+    receiver_code = str(payload.get("receiver_code", "")).strip()
+    gift_code = str(payload.get("gift_code", "")).strip().lower()
+
+    try:
+        quantity = int(payload.get("quantity", 1))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid gift quantity")
+
+    if not receiver_code:
+        raise HTTPException(400, "Receiver user ID is required")
+    if quantity < 1 or quantity > 99:
+        raise HTTPException(400, "Gift quantity must be between 1 and 99")
+
+    gift = GIFT_BY_CODE.get(gift_code)
+    if not gift:
+        raise HTTPException(404, "Gift not found")
+
+    sender_id = int(user["id"])
+    total = int(gift["coin_cost"]) * quantity
+    db = get_connection()
+
+    try:
+        db.execute("BEGIN IMMEDIATE")
+
+        receiver = db.execute(
+            "SELECT id, user_code FROM users WHERE user_code = ?",
+            (receiver_code,),
+        ).fetchone()
+        if not receiver:
+            raise HTTPException(404, "Receiver user not found")
+
+        receiver_id = int(receiver["id"])
+
+        db.execute(
+            "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
+            (sender_id,),
+        )
+        db.execute(
+            "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
+            (receiver_id,),
+        )
+
+        debit = db.execute(
+            """UPDATE wallets SET coins = coins - ?
+               WHERE user_id = ? AND coins >= ?""",
+            (total, sender_id, total),
+        )
+        if debit.rowcount != 1:
+            raise HTTPException(400, "Not enough Lovely Coins")
+
+        db.execute(
+            "UPDATE wallets SET diamonds = diamonds + ? WHERE user_id = ?",
+            (total, receiver_id),
+        )
+
+        db.execute(
+            """INSERT INTO inventory (user_id, item_type, item_code, quantity)
+               VALUES (?, 'gift', ?, ?)
+               ON CONFLICT(user_id, item_type, item_code)
+               DO UPDATE SET quantity = quantity + excluded.quantity""",
+            (receiver_id, gift_code, quantity),
+        )
+
+        db.execute(
+            """INSERT INTO gift_transactions
+               (sender_user_id, receiver_user_id, gift_code, gift_name,
+                quantity, coins_spent, diamonds_credited)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                sender_id, receiver_id, gift_code, gift["name"],
+                quantity, total, total,
+            ),
+        )
+
+        db.execute(
+            """INSERT INTO transactions
+               (user_id, transaction_type, amount, currency, description)
+               VALUES (?, 'gift_sent', ?, 'coins', ?)""",
+            (sender_id, total, f"Sent {quantity} x {gift['name']} to ID {receiver_code}"),
+        )
+        db.execute(
+            """INSERT INTO transactions
+               (user_id, transaction_type, amount, currency, description)
+               VALUES (?, 'gift_received', ?, 'diamonds', ?)""",
+            (receiver_id, total, f"Received {quantity} x {gift['name']} from ID {user.get('user_code', '')}"),
+        )
+
+        sender_wallet = db.execute(
+            "SELECT coins, diamonds FROM wallets WHERE user_id = ?",
+            (sender_id,),
+        ).fetchone()
+        receiver_wallet = db.execute(
+            "SELECT coins, diamonds FROM wallets WHERE user_id = ?",
+            (receiver_id,),
+        ).fetchone()
+
+        db.commit()
+        return {
+            "success": True,
+            "gift": gift,
+            "quantity": quantity,
+            "coins_spent": total,
+            "diamonds_credited": total,
+            "sender_coins": int(sender_wallet["coins"]),
+            "receiver_diamonds": int(receiver_wallet["diamonds"]),
+            "receiver_code": receiver_code,
+            "self_gift": sender_id == receiver_id,
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception("Gift sending failed")
+        raise HTTPException(500, "Could not send gift")
+    finally:
+        db.close()
+
+
+@router.get("/gifts/bag")
+def get_gift_bag(authorization: str | None = Header(default=None)):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        rows = db.execute(
+            """SELECT item_code AS gift_code, quantity
+               FROM inventory
+               WHERE user_id = ? AND item_type = 'gift' AND quantity > 0
+               ORDER BY id DESC""",
+            (int(user["id"]),),
+        ).fetchall()
+        gifts = []
+        for row in rows:
+            item = GIFT_BY_CODE.get(row["gift_code"])
+            if item:
+                gifts.append({**item, "quantity": int(row["quantity"])})
+        return {"success": True, "gifts": gifts}
+    finally:
+        db.close()
+
+
+@router.get("/gifts/history")
+def get_gift_history(authorization: str | None = Header(default=None)):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        rows = db.execute(
+            """SELECT g.id, g.gift_code, g.gift_name, g.quantity,
+                      g.coins_spent, g.diamonds_credited, g.created_at,
+                      s.user_code AS sender_code, s.display_name AS sender_name,
+                      r.user_code AS receiver_code, r.display_name AS receiver_name
+               FROM gift_transactions g
+               JOIN users s ON s.id = g.sender_user_id
+               JOIN users r ON r.id = g.receiver_user_id
+               WHERE g.sender_user_id = ? OR g.receiver_user_id = ?
+               ORDER BY g.id DESC LIMIT 100""",
+            (int(user["id"]), int(user["id"])),
+        ).fetchall()
+        return {"success": True, "history": [dict(row) for row in rows]}
+    finally:
+        db.close()
 
 
 

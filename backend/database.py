@@ -79,6 +79,24 @@ def initialize_database():
             UNIQUE(user_id, item_type, item_code)
         );
 
+        CREATE TABLE IF NOT EXISTS gift_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_user_id INTEGER NOT NULL,
+            receiver_user_id INTEGER NOT NULL,
+            gift_code TEXT NOT NULL,
+            gift_name TEXT NOT NULL,
+            quantity INTEGER NOT NULL CHECK(quantity > 0),
+            coins_spent INTEGER NOT NULL CHECK(coins_spent > 0),
+            diamonds_credited INTEGER NOT NULL CHECK(diamonds_credited > 0),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(sender_user_id) REFERENCES users(id),
+            FOREIGN KEY(receiver_user_id) REFERENCES users(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_gift_transactions_receiver
+            ON gift_transactions(receiver_user_id, id);
+        CREATE INDEX IF NOT EXISTS idx_gift_transactions_sender
+            ON gift_transactions(sender_user_id, id);
+
         CREATE TABLE IF NOT EXISTS device_bindings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL UNIQUE,
