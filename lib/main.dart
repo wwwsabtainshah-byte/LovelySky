@@ -5392,7 +5392,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   DateTime? lastGiftEventAt;
 
   static const Color pink = Color(0xFFFF4FA3);
-  static const Color background = Color(0xFF160D2B);
+  static const Color background = Color(0xFFE5F6FF);
 
   @override
   void initState() {
@@ -6528,7 +6528,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       IconData icon,
       String tip,
       VoidCallback action, {
-      Color color = Colors.white,
+      Color color = const Color(0xFF123B5A),
       double size = 23,
     }) {
       return IconButton(
@@ -6567,7 +6567,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 Text(
                   title,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: const Color(0xFF123B5A),
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
                   ),
@@ -6576,7 +6576,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white60, fontSize: 9),
+                  style: const TextStyle(color: const Color(0xFF527B96), fontSize: 9),
                 ),
               ],
             ),
@@ -6586,7 +6586,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF071B31),
+      backgroundColor: const Color(0xFFE5F6FF),
       body: SafeArea(
         child: Stack(
           children: [
@@ -6606,7 +6606,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                               : null,
                           child: ownerPhoto.startsWith('http')
                               ? null
-                              : const Icon(Icons.person, color: Colors.white),
+                              : const Icon(Icons.person, color: const Color(0xFF123B5A)),
                         ),
                       ),
                       const SizedBox(width: 9),
@@ -6619,7 +6619,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Colors.white,
+                                color: const Color(0xFF123B5A),
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
                               ),
@@ -6728,7 +6728,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                       ? null
                                       : const Icon(
                                           Icons.person,
-                                          color: Colors.white,
+                                          color: const Color(0xFF123B5A),
                                           size: 19,
                                         ),
                                 ),
@@ -6779,7 +6779,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           const Text(
                             'Room Chat',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: const Color(0xFF123B5A),
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
                             ),
@@ -6788,7 +6788,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           Text(
                             '${messages.length} messages',
                             style: const TextStyle(
-                              color: Colors.white54,
+                              color: const Color(0xFF6D91A8),
                               fontSize: 10,
                             ),
                           ),
@@ -6802,7 +6802,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                             child: Text(
                               'Welcome to Lovely Sky!',
                               style: TextStyle(
-                                color: Colors.white54,
+                                color: const Color(0xFF6D91A8),
                                 fontSize: 12,
                               ),
                             ),
@@ -6825,7 +6825,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                   child: Text(
                                     message['text'].toString(),
                                     style: const TextStyle(
-                                      color: Colors.white,
+                                      color: const Color(0xFF123B5A),
                                       fontSize: 12,
                                     ),
                                   ),
@@ -6833,7 +6833,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                 Text(
                                   message['time'].toString(),
                                   style: const TextStyle(
-                                    color: Colors.white38,
+                                    color: const Color(0xFF8AA9BC),
                                     fontSize: 9,
                                   ),
                                 ),
@@ -6851,18 +6851,18 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                       circleAction(Icons.grid_view_rounded, 'More', () {
                         showModalBottomSheet(
                           context: context,
-                          backgroundColor: const Color(0xFF102D49),
+                          backgroundColor: const Color(0xFFF5FBFF),
                           builder: (ctx) => SafeArea(
                             child: Wrap(
                               children: [
                                 ListTile(
                                   leading: const Icon(
                                     Icons.info_outline,
-                                    color: Colors.white,
+                                    color: const Color(0xFF123B5A),
                                   ),
                                   title: const Text(
                                     'Room Information',
-                                    style: TextStyle(color: Colors.white),
+                                    style: TextStyle(color: const Color(0xFF123B5A)),
                                   ),
                                   onTap: () {
                                     Navigator.pop(ctx);
@@ -6876,7 +6876,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                   ),
                                   title: const Text(
                                     'Leave Room',
-                                    style: TextStyle(color: Colors.white),
+                                    style: TextStyle(color: const Color(0xFF123B5A)),
                                   ),
                                   onTap: () {
                                     Navigator.pop(ctx);
@@ -6943,7 +6943,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                         child: TextField(
                           controller: messageController,
                           style: const TextStyle(
-                            color: Colors.white,
+                            color: const Color(0xFF123B5A),
                             fontSize: 12,
                           ),
                           textInputAction: TextInputAction.send,
@@ -6951,7 +6951,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           decoration: const InputDecoration(
                             hintText: 'Message...',
                             hintStyle: TextStyle(
-                              color: Colors.white54,
+                              color: const Color(0xFF6D91A8),
                               fontSize: 12,
                             ),
                             isDense: true,
