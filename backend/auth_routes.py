@@ -2078,12 +2078,37 @@ async def exchange_wallet_diamonds(
 
 # Lovely Sky Gifts — 1 Coin spent = 1 Diamond credited.
 GIFT_CATALOG = [
-    {"code": "rose", "name": "Rose", "emoji": "🌹", "coin_cost": 10},
-    {"code": "heart", "name": "Heart", "emoji": "❤️", "coin_cost": 50},
-    {"code": "teddy", "name": "Teddy", "emoji": "🧸", "coin_cost": 100},
-    {"code": "cake", "name": "Cake", "emoji": "🎂", "coin_cost": 200},
-    {"code": "crown", "name": "Crown", "emoji": "👑", "coin_cost": 500},
-    {"code": "rocket", "name": "Rocket", "emoji": "🚀", "coin_cost": 1000},
+    # Standard gifts
+    {"code": "rose", "name": "Rose", "emoji": "🌹", "coin_cost": 10, "category": "Gift"},
+    {"code": "heart", "name": "Heart", "emoji": "❤️", "coin_cost": 50, "category": "Gift"},
+    {"code": "teddy", "name": "Teddy", "emoji": "🧸", "coin_cost": 100, "category": "Gift"},
+    {"code": "cake", "name": "Cake", "emoji": "🎂", "coin_cost": 200, "category": "Gift"},
+    {"code": "crown", "name": "Crown", "emoji": "👑", "coin_cost": 500, "category": "Gift"},
+    {"code": "rocket", "name": "Rocket", "emoji": "🚀", "coin_cost": 1000, "category": "Gift"},
+
+    # CP collection
+    {"code": "cp_star", "name": "Star CP", "emoji": "🌟", "coin_cost": 120, "category": "CP"},
+    {"code": "cp_love", "name": "Love CP", "emoji": "💞", "coin_cost": 260, "category": "CP"},
+    {"code": "cp_diamond", "name": "Diamond CP", "emoji": "💎", "coin_cost": 520, "category": "CP"},
+    {"code": "cp_king", "name": "King CP", "emoji": "🤴", "coin_cost": 880, "category": "CP"},
+
+    # Lucky gifts
+    {"code": "lucky_box", "name": "Lucky Box", "emoji": "🎁", "coin_cost": 150, "category": "Lucky Gift"},
+    {"code": "lucky_clover", "name": "Lucky Clover", "emoji": "🍀", "coin_cost": 300, "category": "Lucky Gift"},
+    {"code": "lucky_horse", "name": "Lucky Horse", "emoji": "🐎", "coin_cost": 650, "category": "Lucky Gift"},
+    {"code": "lucky_jackpot", "name": "Jackpot", "emoji": "🎰", "coin_cost": 1500, "category": "Lucky Gift"},
+
+    # Flags
+    {"code": "flag_pakistan", "name": "Pakistan Flag", "emoji": "🇵🇰", "coin_cost": 100, "category": "Flag"},
+    {"code": "flag_love", "name": "Love Flag", "emoji": "🏳️‍🌈", "coin_cost": 180, "category": "Flag"},
+    {"code": "flag_world", "name": "World Flag", "emoji": "🌍", "coin_cost": 350, "category": "Flag"},
+    {"code": "flag_gold", "name": "Golden Flag", "emoji": "🚩", "coin_cost": 700, "category": "Flag"},
+
+    # Exclusive gifts
+    {"code": "exclusive_phoenix", "name": "Phoenix", "emoji": "🔥", "coin_cost": 2500, "category": "Exclusive"},
+    {"code": "exclusive_dragon", "name": "Dragon", "emoji": "🐉", "coin_cost": 5000, "category": "Exclusive"},
+    {"code": "exclusive_yacht", "name": "Royal Yacht", "emoji": "🛥️", "coin_cost": 10000, "category": "Exclusive"},
+    {"code": "exclusive_castle", "name": "Love Castle", "emoji": "🏰", "coin_cost": 20000, "category": "Exclusive"},
 ]
 GIFT_BY_CODE = {item["code"]: item for item in GIFT_CATALOG}
 
@@ -2348,6 +2373,37 @@ async def send_voice_room_gift(
             (sender_id,),
         ).fetchone()
         db.commit()
+
+        gift_event = {
+            "sender_code": str(user.get("user_code", "")),
+            "sender_name": str(
+                user.get("display_name") or user.get("name")
+                or user.get("user_code") or "Member"
+            ),
+            "gift_code": gift_code,
+            "gift_name": str(gift["name"]),
+            "emoji": str(gift.get("emoji", "🎁")),
+            "quantity": quantity,
+            "receiver_codes": receiver_codes,
+            "coins_spent": total_cost,
+            "diamonds_per_recipient": cost_each,
+        }
+
+        dead_connections = []
+        for peer_uid, peer_socket in list(
+            VOICE_SIGNAL_CONNECTIONS.get(room_id, {}).items()
+        ):
+            try:
+                await peer_socket.send_json({
+                    "type": "gift_event",
+                    "payload": gift_event,
+                })
+            except Exception:
+                dead_connections.append(peer_uid)
+
+        for peer_uid in dead_connections:
+            VOICE_SIGNAL_CONNECTIONS.get(room_id, {}).pop(peer_uid, None)
+
         return {
             "success": True,
             "recipients_count": len(receiver_codes),
