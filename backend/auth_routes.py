@@ -425,7 +425,7 @@ def get_voice_room_members(
                   SELECT 1 FROM voice_room_participants AS p
                   WHERE p.room_id = r.id AND p.user_uid = r.owner_uid
               )
-            ORDER BY user_code
+            ORDER BY 2
             """,
             (room_id, room_id),
         ).fetchall()
