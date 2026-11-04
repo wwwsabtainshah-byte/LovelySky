@@ -2204,6 +2204,7 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
                           Icons.card_giftcard_rounded,
                           'Gift',
                           const Color(0xFFFFC857),
+                          onTap: () => openLovelyRoomGiftStore(context),
                         ),
                         const SizedBox(height: 20),
                         _liveGamesAction(),
@@ -2390,18 +2391,29 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
         children: [
           Icon(Icons.casino_rounded, color: Color(0xFF8DE4FF), size: 29),
           SizedBox(height: 4),
-          Text('Games', style: TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-          )),
+          Text(
+            'Games',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _liveActionIcon(IconData icon, String label, Color color) {
-    return Column(
+  Widget _liveActionIcon(
+    IconData icon,
+    String label,
+    Color color, {
+    VoidCallback? onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, color: color, size: 29),
@@ -2415,6 +2427,7 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
           ),
         ),
       ],
+      ),
     );
   }
 
@@ -2999,6 +3012,177 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
+
+Future<Map<String, dynamic>> _roomGiftRequest(
+  String method,
+  String path, {
+  Map<String, dynamic>? body,
+}) async {
+  final prefs = await SharedPreferences.getInstance();
+  final token = prefs.getString('lovely_token');
+  if (token == null || token.isEmpty) {
+    throw Exception('Please login again.');
+  }
+  final headers = {
+    'Authorization': 'Bearer $token',
+    'Content-Type': 'application/json',
+  };
+  final uri = Uri.parse('$lovelyApi$path');
+  final response = method == 'POST'
+      ? await http.post(uri, headers: headers, body: jsonEncode(body ?? {}))
+      : await http.get(uri, headers: headers);
+  final decoded = jsonDecode(response.body);
+  if (decoded is! Map<String, dynamic>) {
+    throw Exception('Invalid server response.');
+  }
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception(decoded['detail']?.toString() ?? 'Request failed.');
+  }
+  return decoded;
+}
+
+Future<void> openLovelyRoomGiftStore(BuildContext context) async {
+  try {
+    final results = await Future.wait([
+      _roomGiftRequest('GET', '/gifts/catalog'),
+      _roomGiftRequest('GET', '/games/wallet'),
+    ]);
+    if (!context.mounted) return;
+
+    final gifts = (results[0]['gifts'] as List? ?? [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+    final wallet = results[1]['wallet'] is Map
+        ? Map<String, dynamic>.from(results[1]['wallet'] as Map)
+        : results[1];
+    int coins = int.tryParse('${wallet['coins'] ?? 0}') ?? 0;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            18, 20, 18,
+            MediaQuery.of(sheetContext).viewInsets.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Lovely Gift Store',
+                style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              Text('Your Coins: $coins'),
+              const SizedBox(height: 14),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: gifts.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (itemContext, index) {
+                    final gift = gifts[index];
+                    final cost =
+                        int.tryParse('${gift['coin_cost']}') ?? 0;
+                    return ListTile(
+                      leading: Text(
+                        '${gift['emoji'] ?? '🎁'}',
+                        style: const TextStyle(fontSize: 30),
+                      ),
+                      title: Text('${gift['name'] ?? 'Gift'}'),
+                      subtitle: Text('$cost Coins each'),
+                      trailing: const Icon(
+                        Icons.send_rounded,
+                        color: Color(0xFF438EDB),
+                      ),
+                      onTap: () async {
+                        final receiverController = TextEditingController();
+                        final receiverCode = await showDialog<String>(
+                          context: sheetContext,
+                          builder: (dialogContext) => AlertDialog(
+                            title: Text('Send ${gift['name']}'),
+                            content: TextField(
+                              controller: receiverController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Receiver User ID',
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(dialogContext),
+                                child: const Text('Cancel'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(
+                                  dialogContext,
+                                  receiverController.text.trim(),
+                                ),
+                                child: const Text('Send'),
+                              ),
+                            ],
+                          ),
+                        );
+                        receiverController.dispose();
+                        if (receiverCode == null ||
+                            receiverCode.isEmpty ||
+                            !sheetContext.mounted) return;
+
+                        try {
+                          final result = await _roomGiftRequest(
+                            'POST',
+                            '/gifts/send',
+                            body: {
+                              'receiver_code': receiverCode,
+                              'gift_code': gift['code'],
+                              'quantity': 1,
+                            },
+                          );
+                          if (!sheetContext.mounted) return;
+                          coins = int.tryParse(
+                                '${result['sender_coins'] ?? coins}',
+                              ) ?? coins;
+                          setSheetState(() {});
+                          ScaffoldMessenger.of(sheetContext).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '${gift['name']} sent! '
+                                '${result['coins_spent']} Coins spent.',
+                              ),
+                            ),
+                          );
+                        } catch (e) {
+                          if (sheetContext.mounted) {
+                            ScaffoldMessenger.of(sheetContext).showSnackBar(
+                              SnackBar(content: Text(e.toString())),
+                            );
+                          }
+                        }
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gift Store error: $e')),
+      );
+    }
+  }
+}
+
 class _ProfilePageState extends State<ProfilePage> {
   String displayName = 'Lovely User 💙';
   String userCode = '';
@@ -3054,6 +3238,549 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     if (mounted) setState(() => profileLoading = false);
+  }
+
+  Future<Map<String, dynamic>> _giftRequest(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('lovely_token');
+    if (token == null || token.isEmpty) {
+      throw Exception('Please login again.');
+    }
+
+    final uri = Uri.parse('$lovelyApi$path');
+    final headers = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+    final response = method == 'POST'
+        ? await http.post(uri, headers: headers, body: jsonEncode(body ?? {}))
+        : await http.get(uri, headers: headers);
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('Invalid server response.');
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(decoded['detail']?.toString() ?? 'Request failed.');
+    }
+    return decoded;
+  }
+
+
+  Future<void> _openWallet() async {
+    try {
+      final data = await _giftRequest('GET', '/games/wallet');
+      if (!mounted) return;
+
+      int coins = int.tryParse('${data['coins'] ?? 0}') ?? 0;
+      int diamonds = int.tryParse('${data['diamonds'] ?? 0}') ?? 0;
+      List<Map<String, dynamic>> transactions =
+          (data['transactions'] as List? ?? [])
+              .map((item) => Map<String, dynamic>.from(item as Map))
+              .toList();
+
+      final exchangeController = TextEditingController();
+      bool exchanging = false;
+
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20, 22, 20,
+                MediaQuery.of(sheetContext).viewInsets.bottom + 24,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Center(
+                      child: Text(
+                        'My Wallet',
+                        style: TextStyle(
+                          fontSize: 23,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF245A9A),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _walletBalanceCard(
+                            'Coins', coins, Icons.monetization_on_rounded,
+                            const Color(0xFFFFB938),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _walletBalanceCard(
+                            'Diamonds', diamonds, Icons.diamond_rounded,
+                            const Color(0xFF48B8E8),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 22),
+                    const Text(
+                      'Exchange Diamonds to Coins',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    const Text(
+                      '2 Diamonds = 1 Coin',
+                      style: TextStyle(color: Colors.black54),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: exchangeController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        hintText: 'Enter Diamonds (e.g. 1000000)',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        suffixText: 'Diamonds',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: exchanging
+                            ? null
+                            : () async {
+                                final amount = int.tryParse(
+                                  exchangeController.text.trim(),
+                                );
+                                if (amount == null ||
+                                    amount < 2 ||
+                                    amount % 2 != 0) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Even Diamonds amount enter karein.',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                if (amount > diamonds) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Not enough Diamonds.'),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                setSheetState(() => exchanging = true);
+                                try {
+                                  final result = await _giftRequest(
+                                    'POST',
+                                    '/games/wallet/exchange',
+                                    body: {'diamonds': amount},
+                                  );
+                                  if (!mounted) return;
+
+                                  final updated = await _giftRequest(
+                                    'GET',
+                                    '/games/wallet',
+                                  );
+                                  coins = int.tryParse(
+                                        '${updated['coins'] ?? result['coins'] ?? 0}',
+                                      ) ?? 0;
+                                  diamonds = int.tryParse(
+                                        '${updated['diamonds'] ?? result['diamonds'] ?? 0}',
+                                      ) ?? 0;
+                                  transactions =
+                                      (updated['transactions'] as List? ?? [])
+                                          .map((item) =>
+                                              Map<String, dynamic>.from(item as Map))
+                                          .toList();
+                                  exchangeController.clear();
+                                  setSheetState(() {});
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        '${result['coins_received']} Coins added successfully!',
+                                      ),
+                                    ),
+                                  );
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text(e.toString())),
+                                    );
+                                  }
+                                } finally {
+                                  if (sheetContext.mounted) {
+                                    setSheetState(() => exchanging = false);
+                                  }
+                                }
+                              },
+                        child: Text(
+                          exchanging ? 'Please wait...' : 'Exchange Now',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    const Text(
+                      'Transaction History',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (transactions.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 18),
+                        child: Center(child: Text('No transactions yet.')),
+                      )
+                    else
+                      ...transactions.take(30).map((item) {
+                        final currency =
+                            item['currency']?.toString().toUpperCase() ?? '';
+                        final amount = item['amount'] ?? 0;
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            currency == 'DIAMONDS'
+                                ? Icons.diamond_rounded
+                                : Icons.monetization_on_rounded,
+                            color: currency == 'DIAMONDS'
+                                ? const Color(0xFF48B8E8)
+                                : const Color(0xFFFFB938),
+                          ),
+                          title: Text(
+                            item['description']?.toString() ??
+                                item['transaction_type']?.toString() ??
+                                'Transaction',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: Text(
+                            '$amount $currency',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      );
+      exchangeController.dispose();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Wallet error: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _walletBalanceCard(
+    String label,
+    int amount,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 30),
+          const SizedBox(height: 8),
+          Text(
+            amount.toString(),
+            style: const TextStyle(
+              fontSize: 21,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          Text(label, style: const TextStyle(color: Colors.black54)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openGiftStore() async {
+    try {
+      final results = await Future.wait([
+        _giftRequest('GET', '/gifts/catalog'),
+        _giftRequest('GET', '/games/wallet'),
+      ]);
+      final gifts = (results[0]['gifts'] as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+      final wallet = results[1]['wallet'] is Map
+          ? Map<String, dynamic>.from(results[1]['wallet'] as Map)
+          : results[1];
+      if (!mounted) return;
+
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            int coins = int.tryParse('${wallet['coins'] ?? 0}') ?? 0;
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                18,
+                20,
+                18,
+                MediaQuery.of(sheetContext).viewInsets.bottom + 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Lovely Gift Store',
+                    style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  Text('Your Coins: $coins'),
+                  const SizedBox(height: 14),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: gifts.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final gift = gifts[index];
+                        final cost = int.tryParse('${gift['coin_cost']}') ?? 0;
+                        return ListTile(
+                          leading: Text(
+                            '${gift['emoji'] ?? '🎁'}',
+                            style: const TextStyle(fontSize: 30),
+                          ),
+                          title: Text('${gift['name'] ?? 'Gift'}'),
+                          subtitle: Text('$cost Coins each'),
+                          trailing: const Icon(Icons.send_rounded, color: blue),
+                          onTap: () async {
+                            final receiverController = TextEditingController();
+                            final receiverCode = await showDialog<String>(
+                              context: sheetContext,
+                              builder: (dialogContext) => AlertDialog(
+                                title: Text('Send ${gift['name']}'),
+                                content: TextField(
+                                  controller: receiverController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Receiver User ID',
+                                    hintText: 'Enter user ID',
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(dialogContext),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () => Navigator.pop(
+                                      dialogContext,
+                                      receiverController.text.trim(),
+                                    ),
+                                    child: const Text('Continue'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            receiverController.dispose();
+                            if (receiverCode == null || receiverCode.isEmpty)
+                              return;
+
+                            try {
+                              final result = await _giftRequest(
+                                'POST',
+                                '/gifts/send',
+                                body: {
+                                  'receiver_code': receiverCode,
+                                  'gift_code': gift['code'],
+                                  'quantity': 1,
+                                },
+                              );
+                              wallet['coins'] = result['sender_coins'];
+                              if (!mounted) return;
+                              setSheetState(() {});
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    '${gift['name']} sent! '
+                                    '${result['coins_spent']} Coins spent.',
+                                  ),
+                                ),
+                              );
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(e.toString())),
+                              );
+                            }
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Gift Store: $e')));
+    }
+  }
+
+  Future<void> _openGiftBag() async {
+    try {
+      final results = await Future.wait([
+        _giftRequest('GET', '/gifts/bag'),
+        _giftRequest('GET', '/gifts/history'),
+      ]);
+
+      final gifts = (results[0]['gifts'] as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+
+      final history = (results[1]['history'] as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+
+      if (!mounted) return;
+
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (sheetContext) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * 0.75,
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'My Gift Bag',
+                    style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Received Gifts',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  if (gifts.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 14),
+                      child: Text('Your Gift Bag is empty.'),
+                    )
+                  else
+                    ...gifts.map(
+                      (gift) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Text(
+                          '${gift['emoji'] ?? '🎁'}',
+                          style: const TextStyle(fontSize: 30),
+                        ),
+                        title: Text('${gift['name'] ?? 'Gift'}'),
+                        trailing: Text('× ${gift['quantity'] ?? 0}'),
+                      ),
+                    ),
+                  const Divider(height: 24),
+                  const Text(
+                    'Gift History',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: history.isEmpty
+                        ? const Center(child: Text('No gift history yet.'))
+                        : ListView.builder(
+                            itemCount: history.length,
+                            itemBuilder: (context, index) {
+                              final item = history[index];
+                              final sent =
+                                  '${item['sender_code']}' ==
+                                  userCode.toString();
+                              final otherCode = sent
+                                  ? item['receiver_code']
+                                  : item['sender_code'];
+
+                              return ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: const Text(
+                                  '🎁',
+                                  style: TextStyle(fontSize: 27),
+                                ),
+                                title: Text(
+                                  '${sent ? 'Sent to' : 'Received from'} ID $otherCode',
+                                ),
+                                subtitle: Text(
+                                  '${item['gift_name']} × ${item['quantity']}'
+                                  ' • ${item['created_at']}',
+                                ),
+                                trailing: Text(
+                                  sent
+                                      ? '-${item['coins_spent']} Coins'
+                                      : '+${item['diamonds_credited']} Diamonds',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: sent ? Colors.orange : Colors.green,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Gift Bag: $e')));
+    }
   }
 
   Future<void> _showOwnerCoinPanel() async {
@@ -3529,13 +4256,14 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
           sectionTitle('My Lovely Space'),
-          const Row(
+          Row(
             children: [
               Expanded(
                 child: MenuTile(
                   icon: Icons.account_balance_wallet_rounded,
                   title: 'Wallet',
                   subtitle: 'Coins & history',
+                  onTap: _openWallet,
                 ),
               ),
               SizedBox(width: 12),
@@ -3544,18 +4272,20 @@ class _ProfilePageState extends State<ProfilePage> {
                   icon: Icons.storefront_rounded,
                   title: 'Store',
                   subtitle: 'Gifts & frames',
+                  onTap: _openGiftStore,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          const Row(
+          Row(
             children: [
               Expanded(
                 child: MenuTile(
                   icon: Icons.card_giftcard_rounded,
                   title: 'Gift Bag',
                   subtitle: 'My gifts',
+                  onTap: _openGiftBag,
                 ),
               ),
               SizedBox(width: 12),
@@ -3651,50 +4381,60 @@ class StatItem extends StatelessWidget {
 class MenuTile extends StatelessWidget {
   final IconData icon;
   final String title, subtitle;
+  final VoidCallback? onTap;
+
   const MenuTile({
     super.key,
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE4F3FF)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: blue, size: 25),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: ink,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Colors.blueGrey.shade400,
-                    fontSize: 10,
-                  ),
-                ),
-              ],
-            ),
+        child: Container(
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE4F3FF)),
           ),
-        ],
+          child: Row(
+            children: [
+              Icon(icon, color: blue, size: 25),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: ink,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.blueGrey.shade400,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -5168,7 +5908,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   circleAction(
                     Icons.card_giftcard_rounded,
                     'Gift',
-                    () => showMessage('Gift feature abhi connect karna hai.'),
+                    () => openLovelyRoomGiftStore(context),
                     color: const Color(0xFFFFD477),
                     size: 25,
                   ),
