@@ -1308,8 +1308,6 @@ class _VideoPageState extends State<VideoPage> {
   }
 }
 
-
-
 Future<void> openLovelyCasinoGames(BuildContext context) async {
   await showModalBottomSheet<void>(
     context: context,
@@ -1323,8 +1321,7 @@ class LovelyCasinoGamesSheet extends StatefulWidget {
   const LovelyCasinoGamesSheet({super.key});
 
   @override
-  State<LovelyCasinoGamesSheet> createState() =>
-      _LovelyCasinoGamesSheetState();
+  State<LovelyCasinoGamesSheet> createState() => _LovelyCasinoGamesSheetState();
 }
 
 class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
@@ -1365,12 +1362,13 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final detail = decoded['detail'];
       if (detail is Map) {
-        throw Exception(detail['message']?.toString() ??
-            detail.toString());
+        throw Exception(detail['message']?.toString() ?? detail.toString());
       }
-      throw Exception(detail?.toString() ??
-          decoded['error']?.toString() ??
-          'Request failed (${response.statusCode}).');
+      throw Exception(
+        detail?.toString() ??
+            decoded['error']?.toString() ??
+            'Request failed (${response.statusCode}).',
+      );
     }
     return decoded;
   }
@@ -1477,16 +1475,15 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
   }
 
   String _formatCoins(int value) => value.toString().replaceAllMapped(
-        RegExp(r'\B(?=(\d{3})+(?!\d))'),
-        (match) => ',',
-      );
+    RegExp(r'\B(?=(\d{3})+(?!\d))'),
+    (match) => ',',
+  );
 
   Widget _gameTile(Map<String, dynamic> game) {
     final imageUrl = game['thumbnail_url']?.toString() ?? '';
-    final name = game['name']?.toString() ??
-        game['slug']?.toString() ??
-        'Game';
-    final enabled = game['enabled'] == true &&
+    final name = game['name']?.toString() ?? game['slug']?.toString() ?? 'Game';
+    final enabled =
+        game['enabled'] == true &&
         game['status']?.toString().toUpperCase() == 'ACTIVE';
 
     return InkWell(
@@ -1589,16 +1586,13 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
             if (game != null && gameController != null)
               Expanded(child: WebViewWidget(controller: gameController!))
             else if (loading || launching)
-              const Expanded(
-                child: Center(child: CircularProgressIndicator()),
-              )
+              const Expanded(child: Center(child: CircularProgressIndicator()))
             else if (game == null && games.isNotEmpty)
               Expanded(
                 child: GridView.builder(
                   padding: const EdgeInsets.all(14),
                   itemCount: games.length,
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
@@ -2414,19 +2408,19 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: color, size: 29),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 29),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ),
-      ],
+        ],
       ),
     );
   }
@@ -3012,7 +3006,6 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-
 Future<Map<String, dynamic>> _roomGiftRequest(
   String method,
   String path, {
@@ -3041,7 +3034,398 @@ Future<Map<String, dynamic>> _roomGiftRequest(
   return decoded;
 }
 
-Future<void> openLovelyRoomGiftStore(BuildContext context) async {
+Future<void> _openLovelyVoiceRoomGiftStore(
+  BuildContext context,
+  String roomId,
+) async {
+  try {
+    final data = await Future.wait([
+      _roomGiftRequest('GET', '/gifts/catalog'),
+      _roomGiftRequest('GET', '/games/wallet'),
+      _roomGiftRequest('GET', '/voice/rooms/$roomId/members'),
+    ]);
+    if (!context.mounted) return;
+
+    final gifts = (data[0]['gifts'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final wallet = data[1]['wallet'] is Map
+        ? Map<String, dynamic>.from(data[1]['wallet'] as Map)
+        : data[1];
+    var coins = int.tryParse('${wallet['coins'] ?? 0}') ?? 0;
+    var members = (data[2]['members'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+
+    final selected = <String>{};
+    var allSelected = false;
+    String? giftCode;
+    var sending = false;
+    Timer? timer;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFFF8FBFF),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          timer ??= Timer.periodic(const Duration(seconds: 4), (_) async {
+            try {
+              final fresh = await Future.wait([
+                _roomGiftRequest('GET', '/games/wallet'),
+                _roomGiftRequest('GET', '/voice/rooms/$roomId/members'),
+              ]);
+              if (!sheetContext.mounted) return;
+              final w = fresh[0]['wallet'] is Map
+                  ? Map<String, dynamic>.from(fresh[0]['wallet'] as Map)
+                  : fresh[0];
+              final updated = (fresh[1]['members'] as List? ?? [])
+                  .map((e) => Map<String, dynamic>.from(e as Map))
+                  .toList();
+              setSheetState(() {
+                coins = int.tryParse('${w['coins'] ?? coins}') ?? coins;
+                members = updated;
+                final valid = members
+                    .map((m) => '${m['user_code'] ?? ''}')
+                    .where((v) => v.isNotEmpty)
+                    .toSet();
+                selected.removeWhere((v) => !valid.contains(v));
+                if (allSelected) {
+                  selected
+                    ..clear()
+                    ..addAll(valid);
+                }
+              });
+            } catch (_) {}
+          });
+
+          Map<String, dynamic>? chosenGift;
+          for (final item in gifts) {
+            if ('${item['code']}' == giftCode) chosenGift = item;
+          }
+          final cost = chosenGift == null
+              ? 0
+              : (int.tryParse('${chosenGift['coin_cost']}') ?? 0);
+          final total = cost * selected.length;
+
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.of(sheetContext).size.height * .72,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Center(
+                      child: Text(
+                        'Lovely Gift Box',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF28577F),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      height: 76,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: members.length + 1,
+                        separatorBuilder: (_, __) => const SizedBox(width: 9),
+                        itemBuilder: (ctx, index) {
+                          if (index == members.length) {
+                            final active =
+                                allSelected &&
+                                selected.length == members.length &&
+                                members.isNotEmpty;
+                            return GestureDetector(
+                              onTap: () => setSheetState(() {
+                                allSelected = !active;
+                                selected
+                                  ..clear()
+                                  ..addAll(
+                                    allSelected
+                                        ? members
+                                              .map(
+                                                (m) =>
+                                                    '${m['user_code'] ?? ''}',
+                                              )
+                                              .where((v) => v.isNotEmpty)
+                                        : <String>{},
+                                  );
+                              }),
+                              child: Column(
+                                children: [
+                                  Container(
+                                    width: 45,
+                                    height: 45,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: active
+                                          ? const Color(0xFF438EDB)
+                                          : const Color(0xFFE4F0FC),
+                                      border: Border.all(
+                                        color: const Color(0xFF438EDB),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'ALL',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: active
+                                            ? Colors.white
+                                            : const Color(0xFF2866A5),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Everyone',
+                                    style: TextStyle(fontSize: 10),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          final member = members[index];
+                          final code = '${member['user_code'] ?? ''}';
+                          final active = selected.contains(code);
+                          final photo = '${member['profile_photo'] ?? ''}';
+                          final hasPhoto = photo.startsWith('http');
+
+                          return GestureDetector(
+                            onTap: () => setSheetState(() {
+                              allSelected = false;
+                              selected
+                                ..clear()
+                                ..add(code);
+                            }),
+                            child: SizedBox(
+                              width: 50,
+                              child: Column(
+                                children: [
+                                  Container(
+                                    width: 45,
+                                    height: 45,
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: active
+                                            ? const Color(0xFF438EDB)
+                                            : Colors.transparent,
+                                        width: 2.5,
+                                      ),
+                                    ),
+                                    child: ClipOval(
+                                      child: hasPhoto
+                                          ? Image.network(
+                                              photo,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) =>
+                                                  const Icon(Icons.person),
+                                            )
+                                          : const ColoredBox(
+                                              color: Color(0xFFE4F0FC),
+                                              child: Icon(
+                                                Icons.person,
+                                                color: Color(0xFF438EDB),
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    code,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 10),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${selected.length} member(s) selected',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF66809A),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: GridView.builder(
+                        itemCount: gifts.length,
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 10,
+                              childAspectRatio: 1.08,
+                            ),
+                        itemBuilder: (ctx, index) {
+                          final gift = gifts[index];
+                          final code = '${gift['code']}';
+                          final price =
+                              int.tryParse('${gift['coin_cost']}') ?? 0;
+                          final active = giftCode == code;
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(15),
+                            onTap: () => setSheetState(() => giftCode = code),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: active
+                                    ? const Color(0xFFDCEEFF)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(15),
+                                border: Border.all(
+                                  color: active
+                                      ? const Color(0xFF438EDB)
+                                      : const Color(0xFFE1EAF3),
+                                  width: active ? 2 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    '${gift['emoji'] ?? '🎁'}',
+                                    style: const TextStyle(fontSize: 28),
+                                  ),
+                                  Text(
+                                    '${gift['name']}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    '$price Coins',
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Your Coins: $coins',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF315777),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          height: 46,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF438EDB),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 25,
+                              ),
+                            ),
+                            onPressed:
+                                sending ||
+                                    giftCode == null ||
+                                    selected.isEmpty ||
+                                    total > coins
+                                ? null
+                                : () async {
+                                    setSheetState(() => sending = true);
+                                    try {
+                                      final result = await _roomGiftRequest(
+                                        'POST',
+                                        '/voice/rooms/$roomId/gifts/send',
+                                        body: {
+                                          'receiver_codes': selected.toList(),
+                                          'gift_code': giftCode,
+                                          'quantity': 1,
+                                        },
+                                      );
+                                      if (!sheetContext.mounted) return;
+                                      coins =
+                                          int.tryParse(
+                                            '${result['sender_coins'] ?? coins}',
+                                          ) ??
+                                          coins;
+                                      setSheetState(() {});
+                                      ScaffoldMessenger.of(
+                                        sheetContext,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Gift sent to ${result['recipients_count']} member(s). '
+                                            '${result['coins_spent']} Coins spent.',
+                                          ),
+                                        ),
+                                      );
+                                    } catch (e) {
+                                      if (sheetContext.mounted) {
+                                        ScaffoldMessenger.of(sheetContext)
+                                            .showSnackBar(
+                                              SnackBar(content: Text('$e')),
+                                            );
+                                      }
+                                    } finally {
+                                      if (sheetContext.mounted) {
+                                        setSheetState(() => sending = false);
+                                      }
+                                    }
+                                  },
+                            child: Text(
+                              sending ? 'SENDING...' : 'SEND • $total',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    timer?.cancel();
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Gift Box error: $e')));
+    }
+  }
+}
+
+Future<void> openLovelyRoomGiftStore(
+  BuildContext context, {
+  Object? roomId,
+}) async {
+  if (roomId != null) {
+    await _openLovelyVoiceRoomGiftStore(context, roomId.toString());
+    return;
+  }
   try {
     final results = await Future.wait([
       _roomGiftRequest('GET', '/gifts/catalog'),
@@ -3067,7 +3451,9 @@ Future<void> openLovelyRoomGiftStore(BuildContext context) async {
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) => Padding(
           padding: EdgeInsets.fromLTRB(
-            18, 20, 18,
+            18,
+            20,
+            18,
             MediaQuery.of(sheetContext).viewInsets.bottom + 20,
           ),
           child: Column(
@@ -3088,8 +3474,7 @@ Future<void> openLovelyRoomGiftStore(BuildContext context) async {
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (itemContext, index) {
                     final gift = gifts[index];
-                    final cost =
-                        int.tryParse('${gift['coin_cost']}') ?? 0;
+                    final cost = int.tryParse('${gift['coin_cost']}') ?? 0;
                     return ListTile(
                       leading: Text(
                         '${gift['emoji'] ?? '🎁'}',
@@ -3132,7 +3517,8 @@ Future<void> openLovelyRoomGiftStore(BuildContext context) async {
                         receiverController.dispose();
                         if (receiverCode == null ||
                             receiverCode.isEmpty ||
-                            !sheetContext.mounted) return;
+                            !sheetContext.mounted)
+                          return;
 
                         try {
                           final result = await _roomGiftRequest(
@@ -3145,9 +3531,11 @@ Future<void> openLovelyRoomGiftStore(BuildContext context) async {
                             },
                           );
                           if (!sheetContext.mounted) return;
-                          coins = int.tryParse(
+                          coins =
+                              int.tryParse(
                                 '${result['sender_coins'] ?? coins}',
-                              ) ?? coins;
+                              ) ??
+                              coins;
                           setSheetState(() {});
                           ScaffoldMessenger.of(sheetContext).showSnackBar(
                             SnackBar(
@@ -3176,9 +3564,8 @@ Future<void> openLovelyRoomGiftStore(BuildContext context) async {
     );
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gift Store error: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Gift Store error: $e')));
     }
   }
 }
@@ -3270,7 +3657,6 @@ class _ProfilePageState extends State<ProfilePage> {
     return decoded;
   }
 
-
   Future<void> _openWallet() async {
     try {
       final data = await _giftRequest('GET', '/games/wallet');
@@ -3297,7 +3683,9 @@ class _ProfilePageState extends State<ProfilePage> {
           builder: (sheetContext, setSheetState) {
             return Padding(
               padding: EdgeInsets.fromLTRB(
-                20, 22, 20,
+                20,
+                22,
+                20,
                 MediaQuery.of(sheetContext).viewInsets.bottom + 24,
               ),
               child: SingleChildScrollView(
@@ -3320,14 +3708,18 @@ class _ProfilePageState extends State<ProfilePage> {
                       children: [
                         Expanded(
                           child: _walletBalanceCard(
-                            'Coins', coins, Icons.monetization_on_rounded,
+                            'Coins',
+                            coins,
+                            Icons.monetization_on_rounded,
                             const Color(0xFFFFB938),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: _walletBalanceCard(
-                            'Diamonds', diamonds, Icons.diamond_rounded,
+                            'Diamonds',
+                            diamonds,
+                            Icons.diamond_rounded,
                             const Color(0xFF48B8E8),
                           ),
                         ),
@@ -3402,16 +3794,23 @@ class _ProfilePageState extends State<ProfilePage> {
                                     'GET',
                                     '/games/wallet',
                                   );
-                                  coins = int.tryParse(
+                                  coins =
+                                      int.tryParse(
                                         '${updated['coins'] ?? result['coins'] ?? 0}',
-                                      ) ?? 0;
-                                  diamonds = int.tryParse(
+                                      ) ??
+                                      0;
+                                  diamonds =
+                                      int.tryParse(
                                         '${updated['diamonds'] ?? result['diamonds'] ?? 0}',
-                                      ) ?? 0;
+                                      ) ??
+                                      0;
                                   transactions =
                                       (updated['transactions'] as List? ?? [])
-                                          .map((item) =>
-                                              Map<String, dynamic>.from(item as Map))
+                                          .map(
+                                            (item) => Map<String, dynamic>.from(
+                                              item as Map,
+                                            ),
+                                          )
                                           .toList();
                                   exchangeController.clear();
                                   setSheetState(() {});
@@ -3477,9 +3876,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                           trailing: Text(
                             '$amount $currency',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                            ),
+                            style: const TextStyle(fontWeight: FontWeight.w800),
                           ),
                         );
                       }),
@@ -3493,9 +3890,8 @@ class _ProfilePageState extends State<ProfilePage> {
       exchangeController.dispose();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Wallet error: $e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Wallet error: $e')));
       }
     }
   }
@@ -3518,10 +3914,7 @@ class _ProfilePageState extends State<ProfilePage> {
           const SizedBox(height: 8),
           Text(
             amount.toString(),
-            style: const TextStyle(
-              fontSize: 21,
-              fontWeight: FontWeight.w900,
-            ),
+            style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
           ),
           Text(label, style: const TextStyle(color: Colors.black54)),
         ],
@@ -5908,7 +6301,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   circleAction(
                     Icons.card_giftcard_rounded,
                     'Gift',
-                    () => openLovelyRoomGiftStore(context),
+                    () => openLovelyRoomGiftStore(
+                      context,
+                      roomId: widget.room['id'],
+                    ),
                     color: const Color(0xFFFFD477),
                     size: 25,
                   ),

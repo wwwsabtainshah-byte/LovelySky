@@ -410,19 +410,24 @@ def get_voice_room_members(
         _require_voice_room_member(db, room_id, user)
         rows = db.execute(
             """
-            SELECT
-                p.user_uid,
-                p.user_code,
-                u.display_name,
-                u.profile_photo,
-                p.seat_number,
-                p.is_muted
+            SELECT p.user_uid, p.user_code, u.display_name, u.profile_photo,
+                   p.seat_number, p.is_muted
             FROM voice_room_participants AS p
             LEFT JOIN users AS u ON u.google_uid = p.user_uid
             WHERE p.room_id = ?
-            ORDER BY p.joined_at ASC
+            UNION
+            SELECT r.owner_uid, r.owner_code, u.display_name, u.profile_photo,
+                   NULL, 0
+            FROM voice_rooms AS r
+            LEFT JOIN users AS u ON u.google_uid = r.owner_uid
+            WHERE r.id = ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM voice_room_participants AS p
+                  WHERE p.room_id = r.id AND p.user_uid = r.owner_uid
+              )
+            ORDER BY user_code
             """,
-            (room_id,),
+            (room_id, room_id),
         ).fetchall()
         return {
             "success": True,
@@ -2216,6 +2221,145 @@ async def send_gift(
     finally:
         db.close()
 
+
+
+
+@router.post("/voice/rooms/{room_id}/gifts/send")
+async def send_voice_room_gift(
+    room_id: int,
+    request: Request,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Invalid JSON body")
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "JSON body must be an object")
+
+    raw_codes = payload.get("receiver_codes", [])
+    if not isinstance(raw_codes, list):
+        raise HTTPException(400, "receiver_codes must be a list")
+    receiver_codes = list(dict.fromkeys(
+        str(code).strip() for code in raw_codes if str(code).strip()
+    ))
+    if not receiver_codes or len(receiver_codes) > 100:
+        raise HTTPException(400, "Select between 1 and 100 room members")
+
+    gift_code = str(payload.get("gift_code", "")).strip().lower()
+    try:
+        quantity = int(payload.get("quantity", 1))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid gift quantity")
+    if quantity < 1 or quantity > 99:
+        raise HTTPException(400, "Gift quantity must be between 1 and 99")
+
+    gift = GIFT_BY_CODE.get(gift_code)
+    if not gift:
+        raise HTTPException(404, "Gift not found")
+
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        _require_voice_room_member(db, room_id, user)
+
+        room_members = db.execute(
+            """
+            SELECT p.user_code, u.id AS user_id
+            FROM voice_room_participants p
+            JOIN users u ON u.google_uid = p.user_uid
+            WHERE p.room_id = ?
+            UNION
+            SELECT r.owner_code, u.id
+            FROM voice_rooms r
+            JOIN users u ON u.google_uid = r.owner_uid
+            WHERE r.id = ?
+            """,
+            (room_id, room_id),
+        ).fetchall()
+        members_by_code = {str(row["user_code"]): row for row in room_members}
+        if any(code not in members_by_code for code in receiver_codes):
+            raise HTTPException(403, "A selected recipient is not a member of this room")
+
+        sender_id = int(user["id"])
+        cost_each = int(gift["coin_cost"]) * quantity
+        total_cost = cost_each * len(receiver_codes)
+
+        db.execute(
+            "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
+            (sender_id,),
+        )
+        debit = db.execute(
+            """UPDATE wallets SET coins = coins - ?
+               WHERE user_id = ? AND coins >= ?""",
+            (total_cost, sender_id, total_cost),
+        )
+        if debit.rowcount != 1:
+            raise HTTPException(400, "Not enough Lovely Coins")
+
+        for code in receiver_codes:
+            receiver_id = int(members_by_code[code]["user_id"])
+            db.execute(
+                "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
+                (receiver_id,),
+            )
+            db.execute(
+                "UPDATE wallets SET diamonds = diamonds + ? WHERE user_id = ?",
+                (cost_each, receiver_id),
+            )
+            db.execute(
+                """INSERT INTO inventory (user_id, item_type, item_code, quantity)
+                   VALUES (?, 'gift', ?, ?)
+                   ON CONFLICT(user_id, item_type, item_code)
+                   DO UPDATE SET quantity = quantity + excluded.quantity""",
+                (receiver_id, gift_code, quantity),
+            )
+            db.execute(
+                """INSERT INTO gift_transactions
+                   (sender_user_id, receiver_user_id, gift_code, gift_name,
+                    quantity, coins_spent, diamonds_credited)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (sender_id, receiver_id, gift_code, gift["name"],
+                 quantity, cost_each, cost_each),
+            )
+            db.execute(
+                """INSERT INTO transactions
+                   (user_id, transaction_type, amount, currency, description)
+                   VALUES (?, 'gift_received', ?, 'diamonds', ?)""",
+                (receiver_id, cost_each,
+                 f"Received {quantity} x {gift['name']} from ID {user.get('user_code', '')}"),
+            )
+
+        db.execute(
+            """INSERT INTO transactions
+               (user_id, transaction_type, amount, currency, description)
+               VALUES (?, 'gift_sent', ?, 'coins', ?)""",
+            (sender_id, total_cost,
+             f"Sent {quantity} x {gift['name']} to {len(receiver_codes)} room member(s)"),
+        )
+        sender_wallet = db.execute(
+            "SELECT coins FROM wallets WHERE user_id = ?",
+            (sender_id,),
+        ).fetchone()
+        db.commit()
+        return {
+            "success": True,
+            "recipients_count": len(receiver_codes),
+            "coins_spent": total_cost,
+            "diamonds_per_recipient": cost_each,
+            "sender_coins": int(sender_wallet["coins"]),
+            "coin_to_diamond_rate": 1,
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception("Voice room gift send failed")
+        raise HTTPException(500, "Could not send room gifts")
+    finally:
+        db.close()
 
 @router.get("/gifts/bag")
 def get_gift_bag(authorization: str | None = Header(default=None)):
