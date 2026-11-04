@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -3061,12 +3062,14 @@ Future<void> _openLovelyVoiceRoomGiftStore(
     var allSelected = false;
     String? giftCode;
     var sending = false;
+    var quantity = 1;
+    String selectedCategory = 'Gift';
     Timer? timer;
 
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFFF8FBFF),
+      backgroundColor: const Color(0xFF170F35),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -3109,25 +3112,41 @@ Future<void> _openLovelyVoiceRoomGiftStore(
           final cost = chosenGift == null
               ? 0
               : (int.tryParse('${chosenGift['coin_cost']}') ?? 0);
-          final total = cost * selected.length;
+          final total = cost * selected.length * quantity;
+          final visibleGifts = gifts.where((gift) {
+            final category = '${gift['category'] ?? 'Gift'}';
+            return category == selectedCategory;
+          }).toList();
 
           return SafeArea(
             child: SizedBox(
-              height: MediaQuery.of(sheetContext).size.height * .72,
+              height: MediaQuery.of(sheetContext).size.height * .90,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Center(
-                      child: Text(
-                        'Lovely Gift Box',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF28577F),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const SizedBox(width: 40),
+                        const Text(
+                          'Lovely Gift Box',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFFFE4FF),
+                          ),
                         ),
-                      ),
+                        IconButton(
+                          tooltip: 'Close',
+                          onPressed: () => Navigator.pop(sheetContext),
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Color(0xFFEAD9FF),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 14),
                     SizedBox(
@@ -3211,35 +3230,65 @@ Future<void> _openLovelyVoiceRoomGiftStore(
                               width: 50,
                               child: Column(
                                 children: [
-                                  Container(
-                                    width: 45,
-                                    height: 45,
-                                    padding: const EdgeInsets.all(2),
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: active
-                                            ? const Color(0xFF438EDB)
-                                            : Colors.transparent,
-                                        width: 2.5,
+                                  Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      Container(
+                                        width: 45,
+                                        height: 45,
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: active
+                                                ? const Color(0xFF438EDB)
+                                                : Colors.transparent,
+                                            width: 2.5,
+                                          ),
+                                        ),
+                                        child: ClipOval(
+                                          child: hasPhoto
+                                              ? Image.network(
+                                                  photo,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (_, __, ___) =>
+                                                      const Icon(Icons.person),
+                                                )
+                                              : const ColoredBox(
+                                                  color: Color(0xFFE4F0FC),
+                                                  child: Icon(
+                                                    Icons.person,
+                                                    color: Color(0xFF438EDB),
+                                                  ),
+                                                ),
+                                        ),
                                       ),
-                                    ),
-                                    child: ClipOval(
-                                      child: hasPhoto
-                                          ? Image.network(
-                                              photo,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) =>
-                                                  const Icon(Icons.person),
-                                            )
-                                          : const ColoredBox(
-                                              color: Color(0xFFE4F0FC),
-                                              child: Icon(
-                                                Icons.person,
-                                                color: Color(0xFF438EDB),
-                                              ),
+                                      Positioned(
+                                        right: -3,
+                                        top: -3,
+                                        child: Container(
+                                          width: 17,
+                                          height: 17,
+                                          alignment: Alignment.center,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFE5A5FF),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: const Color(0xFF170F35),
+                                              width: 1.5,
                                             ),
-                                    ),
+                                          ),
+                                          child: Text(
+                                            '${index + 1}',
+                                            style: const TextStyle(
+                                              color: Color(0xFF170F35),
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
@@ -3255,6 +3304,55 @@ Future<void> _openLovelyVoiceRoomGiftStore(
                         },
                       ),
                     ),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final tab in [
+                            'Gift',
+                            'CP',
+                            'Lucky Gift',
+                            'Flag',
+                            'Exclusive',
+                          ])
+                            GestureDetector(
+                              onTap: () => setSheetState(() {
+                                selectedCategory = tab;
+                                giftCode = null;
+                              }),
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 15,
+                                  vertical: 9,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: selectedCategory == tab
+                                      ? const Color(0xFF63358B)
+                                      : const Color(0xFF281A45),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: selectedCategory == tab
+                                        ? const Color(0xFFE5A5FF)
+                                        : const Color(0xFF49345F),
+                                  ),
+                                ),
+                                child: Text(
+                                  tab,
+                                  style: TextStyle(
+                                    color: selectedCategory == tab
+                                        ? Colors.white
+                                        : const Color(0xFF9B8AAE),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                     const SizedBox(height: 6),
                     Text(
                       '${selected.length} member(s) selected',
@@ -3265,63 +3363,107 @@ Future<void> _openLovelyVoiceRoomGiftStore(
                     ),
                     const SizedBox(height: 10),
                     Expanded(
-                      child: GridView.builder(
-                        itemCount: gifts.length,
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              crossAxisSpacing: 10,
-                              mainAxisSpacing: 10,
-                              childAspectRatio: 1.08,
-                            ),
-                        itemBuilder: (ctx, index) {
-                          final gift = gifts[index];
-                          final code = '${gift['code']}';
-                          final price =
-                              int.tryParse('${gift['coin_cost']}') ?? 0;
-                          final active = giftCode == code;
-                          return InkWell(
-                            borderRadius: BorderRadius.circular(15),
-                            onTap: () => setSheetState(() => giftCode = code),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: active
-                                    ? const Color(0xFFDCEEFF)
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(15),
-                                border: Border.all(
+                      child: visibleGifts.isEmpty
+                          ? Center(
+                              child: Text(
+                                'No $selectedCategory gifts available yet.',
+                                style: const TextStyle(color: Color(0xFF9B8AAE)),
+                              ),
+                            )
+                          : GridView.builder(
+                          itemCount: visibleGifts.length,
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 4,
+                                crossAxisSpacing: 10,
+                                mainAxisSpacing: 10,
+                                childAspectRatio: 1.08,
+                              ),
+                          itemBuilder: (ctx, index) {
+                            final gift = visibleGifts[index];
+                            final code = '${gift['code']}';
+                            final price =
+                                int.tryParse('${gift['coin_cost']}') ?? 0;
+                            final active = giftCode == code;
+                            return InkWell(
+                              borderRadius: BorderRadius.circular(15),
+                              onTap: () => setSheetState(() => giftCode = code),
+                              child: Container(
+                                decoration: BoxDecoration(
                                   color: active
-                                      ? const Color(0xFF438EDB)
-                                      : const Color(0xFFE1EAF3),
-                                  width: active ? 2 : 1,
+                                      ? const Color(0xFF63358B)
+                                      : const Color(0xFF281A45),
+                                  borderRadius: BorderRadius.circular(15),
+                                  border: Border.all(
+                                    color: active
+                                        ? const Color(0xFF438EDB)
+                                        : const Color(0xFF49345F),
+                                    width: active ? 2 : 1,
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      '${gift['emoji'] ?? '🎁'}',
+                                      style: const TextStyle(fontSize: 28),
+                                    ),
+                                    Text(
+                                      '${gift['name']}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFFF4E9FF),
+                                      ),
+                                    ),
+                                    Text(
+                                      '$price Coins',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFFC9B5E8),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    '${gift['emoji'] ?? '🎁'}',
-                                    style: const TextStyle(fontSize: 28),
-                                  ),
-                                  Text(
-                                    '${gift['name']}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    '$price Coins',
-                                    style: const TextStyle(fontSize: 11),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Text(
+                          'Quantity',
+                          style: TextStyle(color: Color(0xFFEAD9FF)),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          onPressed: quantity > 1
+                              ? () => setSheetState(() => quantity--)
+                              : null,
+                          icon: const Icon(Icons.remove_circle_outline),
+                          color: const Color(0xFFE5A5FF),
+                        ),
+                        Text(
+                          '$quantity',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          onPressed: quantity < 99
+                              ? () => setSheetState(() => quantity++)
+                              : null,
+                          icon: const Icon(Icons.add_circle),
+                          color: const Color(0xFFE5A5FF),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         Expanded(
@@ -3329,7 +3471,7 @@ Future<void> _openLovelyVoiceRoomGiftStore(
                             'Your Coins: $coins',
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF315777),
+                              color: Color(0xFFEAD9FF),
                             ),
                           ),
                         ),
@@ -3337,7 +3479,7 @@ Future<void> _openLovelyVoiceRoomGiftStore(
                           height: 46,
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF438EDB),
+                              backgroundColor: const Color(0xFF9B55C7),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 25,
@@ -3358,7 +3500,7 @@ Future<void> _openLovelyVoiceRoomGiftStore(
                                         body: {
                                           'receiver_codes': selected.toList(),
                                           'gift_code': giftCode,
-                                          'quantity': 1,
+                                          'quantity': quantity,
                                         },
                                       );
                                       if (!sheetContext.mounted) return;
@@ -4579,173 +4721,366 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   @override
+
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          pageTitle(
-            'My Profile',
-            subtitle: 'Your Lovely world',
-            trailing: roundIcon(Icons.settings_rounded),
-          ),
-          Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF168FFF), Color(0xFF8BDEFF)],
-              ),
-              borderRadius: BorderRadius.circular(25),
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFFF4EAFE),
+            Color(0xFFEAF4FF),
+            Color(0xFFF8F5FF),
+          ],
+        ),
+      ),
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+          children: [
+            pageTitle(
+              'My Profile',
+              subtitle: 'Your Lovely world',
+              trailing: roundIcon(Icons.settings_rounded),
             ),
-            child: Column(
-              children: [
-                Container(
-                  width: 88,
-                  height: 88,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white,
-                    border: Border.all(color: Colors.white, width: 4),
-                    image: profilePhoto.isNotEmpty
-                        ? DecorationImage(
-                            image: NetworkImage(profilePhoto),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
-                  child: profilePhoto.isEmpty
-                      ? const Icon(Icons.person_rounded, size: 55, color: blue)
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  displayName,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  profileLoading
-                      ? 'ID: Loading...'
-                      : userCode.isNotEmpty
-                      ? 'ID: $userCode'
-                      : 'ID: Not available — login again',
-                  style: const TextStyle(color: Colors.white),
-                ),
-                const SizedBox(height: 20),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    StatItem(value: '0', label: 'Followers'),
-                    StatItem(value: '0', label: 'Following'),
-                    StatItem(value: '0', label: 'Likes'),
+
+            const SizedBox(height: 16),
+
+            // PREMIUM PROFILE HEADER
+            Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF54258A),
+                    Color(0xFF8549C5),
+                    Color(0xFF438EDB),
                   ],
+                ),
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF63358B).withOpacity(0.25),
+                    blurRadius: 20,
+                    offset: const Offset(0, 9),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        '💎 LOVELY MEMBER',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  Container(
+                    width: 104,
+                    height: 104,
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: const Color(0xFFFFD978),
+                        width: 3,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.18),
+                          blurRadius: 14,
+                        ),
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      backgroundColor: Colors.white,
+                      backgroundImage: profilePhoto.isNotEmpty
+                          ? NetworkImage(profilePhoto)
+                          : null,
+                      child: profilePhoto.isEmpty
+                          ? const Icon(
+                              Icons.person_rounded,
+                              size: 58,
+                              color: Color(0xFF7542A8),
+                            )
+                          : null,
+                    ),
+                  ),
+
+                  const SizedBox(height: 13),
+
+                  Text(
+                    displayName,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 23,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+
+                  const SizedBox(height: 7),
+
+                  GestureDetector(
+                    onTap: () {
+                      if (userCode.isNotEmpty) {
+                        Clipboard.setData(
+                          ClipboardData(text: userCode),
+                        );
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('User ID copied'),
+                          ),
+                        );
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 15,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.17),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            profileLoading
+                                ? 'ID: Loading...'
+                                : userCode.isNotEmpty
+                                    ? 'ID: $userCode'
+                                    : 'ID: Not available',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 7),
+                          const Icon(
+                            Icons.copy_rounded,
+                            color: Colors.white,
+                            size: 15,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 22),
+
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.13),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        StatItem(value: '0', label: 'Followers'),
+                        StatItem(value: '0', label: 'Following'),
+                        StatItem(value: '0', label: 'Likes'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 23),
+
+            sectionTitle('My Lovely Space'),
+
+            Row(
+              children: [
+                Expanded(
+                  child: MenuTile(
+                    icon: Icons.account_balance_wallet_rounded,
+                    title: 'Wallet',
+                    subtitle: 'Coins & history',
+                    onTap: _openWallet,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: MenuTile(
+                    icon: Icons.storefront_rounded,
+                    title: 'Gift Store',
+                    subtitle: 'Send lovely gifts',
+                    onTap: _openGiftStore,
+                  ),
                 ),
               ],
             ),
-          ),
-          sectionTitle('My Lovely Space'),
-          Row(
-            children: [
-              Expanded(
-                child: MenuTile(
-                  icon: Icons.account_balance_wallet_rounded,
-                  title: 'Wallet',
-                  subtitle: 'Coins & history',
-                  onTap: _openWallet,
+
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
+                Expanded(
+                  child: MenuTile(
+                    icon: Icons.card_giftcard_rounded,
+                    title: 'Gift Bag',
+                    subtitle: 'Received gifts',
+                    onTap: _openGiftBag,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: MenuTile(
+                    icon: Icons.emoji_events_rounded,
+                    title: 'Rewards',
+                    subtitle: 'Daily rewards',
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
+                Expanded(
+                  child: MenuTile(
+                    icon: Icons.shopping_bag_rounded,
+                    title: 'Mall',
+                    subtitle: 'Lovely items',
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Mall coming soon'),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: MenuTile(
+                    icon: Icons.backpack_rounded,
+                    title: 'Backpack',
+                    subtitle: 'My collection',
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Backpack coming soon'),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 23),
+
+            sectionTitle('Account'),
+
+            const MenuTile(
+              icon: Icons.edit_rounded,
+              title: 'Edit Profile',
+              subtitle: 'Name and picture',
+            ),
+
+            const SizedBox(height: 10),
+
+            const MenuTile(
+              icon: Icons.shield_rounded,
+              title: 'Privacy & Security',
+              subtitle: 'Protect your account',
+            ),
+
+            const SizedBox(height: 10),
+
+            const MenuTile(
+              icon: Icons.help_outline_rounded,
+              title: 'Help & Support',
+              subtitle: 'We are here to help',
+            ),
+
+            if (userCode == '1') ...[
+              const SizedBox(height: 20),
+
+              sectionTitle('Administration'),
+
+              Card(
+                color: Colors.white,
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(17),
+                ),
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.account_balance_wallet_rounded,
+                    color: blue,
+                  ),
+                  title: const Text('Owner Wallet'),
+                  subtitle: const Text('Issue coins to a user ID'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: _showOwnerCoinPanel,
                 ),
               ),
-              SizedBox(width: 12),
-              Expanded(
-                child: MenuTile(
-                  icon: Icons.storefront_rounded,
-                  title: 'Store',
-                  subtitle: 'Gifts & frames',
-                  onTap: _openGiftStore,
+
+              const SizedBox(height: 10),
+
+              Card(
+                color: Colors.white,
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(17),
+                ),
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.storage_rounded,
+                    color: blue,
+                  ),
+                  title: const Text('Cloud Database Check'),
+                  subtitle: const Text(
+                    'Owner-only server diagnostic',
+                  ),
+                  trailing: databaseChecking
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(Icons.chevron_right_rounded),
+                  onTap: databaseChecking
+                      ? null
+                      : _checkCloudDatabase,
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: MenuTile(
-                  icon: Icons.card_giftcard_rounded,
-                  title: 'Gift Bag',
-                  subtitle: 'My gifts',
-                  onTap: _openGiftBag,
-                ),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: MenuTile(
-                  icon: Icons.emoji_events_rounded,
-                  title: 'Rewards',
-                  subtitle: 'Daily rewards',
-                ),
-              ),
-            ],
-          ),
-          sectionTitle('Account'),
-          const MenuTile(
-            icon: Icons.edit_rounded,
-            title: 'Edit Profile',
-            subtitle: 'Name and picture',
-          ),
-          const SizedBox(height: 10),
-          const MenuTile(
-            icon: Icons.shield_rounded,
-            title: 'Privacy & Security',
-            subtitle: 'Protect your account',
-          ),
-          const SizedBox(height: 10),
-          const MenuTile(
-            icon: Icons.help_outline_rounded,
-            title: 'Help & Support',
-            subtitle: 'We are here to help',
-          ),
-          if (userCode == '1') ...[
-            const SizedBox(height: 10),
-            Card(
-              color: Colors.white,
-              child: ListTile(
-                leading: const Icon(
-                  Icons.account_balance_wallet_rounded,
-                  color: blue,
-                ),
-                title: const Text('Owner Wallet'),
-                subtitle: const Text('Issue coins to a user ID'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: _showOwnerCoinPanel,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Card(
-              color: Colors.white,
-              child: ListTile(
-                leading: const Icon(Icons.storage_rounded, color: blue),
-                title: const Text('Cloud Database Check'),
-                subtitle: const Text('Owner-only server diagnostic'),
-                trailing: databaseChecking
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.chevron_right_rounded),
-                onTap: databaseChecking ? null : _checkCloudDatabase,
-              ),
-            ),
           ],
-        ],
+        ),
       ),
     );
   }
+
 }
 
 class StatItem extends StatelessWidget {
@@ -4866,6 +5201,11 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   final Map<String, List<RTCIceCandidate>> pendingCandidates = {};
   final Set<String> remoteDescriptionReady = {};
   final Map<String, bool> remoteMicStatus = {};
+  Map<String, dynamic>? activeGiftEvent;
+  Timer? giftOverlayTimer;
+  int giftComboCount = 1;
+  String? lastGiftComboKey;
+  DateTime? lastGiftEventAt;
 
   static const Color pink = Color(0xFFFF4FA3);
   static const Color background = Color(0xFF160D2B);
@@ -5004,6 +5344,63 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     }
   }
 
+  void _showRoomGiftEvent(Map<String, dynamic> gift) {
+    if (!mounted) return;
+
+    final sender = (gift['sender_name'] ?? 'Member').toString();
+    final giftName = (gift['gift_name'] ?? 'Gift').toString();
+    final emoji = (gift['emoji'] ?? '🎁').toString();
+    final quantity = int.tryParse('${gift['quantity'] ?? 1}') ?? 1;
+    final receivers = (gift['receiver_codes'] as List? ?? [])
+        .map((value) => value.toString())
+        .toList();
+
+    final comboKey =
+        '${gift['sender_code']}: ${gift['gift_code']}:'
+        '${receivers.join(',')}';
+    final now = DateTime.now();
+
+    if (lastGiftComboKey == comboKey &&
+        lastGiftEventAt != null &&
+        now.difference(lastGiftEventAt!).inSeconds <= 5) {
+      giftComboCount++;
+    } else {
+      giftComboCount = 1;
+    }
+    lastGiftComboKey = comboKey;
+    lastGiftEventAt = now;
+
+    final receiverText = receivers.isEmpty
+        ? 'room members'
+        : receivers.map((code) => 'ID $code').join(', ');
+
+    setState(() {
+      activeGiftEvent = {
+        ...gift,
+        'sender_name': sender,
+        'gift_name': giftName,
+        'emoji': emoji,
+        'quantity': quantity,
+        'receiver_text': receiverText,
+        'combo': giftComboCount,
+      };
+      messages.insert(0, {
+        'text': '$sender sent $quantity x $giftName to $receiverText',
+        'time':
+            '${now.hour.toString().padLeft(2, '0')}:'
+            '${now.minute.toString().padLeft(2, '0')}',
+      });
+      if (messages.length > 100) messages.removeLast();
+    });
+
+    giftOverlayTimer?.cancel();
+    giftOverlayTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) {
+        setState(() => activeGiftEvent = null);
+      }
+    });
+  }
+
   Future<void> _handleVoiceSignal(dynamic event) async {
     try {
       final decoded = jsonDecode(event is String ? event : event.toString());
@@ -5011,6 +5408,15 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
 
       final data = Map<String, dynamic>.from(decoded);
       final type = data['type'];
+
+      if (type == 'gift_event') {
+        final payload = data['payload'];
+        if (payload is Map) {
+          _showRoomGiftEvent(Map<String, dynamic>.from(payload));
+        }
+        return;
+      }
+
       final senderUid = data['sender_uid']?.toString();
 
       if (type == 'existing_peers') {
@@ -5918,6 +6324,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   @override
   void dispose() {
     seatRefreshTimer?.cancel();
+    giftOverlayTimer?.cancel();
     unawaited(_stopVoice());
     messageController.dispose();
     super.dispose();
@@ -5997,374 +6404,524 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF071B31),
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 5, 5, 7),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => showMessage('Room owner profile'),
-                    child: CircleAvatar(
-                      radius: 23,
-                      backgroundColor: const Color(0xFF287CB7),
-                      backgroundImage: ownerPhoto.startsWith('http')
-                          ? NetworkImage(ownerPhoto)
-                          : null,
-                      child: ownerPhoto.startsWith('http')
-                          ? null
-                          : const Icon(Icons.person, color: Colors.white),
-                    ),
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        Text(
-                          'Room ID: $roomId',
-                          style: const TextStyle(
-                            color: Color(0xFF9DDCFF),
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (isOwner)
-                    circleAction(
-                      Icons.settings_rounded,
-                      'Room settings',
-                      () =>
-                          showMessage('Room settings baad mein connect honge.'),
-                    ),
-                  circleAction(
-                    Icons.minimize_rounded,
-                    'Minimize',
-                    () => showMessage(
-                      'Minimize/background audio abhi connect nahi hai.',
-                    ),
-                  ),
-                  circleAction(
-                    Icons.close_rounded,
-                    'Exit room',
-                    _leaveRoom,
-                    color: const Color(0xFFFF8D9B),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Row(
-                children: [
-                  infoButton(
-                    Icons.card_giftcard_rounded,
-                    'Daily Gifting',
-                    'Gift report',
-                    () => showMessage(
-                      'Daily / Weekly / Monthly gifting report baad mein connect hoga.',
-                    ),
-                  ),
-                  const SizedBox(width: 7),
-                  infoButton(
-                    Icons.local_fire_department_rounded,
-                    'Popularity',
-                    'Room ranking',
-                    () => showMessage(
-                      'Room popularity report baad mein connect hoga.',
-                    ),
-                  ),
-                  const SizedBox(width: 7),
-                  infoButton(
-                    Icons.people_alt_rounded,
-                    'Live Members',
-                    '${occupiedSeats.length} joined',
-                    () {
-                      final ids = occupiedSeats
-                          .map((e) => (e['user_code'] ?? '').toString())
-                          .where((e) => e.isNotEmpty)
-                          .join(', ');
-                      showMessage(
-                        ids.isEmpty ? 'No members seated' : 'IDs: $ids',
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(8, 3, 8, 8),
-                children: [
-                  if (occupiedSeats.isNotEmpty)
-                    SizedBox(
-                      height: 48,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: occupiedSeats.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 7),
-                        itemBuilder: (context, index) {
-                          final member = occupiedSeats[index];
-                          final photo = (member['profile_photo'] ?? '')
-                              .toString();
-                          return GestureDetector(
-                            onTap: () => showMessage(
-                              'Member ID: ${member['user_code'] ?? ''}',
-                            ),
-                            child: CircleAvatar(
-                              radius: 19,
-                              backgroundColor: const Color(0xFF286B9D),
-                              backgroundImage: photo.startsWith('http')
-                                  ? NetworkImage(photo)
-                                  : null,
-                              child: photo.startsWith('http')
-                                  ? null
-                                  : const Icon(
-                                      Icons.person,
-                                      color: Colors.white,
-                                      size: 19,
-                                    ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  const SizedBox(height: 5),
-                  if (seatsLoading && seats.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(25),
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: Color(0xFF83D8FF),
-                        ),
-                      ),
-                    )
-                  else ...[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 13),
-                          child: _buildSeat(1),
-                        ),
-                        _buildSeat(2, large: true),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 13),
-                          child: _buildSeat(3),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    for (final first in [4, 9, 14]) ...[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          for (int i = 0; i < 5; i++) _buildSeat(first + i),
-                        ],
-                      ),
-                      const SizedBox(height: 7),
-                    ],
-                  ],
-                  const Divider(color: Color(0x335E9AC5), height: 14),
-                  Row(
+            Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 5, 5, 7),
+                  child: Row(
                     children: [
-                      const Text(
-                        'Room Chat',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
+                      GestureDetector(
+                        onTap: () => showMessage('Room owner profile'),
+                        child: CircleAvatar(
+                          radius: 23,
+                          backgroundColor: const Color(0xFF287CB7),
+                          backgroundImage: ownerPhoto.startsWith('http')
+                              ? NetworkImage(ownerPhoto)
+                              : null,
+                          child: ownerPhoto.startsWith('http')
+                              ? null
+                              : const Icon(Icons.person, color: Colors.white),
                         ),
                       ),
-                      const Spacer(),
-                      Text(
-                        '${messages.length} messages',
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 5),
-                  if (messages.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 14),
-                      child: Center(
-                        child: Text(
-                          'Welcome to Lovely Sky!',
-                          style: TextStyle(color: Colors.white54, fontSize: 12),
-                        ),
-                      ),
-                    )
-                  else
-                    ...messages.map(
-                      (message) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(
-                              Icons.account_circle_rounded,
-                              color: Color(0xFF8DDCFF),
-                              size: 25,
-                            ),
-                            const SizedBox(width: 7),
-                            Expanded(
-                              child: Text(
-                                message['text'].toString(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                ),
+                            Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
                               ),
                             ),
                             Text(
-                              message['time'].toString(),
+                              'Room ID: $roomId',
                               style: const TextStyle(
-                                color: Colors.white38,
-                                fontSize: 9,
+                                color: Color(0xFF9DDCFF),
+                                fontSize: 11,
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(3, 0, 4, 3),
-              child: Row(
-                children: [
-                  circleAction(Icons.grid_view_rounded, 'More', () {
-                    showModalBottomSheet(
-                      context: context,
-                      backgroundColor: const Color(0xFF102D49),
-                      builder: (ctx) => SafeArea(
-                        child: Wrap(
+                      if (isOwner)
+                        circleAction(
+                          Icons.settings_rounded,
+                          'Room settings',
+                          () => showMessage(
+                            'Room settings baad mein connect honge.',
+                          ),
+                        ),
+                      circleAction(
+                        Icons.minimize_rounded,
+                        'Minimize',
+                        () => showMessage(
+                          'Minimize/background audio abhi connect nahi hai.',
+                        ),
+                      ),
+                      circleAction(
+                        Icons.close_rounded,
+                        'Exit room',
+                        _leaveRoom,
+                        color: const Color(0xFFFF8D9B),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Row(
+                    children: [
+                      infoButton(
+                        Icons.card_giftcard_rounded,
+                        'Daily Gifting',
+                        'Gift report',
+                        () => showMessage(
+                          'Daily / Weekly / Monthly gifting report baad mein connect hoga.',
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      infoButton(
+                        Icons.local_fire_department_rounded,
+                        'Popularity',
+                        'Room ranking',
+                        () => showMessage(
+                          'Room popularity report baad mein connect hoga.',
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      infoButton(
+                        Icons.people_alt_rounded,
+                        'Live Members',
+                        '${occupiedSeats.length} joined',
+                        () {
+                          final ids = occupiedSeats
+                              .map((e) => (e['user_code'] ?? '').toString())
+                              .where((e) => e.isNotEmpty)
+                              .join(', ');
+                          showMessage(
+                            ids.isEmpty ? 'No members seated' : 'IDs: $ids',
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(8, 3, 8, 8),
+                    children: [
+                      if (occupiedSeats.isNotEmpty)
+                        SizedBox(
+                          height: 48,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: occupiedSeats.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(width: 7),
+                            itemBuilder: (context, index) {
+                              final member = occupiedSeats[index];
+                              final photo = (member['profile_photo'] ?? '')
+                                  .toString();
+                              return GestureDetector(
+                                onTap: () => showMessage(
+                                  'Member ID: ${member['user_code'] ?? ''}',
+                                ),
+                                child: CircleAvatar(
+                                  radius: 19,
+                                  backgroundColor: const Color(0xFF286B9D),
+                                  backgroundImage: photo.startsWith('http')
+                                      ? NetworkImage(photo)
+                                      : null,
+                                  child: photo.startsWith('http')
+                                      ? null
+                                      : const Icon(
+                                          Icons.person,
+                                          color: Colors.white,
+                                          size: 19,
+                                        ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      const SizedBox(height: 5),
+                      if (seatsLoading && seats.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(25),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: Color(0xFF83D8FF),
+                            ),
+                          ),
+                        )
+                      else ...[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            ListTile(
-                              leading: const Icon(
-                                Icons.info_outline,
-                                color: Colors.white,
-                              ),
-                              title: const Text(
-                                'Room Information',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                              onTap: () {
-                                Navigator.pop(ctx);
-                                showMessage('Room ID: $roomId');
-                              },
+                            Padding(
+                              padding: const EdgeInsets.only(top: 13),
+                              child: _buildSeat(1),
                             ),
-                            ListTile(
-                              leading: const Icon(
-                                Icons.exit_to_app,
-                                color: Colors.redAccent,
+                            _buildSeat(2, large: true),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 13),
+                              child: _buildSeat(3),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        for (final first in [4, 9, 14]) ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              for (int i = 0; i < 5; i++) _buildSeat(first + i),
+                            ],
+                          ),
+                          const SizedBox(height: 7),
+                        ],
+                      ],
+                      const Divider(color: Color(0x335E9AC5), height: 14),
+                      Row(
+                        children: [
+                          const Text(
+                            'Room Chat',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${messages.length} messages',
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      if (messages.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 14),
+                          child: Center(
+                            child: Text(
+                              'Welcome to Lovely Sky!',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12,
                               ),
-                              title: const Text(
-                                'Leave Room',
-                                style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        )
+                      else
+                        ...messages.map(
+                          (message) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(
+                                  Icons.account_circle_rounded,
+                                  color: Color(0xFF8DDCFF),
+                                  size: 25,
+                                ),
+                                const SizedBox(width: 7),
+                                Expanded(
+                                  child: Text(
+                                    message['text'].toString(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  message['time'].toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 9,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(3, 0, 4, 3),
+                  child: Row(
+                    children: [
+                      circleAction(Icons.grid_view_rounded, 'More', () {
+                        showModalBottomSheet(
+                          context: context,
+                          backgroundColor: const Color(0xFF102D49),
+                          builder: (ctx) => SafeArea(
+                            child: Wrap(
+                              children: [
+                                ListTile(
+                                  leading: const Icon(
+                                    Icons.info_outline,
+                                    color: Colors.white,
+                                  ),
+                                  title: const Text(
+                                    'Room Information',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    showMessage('Room ID: $roomId');
+                                  },
+                                ),
+                                ListTile(
+                                  leading: const Icon(
+                                    Icons.exit_to_app,
+                                    color: Colors.redAccent,
+                                  ),
+                                  title: const Text(
+                                    'Leave Room',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    _leaveRoom();
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                      circleAction(
+                        micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
+                        'Microphone',
+                        _toggleMic,
+                        color: micOn
+                            ? const Color(0xFF8DE4FF)
+                            : const Color(0xFFFF8D9B),
+                      ),
+                      circleAction(
+                        Icons.card_giftcard_rounded,
+                        'Gift',
+                        () => openLovelyRoomGiftStore(
+                          context,
+                          roomId: widget.room['id'],
+                        ),
+                        color: const Color(0xFFFFD477),
+                        size: 25,
+                      ),
+                      circleAction(
+                        Icons.casino_rounded,
+                        'Games',
+                        () => openLovelyCasinoGames(context),
+                        color: const Color(0xFF8DE4FF),
+                        size: 25,
+                      ),
+                      circleAction(
+                        Icons.inbox_rounded,
+                        'Inbox',
+                        () => showMessage(
+                          'Inbox feature baad mein connect hoga.',
+                        ),
+                      ),
+                      circleAction(
+                        speakerOn
+                            ? Icons.volume_up_rounded
+                            : Icons.volume_off_rounded,
+                        'Speaker',
+                        _toggleSpeaker,
+                      ),
+                      circleAction(Icons.emoji_emotions_outlined, 'Emoji', () {
+                        messageController.text += '😊';
+                        messageController.selection = TextSelection.collapsed(
+                          offset: messageController.text.length,
+                        );
+                      }),
+                      circleAction(
+                        Icons.send_rounded,
+                        'Send',
+                        sendMessage,
+                        color: const Color(0xFF8DE4FF),
+                      ),
+                      Expanded(
+                        child: TextField(
+                          controller: messageController,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => sendMessage(),
+                          decoration: const InputDecoration(
+                            hintText: 'Message...',
+                            hintStyle: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 9,
+                            ),
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (activeGiftEvent != null)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Center(
+                    child: TweenAnimationBuilder<double>(
+                      key: ValueKey(
+                        '${activeGiftEvent!['sender_code']}_${activeGiftEvent!['gift_code']}_${activeGiftEvent!['combo']}',
+                      ),
+                      tween: Tween(begin: 0.3, end: 1),
+                      duration: const Duration(milliseconds: 600),
+                      curve: Curves.elasticOut,
+                      builder: (context, scale, child) =>
+                          Transform.scale(scale: scale, child: child),
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 28),
+                        padding: const EdgeInsets.all(22),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF32145F), Color(0xFF7138A8)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: const Color(0xFFE5B8FF),
+                            width: 1.5,
+                          ),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0xAA9B55FF),
+                              blurRadius: 28,
+                              spreadRadius: 4,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 7,
                               ),
-                              onTap: () {
-                                Navigator.pop(ctx);
-                                _leaveRoom();
+                              decoration: BoxDecoration(
+                                color: const Color(0x55FFFFFF),
+                                borderRadius: BorderRadius.circular(30),
+                                border: Border.all(
+                                  color: const Color(0xFFE5B8FF),
+                                ),
+                              ),
+                              child: const Text(
+                                'GIFT SENT',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 2,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            TweenAnimationBuilder<double>(
+                              tween: Tween(begin: 0.45, end: 1),
+                              duration: const Duration(milliseconds: 850),
+                              curve: Curves.elasticOut,
+                              builder: (context, value, child) {
+                                return Transform.rotate(
+                                  angle: (1 - value) * -0.22,
+                                  child: Transform.scale(
+                                    scale: value,
+                                    child: child,
+                                  ),
+                                );
                               },
+                              child: Text(
+                                activeGiftEvent!['emoji']?.toString() ?? '🎁',
+                                style: const TextStyle(fontSize: 88),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              '${activeGiftEvent!['sender_name']} sent a gift!',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              '${activeGiftEvent!['gift_name']}  ×${activeGiftEvent!['quantity']}',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Color(0xFFFFD477),
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 9,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFD477),
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              child: Text(
+                                'COMBO  ×${activeGiftEvent!['combo']}',
+                                style: const TextStyle(
+                                  color: Color(0xFF32145F),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'To: ${activeGiftEvent!['receiver_text'] ?? 'Room members'}',
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFFEAD9FF),
+                                fontSize: 12,
+                              ),
                             ),
                           ],
                         ),
                       ),
-                    );
-                  }),
-                  circleAction(
-                    micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
-                    'Microphone',
-                    _toggleMic,
-                    color: micOn
-                        ? const Color(0xFF8DE4FF)
-                        : const Color(0xFFFF8D9B),
-                  ),
-                  circleAction(
-                    Icons.card_giftcard_rounded,
-                    'Gift',
-                    () => openLovelyRoomGiftStore(
-                      context,
-                      roomId: widget.room['id'],
-                    ),
-                    color: const Color(0xFFFFD477),
-                    size: 25,
-                  ),
-                  circleAction(
-                    Icons.casino_rounded,
-                    'Games',
-                    () => openLovelyCasinoGames(context),
-                    color: const Color(0xFF8DE4FF),
-                    size: 25,
-                  ),
-                  circleAction(
-                    Icons.inbox_rounded,
-                    'Inbox',
-                    () => showMessage('Inbox feature baad mein connect hoga.'),
-                  ),
-                  circleAction(
-                    speakerOn
-                        ? Icons.volume_up_rounded
-                        : Icons.volume_off_rounded,
-                    'Speaker',
-                    _toggleSpeaker,
-                  ),
-                  circleAction(Icons.emoji_emotions_outlined, 'Emoji', () {
-                    messageController.text += '😊';
-                    messageController.selection = TextSelection.collapsed(
-                      offset: messageController.text.length,
-                    );
-                  }),
-                  circleAction(
-                    Icons.send_rounded,
-                    'Send',
-                    sendMessage,
-                    color: const Color(0xFF8DE4FF),
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: messageController,
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => sendMessage(),
-                      decoration: const InputDecoration(
-                        hintText: 'Message...',
-                        hintStyle: TextStyle(
-                          color: Colors.white54,
-                          fontSize: 12,
-                        ),
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 9,
-                        ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                      ),
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
           ],
         ),
       ),
