@@ -1299,11 +1299,16 @@ class VoiceRoomMessageRequest(BaseModel):
 
 def _require_voice_room_member(db, room_id: int, user):
     room = db.execute(
-        "SELECT id FROM voice_rooms WHERE id = ? AND is_active = 1",
+        "SELECT id, owner_uid FROM voice_rooms WHERE id = ? AND is_active = 1",
         (room_id,),
     ).fetchone()
     if not room:
         raise HTTPException(404, "Voice room not found")
+
+    # The room owner is allowed even if they have no participant row.
+    if str(room["owner_uid"]) == str(user["google_uid"]):
+        return
+
     member = db.execute(
         "SELECT 1 FROM voice_room_participants WHERE room_id = ? AND user_uid = ?",
         (room_id, user["google_uid"]),
