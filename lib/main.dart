@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:io';
 
@@ -6059,6 +6060,296 @@ class _AnimatedRoomActionButtonState extends State<_AnimatedRoomActionButton>
   }
 }
 
+class _RoomGiftAnimationOverlay extends StatefulWidget {
+  final Map<String, dynamic> gift;
+
+  const _RoomGiftAnimationOverlay({required this.gift});
+
+  @override
+  State<_RoomGiftAnimationOverlay> createState() =>
+      _RoomGiftAnimationOverlayState();
+}
+
+class _RoomGiftAnimationOverlayState extends State<_RoomGiftAnimationOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (widget.gift['gift_name'] ?? 'Special Gift').toString();
+    final sender = (widget.gift['sender_name'] ?? 'Member').toString();
+    final receiver = (widget.gift['receiver_text'] ?? 'room members')
+        .toString();
+    final code = (widget.gift['gift_code'] ?? name).toString();
+
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return CustomPaint(
+            painter: _RoomGiftVectorPainter(
+              code: code,
+              progress: _controller.value,
+            ),
+            child: Container(
+              color: Colors.black.withValues(alpha: 0.16),
+              width: double.infinity,
+              height: double.infinity,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        name.toUpperCase(),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 27,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2,
+                          shadows: [
+                            Shadow(color: Colors.pinkAccent, blurRadius: 22),
+                            Shadow(color: Colors.blueAccent, blurRadius: 18),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '$sender  •  $receiver',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          shadows: [Shadow(color: Colors.black, blurRadius: 8)],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _RoomGiftVectorPainter extends CustomPainter {
+  final String code;
+  final double progress;
+
+  _RoomGiftVectorPainter({required this.code, required this.progress});
+
+  Color get _color {
+    final key = code.toLowerCase();
+    if (key.contains('kiss') || key.contains('heart') || key.contains('love')) {
+      return const Color(0xFFFF4F9A);
+    }
+    if (key.contains('diamond') ||
+        key.contains('crown') ||
+        key.contains('king')) {
+      return const Color(0xFF65E5FF);
+    }
+    if (key.contains('fire') ||
+        key.contains('phoenix') ||
+        key.contains('dragon')) {
+      return const Color(0xFFFF8A35);
+    }
+    if (key.contains('rose') || key.contains('flower')) {
+      return const Color(0xFFFF6C9D);
+    }
+    if (key.contains('snow') || key.contains('moon')) {
+      return const Color(0xFFB9D9FF);
+    }
+    if (key.contains('peacock') || key.contains('butterfly')) {
+      return const Color(0xFF55E6C1);
+    }
+    if (key.contains('rocket') || key.contains('lightning')) {
+      return const Color(0xFFFFD45C);
+    }
+    return const Color(0xFFB68CFF);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final color = _color;
+    final seed = code.hashCode;
+    final center = Offset(size.width / 2, size.height / 2);
+    final pulse = 0.72 + 0.28 * math.sin(progress * math.pi * 2);
+
+    final shade = Paint()
+      ..color = color.withValues(alpha: 0.16)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+
+    for (var ring = 0; ring < 4; ring++) {
+      final radius = 55.0 + ring * 34.0 + progress * 28.0;
+      canvas.drawCircle(
+        center,
+        radius,
+        shade..color = color.withValues(alpha: 0.30 - ring * 0.055),
+      );
+    }
+
+    final particlePaint = Paint()..style = PaintingStyle.fill;
+    for (var i = 0; i < 64; i++) {
+      final a = math.sin((i + 1) * 91.7 + seed).abs();
+      final b = math.cos((i + 3) * 47.3 + seed).abs();
+      final phase = (i / 64 + progress * (0.45 + (i % 4) * 0.12)) % 1.0;
+      final x = (a * size.width + math.sin(progress * 6 + i) * 24) % size.width;
+      final y = (phase * size.height + b * 80) % size.height;
+      final radius = 2.0 + (i % 5) * 1.15;
+
+      particlePaint.color = color.withValues(alpha: 0.30 + 0.60 * (1 - phase));
+
+      if (i % 3 == 0) {
+        final path = Path()
+          ..moveTo(x, y - radius * 1.8)
+          ..lineTo(x + radius * 1.3, y)
+          ..lineTo(x, y + radius * 1.8)
+          ..lineTo(x - radius * 1.3, y)
+          ..close();
+        canvas.drawPath(path, particlePaint);
+      } else {
+        canvas.drawCircle(Offset(x, y), radius, particlePaint);
+      }
+    }
+
+    final glow = Paint()
+      ..color = color.withValues(alpha: 0.16 * pulse)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 28);
+    canvas.drawCircle(center, 76 * pulse, glow);
+
+    final motifPaint = Paint()
+      ..color = color.withValues(alpha: 0.92)
+      ..style = PaintingStyle.fill;
+
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.scale(pulse);
+    final key = code.toLowerCase();
+
+    if (key.contains('heart') || key.contains('kiss') || key.contains('love')) {
+      final heart = Path()
+        ..moveTo(0, 38)
+        ..cubicTo(-100, -20, -48, -78, 0, -34)
+        ..cubicTo(48, -78, 100, -20, 0, 38)
+        ..close();
+      canvas.drawPath(heart, motifPaint);
+    } else if (key.contains('diamond')) {
+      final diamond = Path()
+        ..moveTo(0, -55)
+        ..lineTo(48, 0)
+        ..lineTo(0, 55)
+        ..lineTo(-48, 0)
+        ..close();
+      canvas.drawPath(diamond, motifPaint);
+      final inner = Paint()
+        ..color = Colors.white.withValues(alpha: 0.65)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
+      canvas.drawLine(const Offset(0, -55), const Offset(0, 55), inner);
+      canvas.drawLine(const Offset(-48, 0), const Offset(48, 0), inner);
+    } else if (key.contains('crown') || key.contains('king')) {
+      final crown = Path()
+        ..moveTo(-55, 35)
+        ..lineTo(-45, -25)
+        ..lineTo(-15, 0)
+        ..lineTo(0, -48)
+        ..lineTo(18, 0)
+        ..lineTo(48, -25)
+        ..lineTo(55, 35)
+        ..close();
+      canvas.drawPath(crown, motifPaint);
+    } else if (key.contains('rocket')) {
+      final rocket = Path()
+        ..moveTo(0, -62)
+        ..cubicTo(42, -30, 36, 20, 0, 48)
+        ..cubicTo(-36, 20, -42, -30, 0, -62)
+        ..close();
+      canvas.drawPath(rocket, motifPaint);
+      canvas.drawCircle(Offset.zero, 11, Paint()..color = Colors.white);
+      final flame = Paint()
+        ..color = const Color(0xFFFFB347)
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(const Offset(-13, 38), const Offset(-22, 58), flame);
+      canvas.drawLine(const Offset(13, 38), const Offset(22, 58), flame);
+    } else if (key.contains('butterfly') || key.contains('peacock')) {
+      canvas.drawOval(const Rect.fromLTRB(-58, -38, -4, 35), motifPaint);
+      canvas.drawOval(const Rect.fromLTRB(4, -38, 58, 35), motifPaint);
+      canvas.drawCircle(Offset.zero, 7, Paint()..color = Colors.white);
+      canvas.drawLine(
+        const Offset(0, -5),
+        const Offset(0, 48),
+        Paint()
+          ..color = color
+          ..strokeWidth = 6
+          ..strokeCap = StrokeCap.round,
+      );
+    } else if (key.contains('rose') || key.contains('flower')) {
+      for (var i = 0; i < 8; i++) {
+        final angle = i * math.pi / 4;
+        canvas.drawCircle(
+          Offset(math.cos(angle) * 25, math.sin(angle) * 25),
+          19,
+          motifPaint,
+        );
+      }
+      canvas.drawCircle(Offset.zero, 15, Paint()..color = Colors.white);
+      canvas.drawLine(
+        const Offset(0, 38),
+        const Offset(0, 75),
+        Paint()
+          ..color = const Color(0xFF65D58A)
+          ..strokeWidth = 5,
+      );
+    } else {
+      final star = Path();
+      for (var i = 0; i < 10; i++) {
+        final angle = -math.pi / 2 + i * math.pi / 5;
+        final radius = i.isEven ? 55.0 : 24.0;
+        final point = Offset(
+          math.cos(angle) * radius,
+          math.sin(angle) * radius,
+        );
+        if (i == 0) {
+          star.moveTo(point.dx, point.dy);
+        } else {
+          star.lineTo(point.dx, point.dy);
+        }
+      }
+      star.close();
+      canvas.drawPath(star, motifPaint);
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _RoomGiftVectorPainter oldDelegate) =>
+      oldDelegate.code != code || oldDelegate.progress != progress;
+}
+
 class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   final TextEditingController messageController = TextEditingController();
   final List<Map<String, dynamic>> messages = [];
@@ -6233,6 +6524,12 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     }
   }
 
+  int _giftAnimationDuration(Map<String, dynamic> gift) {
+    final code = (gift['gift_code'] ?? '').toString().toLowerCase();
+    if (code == 'peacock_dance' || code.contains('kiss')) return 15;
+    return 10;
+  }
+
   void _showRoomGiftEvent(Map<String, dynamic> gift) {
     if (!mounted) return;
 
@@ -6283,11 +6580,14 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     });
 
     giftOverlayTimer?.cancel();
-    giftOverlayTimer = Timer(const Duration(seconds: 5), () {
-      if (mounted) {
-        setState(() => activeGiftEvent = null);
-      }
-    });
+    giftOverlayTimer = Timer(
+      Duration(seconds: _giftAnimationDuration(gift)),
+      () {
+        if (mounted) {
+          setState(() => activeGiftEvent = null);
+        }
+      },
+    );
   }
 
   Future<void> _handleVoiceSignal(dynamic event) async {
@@ -8164,6 +8464,11 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 onTap: () => openLovelyCasinoGames(context),
               ),
             ),
+
+            if (activeGiftEvent != null)
+              Positioned.fill(
+                child: _RoomGiftAnimationOverlay(gift: activeGiftEvent!),
+              ),
           ],
         ),
       ),
