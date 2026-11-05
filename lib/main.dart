@@ -5746,6 +5746,91 @@ class _AnimatedGamepadButtonState extends State<_AnimatedGamepadButton>
   }
 }
 
+class _AnimatedRoomToolbarButton extends StatefulWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _AnimatedRoomToolbarButton({
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  State<_AnimatedRoomToolbarButton> createState() =>
+      _AnimatedRoomToolbarButtonState();
+}
+
+class _AnimatedRoomToolbarButtonState
+    extends State<_AnimatedRoomToolbarButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final t = Curves.easeInOut.transform(_controller.value);
+          return Transform.scale(
+            scale: 0.98 + (t * 0.04),
+            child: Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF24547D), Color(0xFF061B35)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: Border.all(
+                  color: const Color(0xFFFFD83D),
+                  width: 1.8,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFFD21F).withValues(
+                      alpha: 0.20 + (t * 0.22),
+                    ),
+                    blurRadius: 8 + (t * 5),
+                    spreadRadius: 1 + t,
+                  ),
+                  const BoxShadow(
+                    color: Color(0xCC020B19),
+                    blurRadius: 0,
+                    offset: Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Icon(
+                  widget.icon,
+                  color: const Color(0xFFFFD83D),
+                  size: 24,
+                  shadows: const [
+                    Shadow(color: Color(0xFFFFE98A), blurRadius: 7),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   final TextEditingController messageController = TextEditingController();
   final List<Map<String, dynamic>> messages = [];
@@ -7551,10 +7636,11 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                 );
                               },
                             ),
-                            circleAction(
-                              Icons.inbox_rounded,
-                              'Inbox',
-                              () => showMessage('Inbox feature baad mein connect hoga.'),
+                            _AnimatedRoomToolbarButton(
+                              icon: Icons.inbox_rounded,
+                              onTap: () => showMessage(
+                                'Inbox feature baad mein connect hoga.',
+                              ),
                             ),
                             circleAction(Icons.grid_view_rounded, 'More', () {
                               showModalBottomSheet(
