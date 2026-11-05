@@ -5666,6 +5666,86 @@ class _RoseFacePainter extends CustomPainter {
       oldDelegate.openAmount != openAmount;
 }
 
+class _AnimatedGamepadButton extends StatefulWidget {
+  final VoidCallback onTap;
+
+  const _AnimatedGamepadButton({required this.onTap});
+
+  @override
+  State<_AnimatedGamepadButton> createState() =>
+      _AnimatedGamepadButtonState();
+}
+
+class _AnimatedGamepadButtonState extends State<_AnimatedGamepadButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final t = Curves.easeInOut.transform(_controller.value);
+          return Transform.scale(
+            scale: 0.98 + (t * 0.045),
+            child: Container(
+              width: 62,
+              height: 62,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF24547D), Color(0xFF061B35)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: Border.all(
+                  color: const Color(0xFFFFD83D),
+                  width: 2.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFFD21F).withValues(
+                      alpha: 0.22 + (t * 0.25),
+                    ),
+                    blurRadius: 12 + (t * 8),
+                    spreadRadius: 1 + (t * 2),
+                  ),
+                  const BoxShadow(
+                    color: Color(0xCC020B19),
+                    blurRadius: 0,
+                    offset: Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.sports_esports_rounded,
+                  color: Color(0xFFFFD83D),
+                  size: 35,
+                  shadows: [
+                    Shadow(color: Color(0xFFFFE98A), blurRadius: 9),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   final TextEditingController messageController = TextEditingController();
   final List<Map<String, dynamic>> messages = [];
@@ -7523,53 +7603,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
             Positioned(
               right: 12,
               bottom: 68,
-              child: GestureDetector(
+              child: _AnimatedGamepadButton(
                 onTap: () => openLovelyCasinoGames(context),
-                child: Container(
-                  width: 104,
-                  height: 58,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF9B54F5), Color(0xFF421477)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(17),
-                    border: Border.all(
-                      color: const Color(0xFFFFD477),
-                      width: 2,
-                    ),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0xAA32105F),
-                        blurRadius: 0,
-                        offset: Offset(0, 5),
-                      ),
-                      BoxShadow(
-                        color: Color(0x665B25A0),
-                        blurRadius: 13,
-                        offset: Offset(0, 7),
-                      ),
-                    ],
-                  ),
-                  child: const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.sports_esports_rounded,
-                          color: Color(0xFFFFD477), size: 27),
-                      SizedBox(height: 2),
-                      Text(
-                        'GAMES',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               ),
             ),
             if (activeGiftEvent != null)
