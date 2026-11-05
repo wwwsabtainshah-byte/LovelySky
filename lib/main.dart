@@ -7350,53 +7350,6 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       );
     }
 
-    Widget infoButton(
-      IconData icon,
-      String title,
-      String subtitle,
-      VoidCallback action,
-    ) {
-      return Expanded(
-        child: InkWell(
-          onTap: action,
-          borderRadius: BorderRadius.circular(15),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFF173D60).withValues(alpha: 0.62),
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(
-                color: const Color(0xFF80CFFF).withValues(alpha: 0.20),
-              ),
-            ),
-            child: Column(
-              children: [
-                Icon(icon, color: const Color(0xFF9DE4FF), size: 23),
-                const SizedBox(height: 4),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: const Color(0xFF123B5A),
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: const Color(0xFF527B96),
-                    fontSize: 9,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
     return Scaffold(
       backgroundColor: const Color(0xFFE5F6FF),
       body: SafeArea(
