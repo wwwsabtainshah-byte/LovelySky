@@ -3263,8 +3263,9 @@ Future<Map<String, dynamic>> _roomGiftRequest(
 
 Future<void> _openLovelyVoiceRoomGiftStore(
   BuildContext context,
-  String roomId,
-) async {
+  String roomId, {
+  ValueChanged<Map<String, dynamic>>? onGiftSent,
+}) async {
   try {
     final data = await Future.wait([
       _roomGiftRequest('GET', '/gifts/catalog'),
@@ -3346,7 +3347,7 @@ Future<void> _openLovelyVoiceRoomGiftStore(
 
           return SafeArea(
             child: SizedBox(
-              height: MediaQuery.of(sheetContext).size.height * .90,
+              height: 430,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                 child: Column(
@@ -3739,17 +3740,31 @@ Future<void> _openLovelyVoiceRoomGiftStore(
                                             '${result['sender_coins'] ?? coins}',
                                           ) ??
                                           coins;
-                                      setSheetState(() {});
-                                      ScaffoldMessenger.of(
-                                        sheetContext,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'Gift sent to ${result['recipients_count']} member(s). '
-                                            '${result['coins_spent']} Coins spent.',
-                                          ),
-                                        ),
+                                      final sentGift = gifts.firstWhere(
+                                        (gift) => '${gift['code']}' == giftCode,
+                                        orElse: () => <String, dynamic>{},
                                       );
+                                      onGiftSent?.call({
+                                        'room_id': roomId,
+                                        'receiver_codes': selected.toList(),
+                                        'gift_code': giftCode,
+                                        'quantity': quantity,
+                                        'emoji': sentGift['emoji'] ?? '🎁',
+                                        'name': sentGift['name'] ?? 'Gift',
+                                      });
+                                      Navigator.pop(sheetContext);
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Gift sent to ${result['recipients_count']} member(s). '
+                                              '${result['coins_spent']} Coins spent.',
+                                            ),
+                                          ),
+                                        );
+                                      }
                                     } catch (e) {
                                       if (sheetContext.mounted) {
                                         ScaffoldMessenger.of(sheetContext)
@@ -3793,9 +3808,14 @@ Future<void> _openLovelyVoiceRoomGiftStore(
 Future<void> openLovelyRoomGiftStore(
   BuildContext context, {
   Object? roomId,
+  ValueChanged<Map<String, dynamic>>? onGiftSent,
 }) async {
   if (roomId != null) {
-    await _openLovelyVoiceRoomGiftStore(context, roomId.toString());
+    await _openLovelyVoiceRoomGiftStore(
+      context,
+      roomId.toString(),
+      onGiftSent: onGiftSent,
+    );
     return;
   }
   try {
@@ -6069,6 +6089,12 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   String? lastGiftComboKey;
   DateTime? lastGiftEventAt;
 
+  Map<String, dynamic>? repeatGift;
+  Timer? repeatGiftCountdownTimer;
+  Timer? repeatGiftHoldTimer;
+  int repeatGiftSeconds = 0;
+  bool repeatGiftSending = false;
+
   static const Color pink = Color(0xFFFF4FA3);
   static const Color background = Color(0xFFE5F6FF);
 
@@ -7401,6 +7427,71 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     }
   }
 
+  void _activateRepeatGift(Map<String, dynamic> gift) {
+    repeatGiftCountdownTimer?.cancel();
+    repeatGiftHoldTimer?.cancel();
+    setState(() {
+      repeatGift = Map<String, dynamic>.from(gift);
+      repeatGiftSeconds = 10;
+    });
+    repeatGiftCountdownTimer = Timer.periodic(const Duration(seconds: 1), (
+      timer,
+    ) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (repeatGiftSeconds <= 1) {
+        timer.cancel();
+        repeatGiftHoldTimer?.cancel();
+        setState(() {
+          repeatGift = null;
+          repeatGiftSeconds = 0;
+        });
+        return;
+      }
+      setState(() => repeatGiftSeconds--);
+    });
+  }
+
+  Future<void> _sendRepeatGift() async {
+    final gift = repeatGift;
+    if (gift == null || repeatGiftSending || !mounted) return;
+    setState(() => repeatGiftSending = true);
+    try {
+      await _roomGiftRequest(
+        'POST',
+        '/voice/rooms/${gift['room_id']}/gifts/send',
+        body: {
+          'receiver_codes': List<String>.from(gift['receiver_codes'] as List),
+          'gift_code': gift['gift_code'],
+          'quantity': gift['quantity'] ?? 1,
+        },
+      );
+    } catch (e) {
+      if (mounted) showMessage('Repeat gift send nahi hua: $e');
+    } finally {
+      if (mounted) setState(() => repeatGiftSending = false);
+    }
+  }
+
+  void _startRepeatGiftHold() {
+    if (repeatGift == null) return;
+    repeatGiftHoldTimer?.cancel();
+    repeatGiftHoldTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted || repeatGift == null) {
+        repeatGiftHoldTimer?.cancel();
+        return;
+      }
+      unawaited(_sendRepeatGift());
+    });
+  }
+
+  void _stopRepeatGiftHold() {
+    repeatGiftHoldTimer?.cancel();
+    repeatGiftHoldTimer = null;
+  }
+
   Future<void> _leaveRoom() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('lovely_token');
@@ -7436,6 +7527,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   void dispose() {
     seatRefreshTimer?.cancel();
     giftOverlayTimer?.cancel();
+    repeatGiftCountdownTimer?.cancel();
+    repeatGiftHoldTimer?.cancel();
     if (identical(activeVoiceRoom.value, widget.room)) {
       activeVoiceRoom.value = null;
     }
@@ -7948,6 +8041,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                               onTap: () => openLovelyRoomGiftStore(
                                 context,
                                 roomId: widget.room['id'],
+                                onGiftSent: _activateRepeatGift,
                               ),
                             ),
                             circleAction(
@@ -8016,6 +8110,53 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 ),
               ],
             ),
+            if (repeatGift != null)
+              Positioned(
+                right: 12,
+                bottom: 128,
+                child: GestureDetector(
+                  onTap: () => unawaited(_sendRepeatGift()),
+                  onLongPressStart: (_) => _startRepeatGiftHold(),
+                  onLongPressEnd: (_) => _stopRepeatGiftHold(),
+                  onLongPressCancel: _stopRepeatGiftHold,
+                  child: Container(
+                    width: 62,
+                    height: 62,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF28164A),
+                      border: Border.all(
+                        color: const Color(0xFFFF75C8),
+                        width: 2,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x66FF4FA3),
+                          blurRadius: 14,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '${repeatGift!['emoji'] ?? '🎁'}',
+                          style: const TextStyle(fontSize: 25),
+                        ),
+                        Text(
+                          repeatGiftSending ? '...' : '${repeatGiftSeconds}s',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             Positioned(
               right: 12,
               bottom: 68,
