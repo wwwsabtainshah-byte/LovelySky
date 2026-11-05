@@ -49,15 +49,20 @@ class LovelySkyApp extends StatelessWidget {
   }
 }
 
+final ValueNotifier<Map<String, dynamic>?> activeVoiceRoom =
+    ValueNotifier<Map<String, dynamic>?>(null);
+
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  final int initialSelectedTab;
+
+  const MainScreen({super.key, this.initialSelectedTab = 0});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int selected = 0;
+  late int selected;
 
   final pages = const [
     HomePage(),
@@ -68,27 +73,138 @@ class _MainScreenState extends State<MainScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    selected = widget.initialSelectedTab.clamp(0, 4).toInt();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(index: selected, children: pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: selected,
-        backgroundColor: Colors.white,
-        indicatorColor: pale,
-        onDestinationSelected: (i) => setState(() => selected = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Home'),
-          NavigationDestination(
-            icon: Icon(Icons.video_library_rounded),
-            label: 'Video',
+    return Stack(
+      children: [
+        Scaffold(
+          body: IndexedStack(index: selected, children: pages),
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: selected,
+            backgroundColor: Colors.white,
+            indicatorColor: pale,
+            onDestinationSelected: (i) => setState(() => selected = i),
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.home_rounded),
+                label: 'Home',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.video_library_rounded),
+                label: 'Video',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.mic_rounded),
+                label: 'Voice',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.chat_bubble_rounded),
+                label: 'Chat',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.person_rounded),
+                label: 'Me',
+              ),
+            ],
           ),
-          NavigationDestination(icon: Icon(Icons.mic_rounded), label: 'Voice'),
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_rounded),
-            label: 'Chat',
+        ),
+        ValueListenableBuilder<Map<String, dynamic>?>(
+          valueListenable: activeVoiceRoom,
+          builder: (context, room, child) {
+            if (room == null) return const SizedBox.shrink();
+
+            return Positioned(
+              right: 14,
+              bottom: 100,
+              child: _FloatingVoiceRoomAvatar(
+                room: room,
+                onTap: () => Navigator.of(context).pop(),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _FloatingVoiceRoomAvatar extends StatefulWidget {
+  final Map<String, dynamic> room;
+  final VoidCallback onTap;
+
+  const _FloatingVoiceRoomAvatar({required this.room, required this.onTap});
+
+  @override
+  State<_FloatingVoiceRoomAvatar> createState() =>
+      _FloatingVoiceRoomAvatarState();
+}
+
+class _FloatingVoiceRoomAvatarState extends State<_FloatingVoiceRoomAvatar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController rotationController;
+
+  @override
+  void initState() {
+    super.initState();
+    rotationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    rotationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final photo =
+        (widget.room['owner_photo'] ?? widget.room['profile_photo'] ?? '')
+            .toString();
+
+    return RotationTransition(
+      turns: rotationController,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          width: 62,
+          height: 62,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF00D9FF),
+                Color(0xFF168FFF),
+                Color(0xFFB65CFF),
+                Color(0xFFFF65B5),
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: blue.withValues(alpha: 0.4),
+                blurRadius: 14,
+                spreadRadius: 2,
+              ),
+            ],
           ),
-          NavigationDestination(icon: Icon(Icons.person_rounded), label: 'Me'),
-        ],
+          child: CircleAvatar(
+            backgroundColor: const Color(0xFF183B59),
+            backgroundImage: photo.startsWith('http')
+                ? NetworkImage(photo)
+                : null,
+            child: photo.startsWith('http')
+                ? null
+                : const Icon(Icons.mic_rounded, color: Colors.white, size: 28),
+          ),
+        ),
       ),
     );
   }
@@ -5959,6 +6075,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   @override
   void initState() {
     super.initState();
+    activeVoiceRoom.value = widget.room;
     unawaited(_startVoice());
     _loadSeats();
     _loadMessages();
@@ -7319,6 +7436,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   void dispose() {
     seatRefreshTimer?.cancel();
     giftOverlayTimer?.cancel();
+    if (identical(activeVoiceRoom.value, widget.room)) {
+      activeVoiceRoom.value = null;
+    }
     unawaited(_stopVoice());
     messageController.dispose();
     super.dispose();
