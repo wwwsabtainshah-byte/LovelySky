@@ -1670,7 +1670,8 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
                           padding: const EdgeInsets.symmetric(horizontal: 14),
                           scrollDirection: Axis.horizontal,
                           itemCount: recentGames.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 10),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(width: 10),
                           itemBuilder: (_, index) => SizedBox(
                             width: 145,
                             child: _gameTile(recentGames[index]),
@@ -1699,18 +1700,19 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
                               itemCount: games.length,
                               gridDelegate:
                                   const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                crossAxisSpacing: 12,
-                                mainAxisSpacing: 12,
-                                childAspectRatio: 1.15,
-                              ),
-                              itemBuilder: (_, index) => _gameTile(games[index]),
+                                    crossAxisCount: 2,
+                                    crossAxisSpacing: 12,
+                                    mainAxisSpacing: 12,
+                                    childAspectRatio: 1.15,
+                                  ),
+                              itemBuilder: (_, index) =>
+                                  _gameTile(games[index]),
                             ),
                     ),
                   ],
                 ),
               )
-              else
+            else
               Expanded(
                 child: Center(
                   child: Padding(
@@ -5521,13 +5523,13 @@ class _RoomMemberBadge extends StatelessWidget {
   }
 }
 
-
 class _AnimatedRoseGiftButton extends StatefulWidget {
   final VoidCallback onTap;
   const _AnimatedRoseGiftButton({required this.onTap});
 
   @override
-  State<_AnimatedRoseGiftButton> createState() => _AnimatedRoseGiftButtonState();
+  State<_AnimatedRoseGiftButton> createState() =>
+      _AnimatedRoseGiftButtonState();
 }
 
 class _AnimatedRoseGiftButtonState extends State<_AnimatedRoseGiftButton>
@@ -5569,13 +5571,11 @@ class _AnimatedRoseGiftButtonState extends State<_AnimatedRoseGiftButton>
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  border: Border.all(
-                    color: const Color(0xFFFFE39A),
-                    width: 2,
-                  ),
+                  border: Border.all(color: const Color(0xFFFFE39A), width: 2),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFFF347D).withValues(alpha: 0.35 + t * 0.3),
+                      color: const Color(0xFFFF347D)
+                          .withValues(alpha: 0.35 + t * 0.3),
                       blurRadius: 9 + t * 7,
                       spreadRadius: 1,
                     ),
@@ -5637,14 +5637,11 @@ class _RoseFacePainter extends CustomPainter {
       canvas.save();
       canvas.rotate(i * 3.1415926535 / 3.5);
       canvas.drawOval(
-        Rect.fromCenter(
-          center: const Offset(0, -4),
-          width: 8,
-          height: 12,
-        ),
-        Paint()..color = i.isEven
-            ? const Color(0xFFFFA0B5)
-            : const Color(0xFFDC174B),
+        Rect.fromCenter(center: const Offset(0, -4), width: 8, height: 12),
+        Paint()
+          ..color = i.isEven
+              ? const Color(0xFFFFA0B5)
+              : const Color(0xFFDC174B),
       );
       canvas.restore();
     }
@@ -5672,8 +5669,7 @@ class _AnimatedGamepadButton extends StatefulWidget {
   const _AnimatedGamepadButton({required this.onTap});
 
   @override
-  State<_AnimatedGamepadButton> createState() =>
-      _AnimatedGamepadButtonState();
+  State<_AnimatedGamepadButton> createState() => _AnimatedGamepadButtonState();
 }
 
 class _AnimatedGamepadButtonState extends State<_AnimatedGamepadButton>
@@ -5709,15 +5705,11 @@ class _AnimatedGamepadButtonState extends State<_AnimatedGamepadButton>
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                border: Border.all(
-                  color: const Color(0xFFFFD83D),
-                  width: 2.5,
-                ),
+                border: Border.all(color: const Color(0xFFFFD83D), width: 2.5),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFFFFD21F).withValues(
-                      alpha: 0.22 + (t * 0.25),
-                    ),
+                    color: const Color(0xFFFFD21F)
+                        .withValues(alpha: 0.22 + (t * 0.25)),
                     blurRadius: 12 + (t * 8),
                     spreadRadius: 1 + (t * 2),
                   ),
@@ -5733,9 +5725,7 @@ class _AnimatedGamepadButtonState extends State<_AnimatedGamepadButton>
                   Icons.sports_esports_rounded,
                   color: Color(0xFFFFD83D),
                   size: 35,
-                  shadows: [
-                    Shadow(color: Color(0xFFFFE98A), blurRadius: 9),
-                  ],
+                  shadows: [Shadow(color: Color(0xFFFFE98A), blurRadius: 9)],
                 ),
               ),
             ),
@@ -5750,18 +5740,14 @@ class _AnimatedRoomToolbarButton extends StatefulWidget {
   final IconData icon;
   final VoidCallback onTap;
 
-  const _AnimatedRoomToolbarButton({
-    required this.icon,
-    required this.onTap,
-  });
+  const _AnimatedRoomToolbarButton({required this.icon, required this.onTap});
 
   @override
   State<_AnimatedRoomToolbarButton> createState() =>
       _AnimatedRoomToolbarButtonState();
 }
 
-class _AnimatedRoomToolbarButtonState
-    extends State<_AnimatedRoomToolbarButton>
+class _AnimatedRoomToolbarButtonState extends State<_AnimatedRoomToolbarButton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
@@ -5794,15 +5780,11 @@ class _AnimatedRoomToolbarButtonState
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                border: Border.all(
-                  color: const Color(0xFFFFD83D),
-                  width: 1.8,
-                ),
+                border: Border.all(color: const Color(0xFFFFD83D), width: 1.8),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFFFFD21F).withValues(
-                      alpha: 0.20 + (t * 0.22),
-                    ),
+                    color: const Color(0xFFFFD21F)
+                        .withValues(alpha: 0.20 + (t * 0.22)),
                     blurRadius: 8 + (t * 5),
                     spreadRadius: 1 + t,
                   ),
@@ -5826,6 +5808,116 @@ class _AnimatedRoomToolbarButtonState
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _AnimatedRoomActionButton extends StatefulWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final Color color;
+  final double size;
+
+  const _AnimatedRoomActionButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.color = const Color(0xFF8DE4FF),
+    this.size = 23,
+  });
+
+  @override
+  State<_AnimatedRoomActionButton> createState() =>
+      _AnimatedRoomActionButtonState();
+}
+
+class _AnimatedRoomActionButtonState extends State<_AnimatedRoomActionButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: widget.tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            final t = Curves.easeInOut.transform(_controller.value);
+            return Transform.translate(
+              offset: Offset(0, -1.2 * t),
+              child: Transform.scale(
+                scale: 0.97 + (t * 0.05),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFF397BA9),
+                        Color(0xFF153C64),
+                        Color(0xFF06182E),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    border: Border.all(
+                      color: widget.color.withValues(alpha: 0.85),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: widget.color.withValues(
+                          alpha: 0.16 + (t * 0.24),
+                        ),
+                        blurRadius: 7 + (t * 6),
+                        spreadRadius: 0.5 + t,
+                      ),
+                      const BoxShadow(
+                        color: Color(0xCC020B19),
+                        blurRadius: 0,
+                        offset: Offset(0, 3),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.16),
+                        blurRadius: 3,
+                        offset: const Offset(-1, -1),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Icon(
+                      widget.icon,
+                      color: widget.color,
+                      size: widget.size,
+                      shadows: [
+                        Shadow(
+                          color: widget.color.withValues(alpha: 0.8),
+                          blurRadius: 7,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -7246,16 +7338,15 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       IconData icon,
       String tip,
       VoidCallback action, {
-      Color color = const Color(0xFF123B5A),
+      Color color = const Color(0xFF8DE4FF),
       double size = 23,
     }) {
-      return IconButton(
+      return _AnimatedRoomActionButton(
+        icon: icon,
         tooltip: tip,
-        visualDensity: VisualDensity.compact,
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 36, height: 38),
-        onPressed: action,
-        icon: Icon(icon, color: color, size: size),
+        onTap: action,
+        color: color,
+        size: size,
       );
     }
 
@@ -7587,11 +7678,12 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                               color: Color(0xFF6D91A8),
                               fontSize: 12,
                             ),
-                            suffixIcon: IconButton(
-                              icon: const Icon(Icons.send_rounded),
-                              color: const Color(0xFF8DE4FF),
-                              onPressed: sendMessage,
+                            suffixIcon: _AnimatedRoomActionButton(
+                              icon: Icons.send_rounded,
                               tooltip: 'Send',
+                              onTap: sendMessage,
+                              color: const Color(0xFF8DE4FF),
+                              size: 22,
                             ),
                             isDense: true,
                             contentPadding: const EdgeInsets.symmetric(
@@ -7610,7 +7702,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             circleAction(
-                              speakerOn ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+                              speakerOn
+                                  ? Icons.volume_up_rounded
+                                  : Icons.volume_off_rounded,
                               'Speaker',
                               _toggleSpeaker,
                             ),
@@ -7618,7 +7712,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                               micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
                               'Microphone',
                               _toggleMic,
-                              color: micOn ? const Color(0xFF8DE4FF) : const Color(0xFFFF8D9B),
+                              color: micOn
+                                  ? const Color(0xFF8DE4FF)
+                                  : const Color(0xFFFF8D9B),
                             ),
                             _AnimatedRoseGiftButton(
                               onTap: () => openLovelyRoomGiftStore(
@@ -7631,9 +7727,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                               'Emoji',
                               () {
                                 messageController.text += '😊';
-                                messageController.selection = TextSelection.collapsed(
-                                  offset: messageController.text.length,
-                                );
+                                messageController.selection =
+                                    TextSelection.collapsed(
+                                      offset: messageController.text.length,
+                                    );
                               },
                             ),
                             _AnimatedRoomToolbarButton(
@@ -7650,7 +7747,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                   child: Wrap(
                                     children: [
                                       ListTile(
-                                        leading: const Icon(Icons.casino_rounded),
+                                        leading: const Icon(
+                                          Icons.casino_rounded,
+                                        ),
                                         title: const Text('Games'),
                                         onTap: () {
                                           Navigator.pop(ctx);
@@ -7666,7 +7765,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                         },
                                       ),
                                       ListTile(
-                                        leading: const Icon(Icons.exit_to_app, color: Colors.redAccent),
+                                        leading: const Icon(
+                                          Icons.exit_to_app,
+                                          color: Colors.redAccent,
+                                        ),
                                         title: const Text('Leave Room'),
                                         onTap: () {
                                           Navigator.pop(ctx);
