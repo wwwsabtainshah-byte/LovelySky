@@ -5521,6 +5521,151 @@ class _RoomMemberBadge extends StatelessWidget {
   }
 }
 
+
+class _AnimatedRoseGiftButton extends StatefulWidget {
+  final VoidCallback onTap;
+  const _AnimatedRoseGiftButton({required this.onTap});
+
+  @override
+  State<_AnimatedRoseGiftButton> createState() => _AnimatedRoseGiftButtonState();
+}
+
+class _AnimatedRoseGiftButtonState extends State<_AnimatedRoseGiftButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Gift',
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            final t = _controller.value;
+            return Transform.scale(
+              scale: 0.96 + (t * 0.09),
+              child: Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFFFFD5E5),
+                      Color(0xFFFF4380),
+                      Color(0xFF9D1455),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  border: Border.all(
+                    color: const Color(0xFFFFE39A),
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFF347D).withValues(alpha: 0.35 + t * 0.3),
+                      blurRadius: 9 + t * 7,
+                      spreadRadius: 1,
+                    ),
+                    const BoxShadow(
+                      color: Color(0x883A1030),
+                      offset: Offset(0, 4),
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: CustomPaint(
+                    size: const Size(34, 34),
+                    painter: _RoseFacePainter(openAmount: t),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _RoseFacePainter extends CustomPainter {
+  final double openAmount;
+  _RoseFacePainter({required this.openAmount});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.translate(size.width / 2, size.height / 2);
+
+    final outer = [
+      const Color(0xFFFF8AA8),
+      const Color(0xFFFF315F),
+      const Color(0xFFE90048),
+      const Color(0xFFFF5578),
+    ];
+
+    for (int i = 0; i < 10; i++) {
+      canvas.save();
+      canvas.rotate(i * 3.1415926535 / 5);
+      final paint = Paint()
+        ..color = outer[i % outer.length]
+        ..style = PaintingStyle.fill;
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(0, -7.5 - openAmount * 1.5),
+          width: 12 + openAmount * 2,
+          height: 17 + openAmount * 3,
+        ),
+        paint,
+      );
+      canvas.restore();
+    }
+
+    for (int i = 0; i < 7; i++) {
+      canvas.save();
+      canvas.rotate(i * 3.1415926535 / 3.5);
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: const Offset(0, -4),
+          width: 8,
+          height: 12,
+        ),
+        Paint()..color = i.isEven
+            ? const Color(0xFFFFA0B5)
+            : const Color(0xFFDC174B),
+      );
+      canvas.restore();
+    }
+
+    canvas.drawCircle(
+      Offset.zero,
+      3.8,
+      Paint()..color = const Color(0xFFFFD36A),
+    );
+    canvas.drawCircle(
+      Offset.zero,
+      1.7,
+      Paint()..color = const Color(0xFFFFF1B0),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RoseFacePainter oldDelegate) =>
+      oldDelegate.openAmount != openAmount;
+}
+
 class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   final TextEditingController messageController = TextEditingController();
   final List<Map<String, dynamic>> messages = [];
@@ -7310,12 +7455,11 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                               _toggleMic,
                               color: micOn ? const Color(0xFF8DE4FF) : const Color(0xFFFF8D9B),
                             ),
-                            circleAction(
-                              Icons.card_giftcard_rounded,
-                              'Gift',
-                              () => openLovelyRoomGiftStore(context, roomId: widget.room['id']),
-                              color: const Color(0xFFFFD477),
-                              size: 25,
+                            _AnimatedRoseGiftButton(
+                              onTap: () => openLovelyRoomGiftStore(
+                                context,
+                                roomId: widget.room['id'],
+                              ),
                             ),
                             circleAction(
                               Icons.emoji_emotions_outlined,
