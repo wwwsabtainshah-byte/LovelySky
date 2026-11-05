@@ -7376,6 +7376,58 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 ),
               ],
             ),
+            Positioned(
+              right: 12,
+              bottom: 68,
+              child: GestureDetector(
+                onTap: () => openLovelyCasinoGames(context),
+                child: Container(
+                  width: 104,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF9B54F5), Color(0xFF421477)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(17),
+                    border: Border.all(
+                      color: const Color(0xFFFFD477),
+                      width: 2,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0xAA32105F),
+                        blurRadius: 0,
+                        offset: Offset(0, 5),
+                      ),
+                      BoxShadow(
+                        color: Color(0x665B25A0),
+                        blurRadius: 13,
+                        offset: Offset(0, 7),
+                      ),
+                    ],
+                  ),
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.sports_esports_rounded,
+                          color: Color(0xFFFFD477), size: 27),
+                      SizedBox(height: 2),
+                      Text(
+                        'GAMES',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
             if (activeGiftEvent != null)
               Positioned.fill(
                 child: IgnorePointer(
