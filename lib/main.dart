@@ -1328,6 +1328,7 @@ class LovelyCasinoGamesSheet extends StatefulWidget {
 
 class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
   List<Map<String, dynamic>> games = [];
+  List<Map<String, dynamic>> recentGames = [];
   int coins = 0;
   bool loading = true;
   bool launching = false;
@@ -1378,7 +1379,25 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
   @override
   void initState() {
     super.initState();
+    _loadRecentGames();
     _loadGames();
+  }
+
+  Future<void> _loadRecentGames() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getStringList('lovely_recent_games') ?? [];
+      final loaded = <Map<String, dynamic>>[];
+      for (final item in saved) {
+        try {
+          final decoded = jsonDecode(item);
+          if (decoded is Map) {
+            loaded.add(Map<String, dynamic>.from(decoded));
+          }
+        } catch (_) {}
+      }
+      if (mounted) setState(() => recentGames = loaded);
+    } catch (_) {}
   }
 
   Future<void> _loadGames() async {
@@ -1454,6 +1473,7 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
         ),
       );
       await controller.loadRequest(uri);
+      await _rememberGame(game);
 
       if (!mounted) return;
       setState(() {
@@ -1465,6 +1485,43 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
       if (mounted) setState(() => message = e.toString());
     } finally {
       if (mounted) setState(() => launching = false);
+    }
+  }
+
+  Future<void> _rememberGame(Map<String, dynamic> game) async {
+    final slug = game['slug']?.toString() ?? '';
+    if (slug.isEmpty) return;
+
+    final item = <String, dynamic>{
+      'slug': slug,
+      'name': game['name']?.toString() ?? slug,
+      'thumbnail_url': game['thumbnail_url']?.toString() ?? '',
+      'enabled': true,
+      'status': 'ACTIVE',
+    };
+
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList('lovely_recent_games') ?? [];
+    final updated = <String>[jsonEncode(item)];
+
+    for (final entry in saved) {
+      try {
+        final old = jsonDecode(entry);
+        if (old is Map &&
+            old['slug']?.toString() != slug &&
+            updated.length < 8) {
+          updated.add(jsonEncode(old));
+        }
+      } catch (_) {}
+    }
+
+    await prefs.setStringList('lovely_recent_games', updated);
+    if (mounted) {
+      setState(() {
+        recentGames = updated
+            .map((e) => Map<String, dynamic>.from(jsonDecode(e)))
+            .toList();
+      });
     }
   }
 
@@ -1589,21 +1646,71 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
               Expanded(child: WebViewWidget(controller: gameController!))
             else if (loading || launching)
               const Expanded(child: Center(child: CircularProgressIndicator()))
-            else if (game == null && games.isNotEmpty)
+            else if (game == null &&
+                (games.isNotEmpty || recentGames.isNotEmpty))
               Expanded(
-                child: GridView.builder(
-                  padding: const EdgeInsets.all(14),
-                  itemCount: games.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 1.15,
-                  ),
-                  itemBuilder: (_, index) => _gameTile(games[index]),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (recentGames.isNotEmpty) ...[
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(16, 10, 16, 8),
+                        child: Text(
+                          'Played Recently',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF183B59),
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        height: 145,
+                        child: ListView.separated(
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          scrollDirection: Axis.horizontal,
+                          itemCount: recentGames.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 10),
+                          itemBuilder: (_, index) => SizedBox(
+                            width: 145,
+                            child: _gameTile(recentGames[index]),
+                          ),
+                        ),
+                      ),
+                    ],
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 14, 16, 8),
+                      child: Text(
+                        'All Games',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF183B59),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: games.isEmpty
+                          ? const Center(
+                              child: Text('No games available right now.'),
+                            )
+                          : GridView.builder(
+                              padding: const EdgeInsets.all(14),
+                              itemCount: games.length,
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
+                                childAspectRatio: 1.15,
+                              ),
+                              itemBuilder: (_, index) => _gameTile(games[index]),
+                            ),
+                    ),
+                  ],
                 ),
               )
-            else
+              else
               Expanded(
                 child: Center(
                   child: Padding(
