@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -6060,6 +6061,168 @@ class _AnimatedRoomActionButtonState extends State<_AnimatedRoomActionButton>
   }
 }
 
+class _LuckyCashbackBannerOverlay extends StatelessWidget {
+  final Map<String, dynamic> event;
+
+  const _LuckyCashbackBannerOverlay({required this.event});
+
+  Widget _person(String? photo, String code) {
+    final image = (photo ?? '').trim();
+    return SizedBox(
+      width: 58,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipOval(
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: image.isNotEmpty
+                  ? Image.network(
+                      image,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _fallback(),
+                    )
+                  : _fallback(),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            code.isEmpty ? 'ID' : code,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _fallback() {
+    return Container(
+      color: const Color(0xFF49315F),
+      alignment: Alignment.center,
+      child: const Icon(Icons.person, color: Colors.white, size: 27),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final percent =
+        int.tryParse(event['cashback_percent']?.toString() ?? '') ?? 0;
+    final senderPhoto = event['sender_photo']?.toString();
+    final receiverPhoto = event['receiver_photo']?.toString();
+    final senderCode = event['sender_code']?.toString() ?? '';
+    final receiverCode = event['receiver_code']?.toString() ?? '';
+
+    return IgnorePointer(
+      child: SafeArea(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 12, left: 12, right: 12),
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 440),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 13,
+                ),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF32104F),
+                      Color(0xFF8A174F),
+                      Color(0xFF3A123E),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(19),
+                  border: Border.all(color: const Color(0xFFFFD66B), width: 2),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0xCC000000),
+                      blurRadius: 22,
+                      spreadRadius: 1,
+                      offset: Offset(0, 8),
+                    ),
+                    BoxShadow(
+                      color: Color(0x88FFC94D),
+                      blurRadius: 16,
+                      spreadRadius: -4,
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    _person(senderPhoto, senderCode),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.workspace_premium,
+                            color: Color(0xFFFFD66B),
+                            size: 25,
+                          ),
+                          const SizedBox(height: 1),
+                          const Text(
+                            'CASHBACK',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Color(0xFFFFE7A0),
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.2,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black,
+                                  blurRadius: 7,
+                                  offset: Offset(1, 2),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            percent >= 500 ? '$percent% JACKPOT' : '$percent%',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Color(0xFFFFD04F),
+                              fontSize: 21,
+                              fontWeight: FontWeight.w900,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black,
+                                  blurRadius: 8,
+                                  offset: Offset(1, 2),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    _person(receiverPhoto, receiverCode),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _RoomGiftAnimationOverlay extends StatefulWidget {
   final Map<String, dynamic> gift;
 
@@ -6375,6 +6538,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   final Set<String> remoteDescriptionReady = {};
   final Map<String, bool> remoteMicStatus = {};
   Map<String, dynamic>? activeGiftEvent;
+  Map<String, dynamic>? activeLuckyCashbackEvent;
+  Timer? luckyCashbackOverlayTimer;
+  final AudioPlayer _luckyCashbackPlayer = AudioPlayer();
   Set<String> activeGiftReceiverCodes = {};
   Timer? giftDpTimer;
   Timer? giftOverlayTimer;
@@ -6615,6 +6781,44 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     );
   }
 
+  Future<void> _playLuckyChun({required bool twice}) async {
+    try {
+      await _luckyCashbackPlayer.stop();
+      await _luckyCashbackPlayer.play(AssetSource('audio/lucky_chun.wav'));
+      if (twice) {
+        await Future.delayed(const Duration(milliseconds: 650));
+        if (!mounted) return;
+        await _luckyCashbackPlayer.play(AssetSource('audio/lucky_chun.wav'));
+      }
+    } catch (error) {
+      debugPrint('Lucky cashback sound error: $error');
+    }
+  }
+
+  void _showLuckyCashbackEvent(Map<String, dynamic> event) {
+    final percent =
+        int.tryParse(event['cashback_percent']?.toString() ?? '') ?? 0;
+    if (percent < 50) return;
+
+    luckyCashbackOverlayTimer?.cancel();
+    setState(() {
+      activeLuckyCashbackEvent = event;
+    });
+
+    if (percent >= 500) {
+      unawaited(_playLuckyChun(twice: true));
+    } else if (percent >= 100) {
+      unawaited(_playLuckyChun(twice: false));
+    }
+
+    luckyCashbackOverlayTimer = Timer(const Duration(seconds: 12), () {
+      if (!mounted) return;
+      setState(() {
+        activeLuckyCashbackEvent = null;
+      });
+    });
+  }
+
   Future<void> _handleVoiceSignal(dynamic event) async {
     try {
       final decoded = jsonDecode(event is String ? event : event.toString());
@@ -6623,6 +6827,13 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       final data = Map<String, dynamic>.from(decoded);
       final type = data['type'];
 
+      if (type == 'lucky_cashback_event') {
+        final payload = data['payload'];
+        if (payload is Map) {
+          _showLuckyCashbackEvent(Map<String, dynamic>.from(payload));
+        }
+        return;
+      }
       if (type == 'gift_event') {
         final payload = data['payload'];
         if (payload is Map) {
@@ -7903,6 +8114,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   void dispose() {
     seatRefreshTimer?.cancel();
     giftOverlayTimer?.cancel();
+    luckyCashbackOverlayTimer?.cancel();
+    unawaited(_luckyCashbackPlayer.dispose());
     repeatGiftCountdownTimer?.cancel();
     repeatGiftHoldTimer?.cancel();
     if (identical(activeVoiceRoom.value, widget.room)) {
@@ -8544,6 +8757,12 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
             if (activeGiftEvent != null)
               Positioned.fill(
                 child: _RoomGiftAnimationOverlay(gift: activeGiftEvent!),
+              ),
+            if (activeLuckyCashbackEvent != null)
+              Positioned.fill(
+                child: _LuckyCashbackBannerOverlay(
+                  event: activeLuckyCashbackEvent!,
+                ),
               ),
           ],
         ),

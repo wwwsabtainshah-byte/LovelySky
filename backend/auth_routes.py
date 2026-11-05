@@ -2325,12 +2325,14 @@ async def send_voice_room_gift(
 
         room_members = db.execute(
             """
-            SELECT p.user_code, p.user_uid, u.id AS user_id
+            SELECT p.user_code, p.user_uid, u.id AS user_id,
+                   u.display_name, u.profile_photo
             FROM voice_room_participants p
             JOIN users u ON u.google_uid = p.user_uid
             WHERE p.room_id = ?
             UNION
-            SELECT r.owner_code, r.owner_uid, u.id
+            SELECT r.owner_code, r.owner_uid, u.id,
+                   u.display_name, u.profile_photo
             FROM voice_rooms r
             JOIN users u ON u.google_uid = r.owner_uid
             WHERE r.id = ?
@@ -2344,6 +2346,27 @@ async def send_voice_room_gift(
         sender_id = int(user["id"])
         cost_each = int(gift["coin_cost"]) * quantity
         total_cost = cost_each * len(receiver_codes)
+
+        is_lucky_gift = str(gift.get("category", "")).lower() == "lucky gift"
+        cashback_percent = 0
+        cashback_amount = 0
+        if is_lucky_gift:
+            cashback_roll = secrets.randbelow(100)
+            if cashback_roll < 50:
+                cashback_percent = 10
+            elif cashback_roll < 75:
+                cashback_percent = 20
+            elif cashback_roll < 90:
+                cashback_percent = 50
+            elif cashback_roll < 98:
+                cashback_percent = 100
+            else:
+                cashback_percent = 500
+            cashback_amount = total_cost * cashback_percent // 100
+
+        receiver_diamond_reward = (
+            cost_each * 10 // 100 if is_lucky_gift else cost_each
+        )
 
         db.execute(
             "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
@@ -2365,7 +2388,7 @@ async def send_voice_room_gift(
             )
             db.execute(
                 "UPDATE wallets SET diamonds = diamonds + ? WHERE user_id = ?",
-                (cost_each, receiver_id),
+                (receiver_diamond_reward, receiver_id),
             )
             db.execute(
                 """INSERT INTO inventory (user_id, item_type, item_code, quantity)
@@ -2380,7 +2403,7 @@ async def send_voice_room_gift(
                     quantity, coins_spent, diamonds_credited)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (sender_id, receiver_id, gift_code, gift["name"],
-                 quantity, cost_each, cost_each),
+                 quantity, cost_each, receiver_diamond_reward),
             )
             db.execute(
                 """INSERT INTO voice_room_gift_diamonds
@@ -2390,13 +2413,14 @@ async def send_voice_room_gift(
                    DO UPDATE SET
                      diamonds = diamonds + excluded.diamonds,
                      user_code = excluded.user_code""",
-                (room_id, members_by_code[code]["user_uid"], code, cost_each),
+                (room_id, members_by_code[code]["user_uid"], code,
+                 receiver_diamond_reward),
             )
             db.execute(
                 """INSERT INTO transactions
                    (user_id, transaction_type, amount, currency, description)
                    VALUES (?, 'gift_received', ?, 'diamonds', ?)""",
-                (receiver_id, cost_each,
+                (receiver_id, receiver_diamond_reward,
                  f"Received {quantity} x {gift['name']} from ID {user.get('user_code', '')}"),
             )
 
@@ -2407,6 +2431,27 @@ async def send_voice_room_gift(
             (sender_id, total_cost,
              f"Sent {quantity} x {gift['name']} to {len(receiver_codes)} room member(s)"),
         )
+        if cashback_amount > 0:
+            db.execute(
+                "UPDATE wallets SET coins = coins + ? WHERE user_id = ?",
+                (cashback_amount, sender_id),
+            )
+            db.execute(
+                """INSERT INTO transactions
+                   (user_id, transaction_type, amount, currency, description)
+                   VALUES (?, 'lucky_cashback', ?, 'coins', ?)""",
+                (
+                    sender_id,
+                    cashback_amount,
+                    f"Lucky Gift {cashback_percent}% cashback on {total_cost} Coins",
+                ),
+            )
+
+        sender_profile = db.execute(
+            "SELECT user_code, display_name, profile_photo FROM users WHERE id = ?",
+            (sender_id,),
+        ).fetchone()
+
         sender_wallet = db.execute(
             "SELECT coins FROM wallets WHERE user_id = ?",
             (sender_id,),
@@ -2425,6 +2470,10 @@ async def send_voice_room_gift(
         gift_event = {
             "receiver_gift_diamonds": receiver_gift_diamonds,
             "sender_code": str(user.get("user_code", "")),
+            "sender_photo": str(sender_profile["profile_photo"] or "") if sender_profile else "",
+            "cashback_percent": cashback_percent,
+            "cashback_coins": cashback_amount,
+            "lucky_cashback": bool(is_lucky_gift),
             "sender_name": str(
                 user.get("display_name") or user.get("name")
                 or user.get("user_code") or "Member"
@@ -2435,9 +2484,8 @@ async def send_voice_room_gift(
             "quantity": quantity,
             "receiver_codes": receiver_codes,
             "coins_spent": total_cost,
-            "diamonds_per_recipient": cost_each,
+            "diamonds_per_recipient": receiver_diamond_reward,
         }
-
         dead_connections = []
         for peer_uid, peer_socket in list(
             VOICE_SIGNAL_CONNECTIONS.get(room_id, {}).items()
@@ -2453,12 +2501,46 @@ async def send_voice_room_gift(
         for peer_uid in dead_connections:
             VOICE_SIGNAL_CONNECTIONS.get(room_id, {}).pop(peer_uid, None)
 
+        # 50%, 100% and 500% Lucky Cashback announcements go to every
+        # currently connected voice room, not only the sender's room.
+        if is_lucky_gift and cashback_percent >= 50:
+            first_receiver_code = receiver_codes[0]
+            first_receiver = members_by_code[first_receiver_code]
+            lucky_event = {
+                "cashback_percent": cashback_percent,
+                "sender_code": str(sender_profile["user_code"] or "") if sender_profile else str(user.get("user_code", "")),
+                "sender_name": str((sender_profile["display_name"] or "") if sender_profile else ""),
+                "sender_photo": str((sender_profile["profile_photo"] or "") if sender_profile else ""),
+                "receiver_code": first_receiver_code,
+                "receiver_name": str(first_receiver["display_name"] or ""),
+                "receiver_photo": str(first_receiver["profile_photo"] or ""),
+            }
+            dead_global = []
+            for active_room_id, room_connections in list(VOICE_SIGNAL_CONNECTIONS.items()):
+                for peer_uid, peer_socket in list(room_connections.items()):
+                    try:
+                        await peer_socket.send_json({
+                            "type": "lucky_cashback_event",
+                            "payload": lucky_event,
+                        })
+                    except Exception:
+                        dead_global.append((active_room_id, peer_uid, peer_socket))
+
+            for dead_room_id, dead_uid, dead_socket in dead_global:
+                current = VOICE_SIGNAL_CONNECTIONS.get(dead_room_id, {})
+                if current.get(dead_uid) is dead_socket:
+                    current.pop(dead_uid, None)
+                if not current:
+                    VOICE_SIGNAL_CONNECTIONS.pop(dead_room_id, None)
+
         return {
             "success": True,
             "recipients_count": len(receiver_codes),
             "coins_spent": total_cost,
-            "diamonds_per_recipient": cost_each,
+            "diamonds_per_recipient": receiver_diamond_reward,
             "sender_coins": int(sender_wallet["coins"]),
+            "lucky_cashback_percent": cashback_percent,
+            "cashback_coins": cashback_amount,
             "coin_to_diamond_rate": 1,
         }
     except HTTPException:
