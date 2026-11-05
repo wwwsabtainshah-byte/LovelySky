@@ -97,6 +97,16 @@ def initialize_database():
         CREATE INDEX IF NOT EXISTS idx_gift_transactions_sender
             ON gift_transactions(sender_user_id, id);
 
+        CREATE TABLE IF NOT EXISTS voice_room_gift_diamonds (
+            room_id INTEGER NOT NULL,
+            user_uid TEXT NOT NULL,
+            user_code TEXT NOT NULL,
+            diamonds INTEGER NOT NULL DEFAULT 0 CHECK(diamonds >= 0),
+            PRIMARY KEY (room_id, user_uid)
+        );
+        CREATE INDEX IF NOT EXISTS idx_room_gift_diamonds_user
+            ON voice_room_gift_diamonds(room_id, user_code);
+
         CREATE TABLE IF NOT EXISTS device_bindings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL UNIQUE,

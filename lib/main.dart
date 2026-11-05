@@ -6375,6 +6375,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   final Set<String> remoteDescriptionReady = {};
   final Map<String, bool> remoteMicStatus = {};
   Map<String, dynamic>? activeGiftEvent;
+  Set<String> activeGiftReceiverCodes = {};
+  Timer? giftDpTimer;
   Timer? giftOverlayTimer;
   int giftComboCount = 1;
   String? lastGiftComboKey;
@@ -6559,8 +6561,25 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     final receiverText = receivers.isEmpty
         ? 'room members'
         : receivers.map((code) => 'ID $code').join(', ');
+    final rawTotals = gift['receiver_gift_diamonds'];
+    final receiverTotals = rawTotals is Map
+        ? Map<String, dynamic>.from(rawTotals)
+        : <String, dynamic>{};
 
+    giftDpTimer?.cancel();
     setState(() {
+      activeGiftReceiverCodes = receivers.toSet();
+      for (final seat in seats) {
+        final seatCode = (seat['user_code'] ?? '').toString();
+        if (receivers.contains(seatCode)) {
+          final serverTotal = receiverTotals[seatCode];
+          seat['gift_diamonds'] =
+              int.tryParse('$serverTotal') ??
+              ((int.tryParse('${seat['gift_diamonds'] ?? 0}') ?? 0) +
+                  (int.tryParse('${gift['diamonds_per_recipient'] ?? 0}') ??
+                      0));
+        }
+      }
       activeGiftEvent = {
         ...gift,
         'sender_name': sender,
@@ -6577,6 +6596,12 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
             '${now.minute.toString().padLeft(2, '0')}',
       });
       if (messages.length > 100) messages.removeLast();
+    });
+
+    giftDpTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        setState(() => activeGiftReceiverCodes.clear());
+      }
     });
 
     giftOverlayTimer?.cancel();
@@ -7588,49 +7613,89 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: size,
-              height: size,
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: activeMic
-                      ? const [Color(0xFF8DEBFF), Color(0xFF168DDB)]
-                      : const [Color(0xFFB7DDFB), Color(0xFF547FAE)],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: activeMic
-                        ? const Color(0xFF35CFFF).withValues(alpha: 0.55)
-                        : const Color(0xFF6CA8E8).withValues(alpha: 0.18),
-                    blurRadius: activeMic ? 17 : 7,
-                    spreadRadius: activeMic ? 3 : 1,
+            Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: size,
+                  height: size,
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: activeMic
+                          ? const [Color(0xFF8DEBFF), Color(0xFF168DDB)]
+                          : const [Color(0xFFB7DDFB), Color(0xFF547FAE)],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: activeMic
+                            ? const Color(0xFF35CFFF).withValues(alpha: 0.55)
+                            : const Color(0xFF6CA8E8).withValues(alpha: 0.18),
+                        blurRadius: activeMic ? 17 : 7,
+                        spreadRadius: activeMic ? 3 : 1,
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: Container(
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Color(0xFF173B5C),
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0xFF173B5C),
+                    ),
+                    padding: const EdgeInsets.all(2),
+                    child: ClipOval(
+                      child: occupied
+                          ? avatar
+                          : locked
+                          ? const Icon(
+                              Icons.lock_rounded,
+                              color: Colors.white70,
+                              size: 21,
+                            )
+                          : Icon(
+                              Icons.person_add_alt_1_rounded,
+                              color: Colors.white.withValues(alpha: 0.65),
+                              size: large ? 27 : 22,
+                            ),
+                    ),
+                  ),
                 ),
-                padding: const EdgeInsets.all(2),
-                child: ClipOval(
-                  child: occupied
-                      ? avatar
-                      : locked
-                      ? const Icon(
-                          Icons.lock_rounded,
-                          color: Colors.white70,
-                          size: 21,
-                        )
-                      : Icon(
-                          Icons.person_add_alt_1_rounded,
-                          color: Colors.white.withValues(alpha: 0.65),
-                          size: large ? 27 : 22,
+                if (occupied && activeGiftReceiverCodes.contains(code))
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: TweenAnimationBuilder<double>(
+                        key: ValueKey(
+                          'gift-dp-$code-${lastGiftEventAt?.millisecondsSinceEpoch ?? 0}',
                         ),
-                ),
-              ),
+                        tween: Tween<double>(begin: 1.28, end: 0.92),
+                        duration: const Duration(milliseconds: 750),
+                        builder: (context, scale, child) {
+                          return Transform.scale(
+                            scale: scale,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: const Color(0xFFFFD66B),
+                                  width: 3,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFFFC84A)
+                                        .withValues(alpha: 0.8),
+                                    blurRadius: 18,
+                                    spreadRadius: 3,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 4),
             Text(
@@ -7644,6 +7709,17 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
+            if (occupied)
+              Text(
+                '💎 ${seat['gift_diamonds'] ?? 0}',
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: const Color(0xFF83E8FF),
+                  fontSize: large ? 10 : 9,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             if (occupied)
               Icon(
                 activeMic ? Icons.graphic_eq_rounded : Icons.mic_off_rounded,

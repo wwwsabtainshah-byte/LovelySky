@@ -449,6 +449,10 @@ def leave_voice_room(
             "DELETE FROM voice_room_participants WHERE room_id = ? AND user_uid = ?",
             (room_id, user["google_uid"]),
         )
+        db.execute(
+            "DELETE FROM voice_room_gift_diamonds WHERE room_id = ? AND user_uid = ?",
+            (room_id, user["google_uid"]),
+        )
         db.commit()
         count = db.execute(
             "SELECT COUNT(*) AS n FROM voice_room_participants WHERE room_id = ?",
@@ -604,9 +608,13 @@ def get_voice_room_seats(
         role = _voice_room_role(db, room_id, user["google_uid"])
         occupied = db.execute(
             """
-            SELECT p.seat_number, p.user_uid, p.user_code, p.is_muted, u.display_name, u.profile_photo
+            SELECT p.seat_number, p.user_uid, p.user_code, p.is_muted,
+                   u.display_name, u.profile_photo,
+                   COALESCE(gd.diamonds, 0) AS gift_diamonds
             FROM voice_room_participants AS p
             LEFT JOIN users AS u ON u.google_uid = p.user_uid
+            LEFT JOIN voice_room_gift_diamonds AS gd
+              ON gd.room_id = p.room_id AND gd.user_uid = p.user_uid
             WHERE p.room_id = ? AND p.seat_number BETWEEN 1 AND 18
             """,
             (room_id,),
@@ -630,6 +638,7 @@ def get_voice_room_seats(
                     "is_muted": bool(by_seat[n]["is_muted"]) if n in by_seat else False,
                     "display_name": by_seat[n]["display_name"] if n in by_seat else None,
                     "profile_photo": by_seat[n]["profile_photo"] if n in by_seat else None,
+                    "gift_diamonds": int(by_seat[n]["gift_diamonds"] or 0) if n in by_seat else 0,
                     "is_occupied": n in by_seat,
                     "is_mine": (
                         n in by_seat
@@ -2316,12 +2325,12 @@ async def send_voice_room_gift(
 
         room_members = db.execute(
             """
-            SELECT p.user_code, u.id AS user_id
+            SELECT p.user_code, p.user_uid, u.id AS user_id
             FROM voice_room_participants p
             JOIN users u ON u.google_uid = p.user_uid
             WHERE p.room_id = ?
             UNION
-            SELECT r.owner_code, u.id
+            SELECT r.owner_code, r.owner_uid, u.id
             FROM voice_rooms r
             JOIN users u ON u.google_uid = r.owner_uid
             WHERE r.id = ?
@@ -2374,6 +2383,16 @@ async def send_voice_room_gift(
                  quantity, cost_each, cost_each),
             )
             db.execute(
+                """INSERT INTO voice_room_gift_diamonds
+                   (room_id, user_uid, user_code, diamonds)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(room_id, user_uid)
+                   DO UPDATE SET
+                     diamonds = diamonds + excluded.diamonds,
+                     user_code = excluded.user_code""",
+                (room_id, members_by_code[code]["user_uid"], code, cost_each),
+            )
+            db.execute(
                 """INSERT INTO transactions
                    (user_id, transaction_type, amount, currency, description)
                    VALUES (?, 'gift_received', ?, 'diamonds', ?)""",
@@ -2392,9 +2411,19 @@ async def send_voice_room_gift(
             "SELECT coins FROM wallets WHERE user_id = ?",
             (sender_id,),
         ).fetchone()
+        receiver_gift_diamonds = {}
+        for code in receiver_codes:
+            total_row = db.execute(
+                """SELECT diamonds FROM voice_room_gift_diamonds
+                   WHERE room_id = ? AND user_uid = ?""",
+                (room_id, members_by_code[code]["user_uid"]),
+            ).fetchone()
+            receiver_gift_diamonds[code] = int(total_row["diamonds"]) if total_row else 0
+
         db.commit()
 
         gift_event = {
+            "receiver_gift_diamonds": receiver_gift_diamonds,
             "sender_code": str(user.get("user_code", "")),
             "sender_name": str(
                 user.get("display_name") or user.get("name")
