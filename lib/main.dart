@@ -7155,118 +7155,29 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   padding: const EdgeInsets.fromLTRB(3, 0, 4, 3),
                   child: Row(
                     children: [
-                      circleAction(Icons.grid_view_rounded, 'More', () {
-                        showModalBottomSheet(
-                          context: context,
-                          backgroundColor: const Color(0xFFF5FBFF),
-                          builder: (ctx) => SafeArea(
-                            child: Wrap(
-                              children: [
-                                ListTile(
-                                  leading: const Icon(
-                                    Icons.info_outline,
-                                    color: const Color(0xFF123B5A),
-                                  ),
-                                  title: const Text(
-                                    'Room Information',
-                                    style: TextStyle(
-                                      color: const Color(0xFF123B5A),
-                                    ),
-                                  ),
-                                  onTap: () {
-                                    Navigator.pop(ctx);
-                                    showMessage('Room ID: $roomId');
-                                  },
-                                ),
-                                ListTile(
-                                  leading: const Icon(
-                                    Icons.exit_to_app,
-                                    color: Colors.redAccent,
-                                  ),
-                                  title: const Text(
-                                    'Leave Room',
-                                    style: TextStyle(
-                                      color: const Color(0xFF123B5A),
-                                    ),
-                                  ),
-                                  onTap: () {
-                                    Navigator.pop(ctx);
-                                    _leaveRoom();
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }),
-                      circleAction(
-                        micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
-                        'Microphone',
-                        _toggleMic,
-                        color: micOn
-                            ? const Color(0xFF8DE4FF)
-                            : const Color(0xFFFF8D9B),
-                      ),
-                      circleAction(
-                        Icons.card_giftcard_rounded,
-                        'Gift',
-                        () => openLovelyRoomGiftStore(
-                          context,
-                          roomId: widget.room['id'],
-                        ),
-                        color: const Color(0xFFFFD477),
-                        size: 25,
-                      ),
-                      circleAction(
-                        Icons.casino_rounded,
-                        'Games',
-                        () => openLovelyCasinoGames(context),
-                        color: const Color(0xFF8DE4FF),
-                        size: 25,
-                      ),
-                      circleAction(
-                        Icons.inbox_rounded,
-                        'Inbox',
-                        () => showMessage(
-                          'Inbox feature baad mein connect hoga.',
-                        ),
-                      ),
-                      circleAction(
-                        speakerOn
-                            ? Icons.volume_up_rounded
-                            : Icons.volume_off_rounded,
-                        'Speaker',
-                        _toggleSpeaker,
-                      ),
-                      circleAction(Icons.emoji_emotions_outlined, 'Emoji', () {
-                        messageController.text += '😊';
-                        messageController.selection = TextSelection.collapsed(
-                          offset: messageController.text.length,
-                        );
-                      }),
-                      circleAction(
-                        Icons.send_rounded,
-                        'Send',
-                        sendMessage,
-                        color: const Color(0xFF8DE4FF),
-                      ),
                       Expanded(
                         child: TextField(
                           controller: messageController,
                           style: const TextStyle(
-                            color: const Color(0xFF123B5A),
+                            color: Color(0xFF123B5A),
                             fontSize: 12,
                           ),
                           textInputAction: TextInputAction.send,
                           onSubmitted: (_) => sendMessage(),
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             hintText: 'Message...',
-                            hintStyle: TextStyle(
-                              color: const Color(0xFF6D91A8),
+                            hintStyle: const TextStyle(
+                              color: Color(0xFF6D91A8),
                               fontSize: 12,
                             ),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.send_rounded),
+                              color: const Color(0xFF8DE4FF),
+                              onPressed: sendMessage,
+                              tooltip: 'Send',
+                            ),
                             isDense: true,
-                            contentPadding: EdgeInsets.symmetric(
+                            contentPadding: const EdgeInsets.symmetric(
                               horizontal: 7,
                               vertical: 9,
                             ),
@@ -7274,6 +7185,83 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                             enabledBorder: InputBorder.none,
                             focusedBorder: InputBorder.none,
                           ),
+                        ),
+                      ),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            circleAction(
+                              speakerOn ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+                              'Speaker',
+                              _toggleSpeaker,
+                            ),
+                            circleAction(
+                              micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
+                              'Microphone',
+                              _toggleMic,
+                              color: micOn ? const Color(0xFF8DE4FF) : const Color(0xFFFF8D9B),
+                            ),
+                            circleAction(
+                              Icons.card_giftcard_rounded,
+                              'Gift',
+                              () => openLovelyRoomGiftStore(context, roomId: widget.room['id']),
+                              color: const Color(0xFFFFD477),
+                              size: 25,
+                            ),
+                            circleAction(
+                              Icons.emoji_emotions_outlined,
+                              'Emoji',
+                              () {
+                                messageController.text += '😊';
+                                messageController.selection = TextSelection.collapsed(
+                                  offset: messageController.text.length,
+                                );
+                              },
+                            ),
+                            circleAction(
+                              Icons.inbox_rounded,
+                              'Inbox',
+                              () => showMessage('Inbox feature baad mein connect hoga.'),
+                            ),
+                            circleAction(Icons.grid_view_rounded, 'More', () {
+                              showModalBottomSheet(
+                                context: context,
+                                backgroundColor: const Color(0xFFF5FBFF),
+                                builder: (ctx) => SafeArea(
+                                  child: Wrap(
+                                    children: [
+                                      ListTile(
+                                        leading: const Icon(Icons.casino_rounded),
+                                        title: const Text('Games'),
+                                        onTap: () {
+                                          Navigator.pop(ctx);
+                                          openLovelyCasinoGames(context);
+                                        },
+                                      ),
+                                      ListTile(
+                                        leading: const Icon(Icons.info_outline),
+                                        title: const Text('Room Information'),
+                                        onTap: () {
+                                          Navigator.pop(ctx);
+                                          showMessage('Room ID: $roomId');
+                                        },
+                                      ),
+                                      ListTile(
+                                        leading: const Icon(Icons.exit_to_app, color: Colors.redAccent),
+                                        title: const Text('Leave Room'),
+                                        onTap: () {
+                                          Navigator.pop(ctx);
+                                          _leaveRoom();
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }),
+                          ],
                         ),
                       ),
                     ],
