@@ -7474,40 +7474,73 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   child: Row(
                     children: [
-                      infoButton(
-                        Icons.card_giftcard_rounded,
-                        'Daily Gifting',
-                        'Gift report',
-                        () => showMessage(
-                          'Daily / Weekly / Monthly gifting report baad mein connect hoga.',
+                      const Icon(
+                        Icons.emoji_events_rounded,
+                        color: Color(0xFFFFC84D),
+                        size: 21,
+                      ),
+                      const SizedBox(width: 5),
+                      const Text(
+                        'Room',
+                        style: TextStyle(
+                          color: Color(0xFF123B5A),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
                         ),
                       ),
-                      const SizedBox(width: 7),
-                      infoButton(
+                      const Spacer(),
+                      const Icon(
                         Icons.local_fire_department_rounded,
-                        'Popularity',
-                        'Room ranking',
-                        () => showMessage(
-                          'Room popularity report baad mein connect hoga.',
+                        color: Color(0xFFFF7043),
+                        size: 20,
+                      ),
+                      Text(
+                        '${occupiedSeats.length}',
+                        style: const TextStyle(
+                          color: Color(0xFF123B5A),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
                         ),
                       ),
                       const SizedBox(width: 7),
-                      infoButton(
-                        Icons.people_alt_rounded,
-                        'Live Members',
-                        '${occupiedSeats.length} joined',
-                        () {
-                          final ids = occupiedSeats
-                              .map((e) => (e['user_code'] ?? '').toString())
-                              .where((e) => e.isNotEmpty)
-                              .join(', ');
-                          showMessage(
-                            ids.isEmpty ? 'No members seated' : 'IDs: $ids',
-                          );
-                        },
+                      SizedBox(
+                        height: 38,
+                        width: 145,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: occupiedSeats.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 5),
+                          itemBuilder: (context, index) {
+                            final member = occupiedSeats[index];
+                            final photo = (member['profile_photo'] ?? '')
+                                .toString();
+                            return GestureDetector(
+                              onTap: () => showMessage(
+                                'Member ID: ${member['user_code'] ?? ''}',
+                              ),
+                              child: CircleAvatar(
+                                radius: 17,
+                                backgroundColor: const Color(0xFF286B9D),
+                                backgroundImage: photo.startsWith('http')
+                                    ? NetworkImage(photo)
+                                    : null,
+                                child: photo.startsWith('http')
+                                    ? null
+                                    : const Icon(
+                                        Icons.person,
+                                        color: Color(0xFF123B5A),
+                                        size: 17,
+                                      ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ],
                   ),
