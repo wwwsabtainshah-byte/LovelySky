@@ -7530,19 +7530,141 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                             'Room settings baad mein connect honge.',
                           ),
                         ),
-                      circleAction(
-                        Icons.minimize_rounded,
-                        'Minimize',
-                        () => showMessage(
-                          'Minimize/background audio abhi connect nahi hai.',
-                        ),
-                      ),
-                      circleAction(
-                        Icons.close_rounded,
-                        'Exit room',
-                        _leaveRoom,
-                        color: const Color(0xFFFF8D9B),
-                      ),
+                      circleAction(Icons.close_rounded, 'Room options', () {
+                        showDialog(
+                          context: context,
+                          builder: (dialogContext) => Dialog(
+                            backgroundColor: Colors.transparent,
+                            child: Container(
+                              padding: const EdgeInsets.all(18),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE5F6FF),
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(
+                                  color: const Color(0xFF8DE4FF),
+                                  width: 2,
+                                ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x553B91C8),
+                                    blurRadius: 20,
+                                    offset: Offset(0, 8),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(18),
+                                      onTap: () {
+                                        Navigator.of(dialogContext).pop();
+                                        _leaveRoom();
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 12,
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              width: 62,
+                                              height: 62,
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFF8D9B),
+                                                borderRadius:
+                                                    BorderRadius.circular(18),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                    color: Color(0x558C4050),
+                                                    blurRadius: 8,
+                                                    offset: Offset(0, 4),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: const Icon(
+                                                Icons.close_rounded,
+                                                color: Colors.white,
+                                                size: 36,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 9),
+                                            const Text(
+                                              'Exit',
+                                              style: TextStyle(
+                                                color: Color(0xFF123B5A),
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 15,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(18),
+                                      onTap: () {
+                                        Navigator.of(dialogContext).pop();
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) => const MainScreen(
+                                              initialSelectedTab: 2,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 12,
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              width: 62,
+                                              height: 62,
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFF36A9E1),
+                                                borderRadius:
+                                                    BorderRadius.circular(18),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                    color: Color(0x553B91C8),
+                                                    blurRadius: 8,
+                                                    offset: Offset(0, 4),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: const Icon(
+                                                Icons.minimize_rounded,
+                                                color: Colors.white,
+                                                size: 36,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 9),
+                                            const Text(
+                                              'Minimize',
+                                              style: TextStyle(
+                                                color: Color(0xFF123B5A),
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 15,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }, color: const Color(0xFFFF8D9B)),
                     ],
                   ),
                 ),
