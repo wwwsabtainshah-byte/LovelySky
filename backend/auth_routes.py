@@ -3517,13 +3517,32 @@ def agency_status(authorization: str | None = Header(default=None)):
             (user["google_uid"],),
         ).fetchall()
 
+        child_role = {
+            "super_admin": "bd",
+            "bd": "agency",
+            "agency": "host",
+        }.get(role)
+
+        direct_member_count = 0
+        if child_role:
+            count_row = db.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM agency_memberships
+                WHERE parent_uid=? AND role=?
+                """,
+                (user["google_uid"], child_role),
+            ).fetchone()
+            direct_member_count = int(count_row["total"] or 0)
+
         return {
             "success": True,
             "role": role,
             "is_super_admin": role == "super_admin",
-            "show_host_center": True,
-            "show_agency_center": role in ("agency", "bd", "super_admin"),
-            "show_bd_center": role in ("bd", "super_admin"),
+            "direct_member_count": direct_member_count,
+            "show_host_center": role in ("user", "host"),
+            "show_agency_center": role == "agency",
+            "show_bd_center": role == "bd",
             "show_super_admin_center": role == "super_admin",
             "pending_invites": [dict(row) for row in invites],
         }
@@ -4000,6 +4019,20 @@ def agency_target_salary(
             for row in user_rows
         }
 
+        membership_parent = {
+            str(row["user_uid"]): str(row["parent_uid"])
+            for row in membership_rows
+        }
+
+        # On a child page, the logged-in user is the child's parent.
+        # On the user's own page, use the actual saved inviter.
+        parent_profile_uid = (
+            str(user["google_uid"])
+            if parent_uid
+            else membership_parent.get(target_uid)
+        )
+        parent_profile = user_info.get(parent_profile_uid) if parent_profile_uid else None
+
         cache = {}
 
         def calculate(uid, current_role=None):
@@ -4057,7 +4090,13 @@ def agency_target_salary(
 
         own = calculate(target_uid, target_role)
 
-        child_role = {
+        if role == "super_admin" and parent_uid and target_role == "bd":
+            own = {
+                "role": "bd",
+                "benefit": int(own.get("benefit", 0)),
+            }
+
+        child_role = None if parent_uid else {
             "super_admin": "bd",
             "bd": "agency",
             "agency": "host",
@@ -4102,6 +4141,12 @@ def agency_target_salary(
             "month": month,
             "role": target_role,
             "view_uid": target_uid,
+            "parent": ({
+                "uid": parent_profile.get("google_uid", ""),
+                "user_code": parent_profile.get("user_code", ""),
+                "display_name": parent_profile.get("display_name", ""),
+                "profile_photo": parent_profile.get("profile_photo", ""),
+            } if parent_profile else None),
             "own": own,
             "members": members,
             "member_count": len(members),

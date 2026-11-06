@@ -3991,6 +3991,7 @@ class _ProfilePageState extends State<ProfilePage> {
   bool profileLoading = true;
   bool databaseChecking = false;
   String agencyRole = 'user';
+  int agencyDirectMemberCount = 0;
   List<Map<String, dynamic>> agencyInvites = [];
   List<Map<String, dynamic>> agencyHosts = [];
   bool agencyStatusLoading = false;
@@ -4091,6 +4092,8 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) return;
       setState(() {
         agencyRole = data['role']?.toString() ?? 'user';
+        agencyDirectMemberCount =
+            int.tryParse('${data['direct_member_count'] ?? 0}') ?? 0;
         agencyInvites = invites;
         agencyStatusLoading = false;
       });
@@ -4451,22 +4454,16 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _openHierarchyCenter(String center) async {
     switch (center) {
       case 'Host Center':
-        await _openHostCenter();
-        break;
-      case 'Agency':
-        if (agencyRole == 'agency') {
-          await _openAgencyCenter();
+        if (agencyRole == 'user') {
+          await _openHostCenter();
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Agency network access')),
-          );
+          await _openTargetSalary();
         }
         break;
+      case 'Agency':
       case 'BD':
-        await _sendAgencyInvite('agent');
-        break;
       case 'Super Admin':
-        await _manageSuperAdmin();
+        await _openTargetSalary();
         break;
     }
   }
@@ -4529,6 +4526,13 @@ class _ProfilePageState extends State<ProfilePage> {
                 ? Map<String, dynamic>.from(report['own'] as Map)
                 : <String, dynamic>{};
 
+            final parent = report['parent'] is Map
+                ? Map<String, dynamic>.from(report['parent'] as Map)
+                : <String, dynamic>{};
+            final parentPhoto = '${parent['profile_photo'] ?? ''}';
+            final parentName = '${parent['display_name'] ?? 'Parent'}';
+            final parentCode = '${parent['user_code'] ?? ''}';
+
             final members = (report['members'] as List? ?? [])
                 .whereType<Map>()
                 .map((e) => Map<String, dynamic>.from(e))
@@ -4541,6 +4545,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 .toList();
 
             final role = '${report['role'] ?? ''}';
+            final restrictedBdView =
+                agencyRole == 'super_admin' && stack.isNotEmpty && role == 'bd';
             final income = own['income'] ?? 0;
             final benefit = own['benefit'] ?? 0;
             final progress = ((own['progress'] as num?) ?? 0).toDouble().clamp(
@@ -4548,9 +4554,17 @@ class _ProfilePageState extends State<ProfilePage> {
               100,
             );
             final next = own['next_target'];
-            final title = stack.isEmpty
-                ? 'TARGET SALARY'
-                : '${stack.last['name']}';
+            final title = stack.isNotEmpty
+                ? '${stack.last['name']}'
+                : role == 'super_admin'
+                ? 'SUPER ADMIN CENTER'
+                : role == 'bd'
+                ? 'BD CENTER'
+                : role == 'agency'
+                ? 'AGENCY CENTER'
+                : role == 'host'
+                ? 'HOST CENTER'
+                : 'TARGET SALARY';
 
             Future<void> reload() async {
               setPageState(() => loading = true);
@@ -4594,21 +4608,6 @@ class _ProfilePageState extends State<ProfilePage> {
                     fontSize: 17,
                   ),
                 ),
-                actions: [
-                  if (role == 'super_admin' || role == 'bd' || role == 'agency')
-                    IconButton(
-                      tooltip: 'Invite member',
-                      onPressed: () {
-                        final type = {
-                          'super_admin': 'bd',
-                          'bd': 'agent',
-                          'agency': 'host',
-                        }[role];
-                        if (type != null) _sendAgencyInvite(type);
-                      },
-                      icon: const Icon(Icons.person_add_alt_1),
-                    ),
-                ],
               ),
               body: SafeArea(
                 child: loading
@@ -4639,6 +4638,69 @@ class _ProfilePageState extends State<ProfilePage> {
                     : ListView(
                         padding: const EdgeInsets.all(16),
                         children: [
+                          if (parent.isNotEmpty) ...[
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white24),
+                              ),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 27,
+                                    backgroundColor: const Color(0xFF7138C8),
+                                    backgroundImage: parentPhoto.isNotEmpty
+                                        ? NetworkImage(parentPhoto)
+                                        : null,
+                                    child: parentPhoto.isEmpty
+                                        ? const Icon(
+                                            Icons.person,
+                                            color: Colors.white,
+                                            size: 28,
+                                          )
+                                        : null,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'PARENT / INVITED BY',
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          parentName,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        if (parentCode.isNotEmpty)
+                                          Text(
+                                            'Easy ID: $parentCode',
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -4695,48 +4757,50 @@ class _ProfilePageState extends State<ProfilePage> {
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  number(income),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 29,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      number(income),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    const Text(
-                                      'TARGET',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 7),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: LinearProgressIndicator(
-                                    value: progress / 100,
-                                    minHeight: 10,
-                                    backgroundColor: Colors.white24,
-                                    valueColor: const AlwaysStoppedAnimation(
-                                      Color(0xFFFFB347),
+                                if (!restrictedBdView) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    number(income),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 29,
+                                      fontWeight: FontWeight.w900,
                                     ),
                                   ),
-                                ),
-                                const SizedBox(height: 12),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        number(income),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const Text(
+                                        'TARGET',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 7),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: LinearProgressIndicator(
+                                      value: progress / 100,
+                                      minHeight: 10,
+                                      backgroundColor: Colors.white24,
+                                      valueColor: const AlwaysStoppedAnimation(
+                                        Color(0xFFFFB347),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
                                 Row(
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
@@ -4755,37 +4819,77 @@ class _ProfilePageState extends State<ProfilePage> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 5),
-                                Text(
-                                  next == null
-                                      ? 'All targets completed'
-                                      : 'Next target: ${number(next)}',
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 12,
+                                if (!restrictedBdView) ...[
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    next == null
+                                        ? 'All targets completed'
+                                        : 'Next target: ${number(next)}',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
                                   ),
-                                ),
+                                ],
                               ],
                             ),
                           ),
                           const SizedBox(height: 20),
-                          TextField(
-                            onChanged: (v) => setPageState(() => search = v),
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: 'Search name or easy ID',
-                              hintStyle: const TextStyle(color: Colors.white54),
-                              prefixIcon: const Icon(
-                                Icons.search,
-                                color: Colors.white70,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  onChanged: (v) =>
+                                      setPageState(() => search = v),
+                                  style: const TextStyle(color: Colors.white),
+                                  decoration: InputDecoration(
+                                    hintText: 'Search name or easy ID',
+                                    hintStyle: const TextStyle(
+                                      color: Colors.white54,
+                                    ),
+                                    prefixIcon: const Icon(
+                                      Icons.search,
+                                      color: Colors.white70,
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.white.withValues(
+                                      alpha: 0.09,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                  ),
+                                ),
                               ),
-                              filled: true,
-                              fillColor: Colors.white.withValues(alpha: 0.09),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide.none,
-                              ),
-                            ),
+                              if (stack.isEmpty &&
+                                  (role == 'super_admin' ||
+                                      role == 'bd' ||
+                                      role == 'agency'))
+                                const SizedBox(width: 8),
+                              if (stack.isEmpty &&
+                                  (role == 'super_admin' ||
+                                      role == 'bd' ||
+                                      role == 'agency'))
+                                SizedBox(
+                                  height: 52,
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
+                                      final type = {
+                                        'super_admin': 'bd',
+                                        'bd': 'agent',
+                                        'agency': 'host',
+                                      }[role];
+                                      if (type != null) _sendAgencyInvite(type);
+                                    },
+                                    icon: const Icon(
+                                      Icons.person_add_alt_1,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Invite'),
+                                  ),
+                                ),
+                            ],
                           ),
                           const SizedBox(height: 15),
                           Row(
@@ -6276,18 +6380,17 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: actionButton(
-                        icon: Icons.home_work,
-                        label: 'Host Center',
-                        color: const Color(0xFF268CF4),
-                        onTap: () => _openHierarchyCenter('Host Center'),
-                        isNew: agencyInvites.isNotEmpty,
+                    if (agencyRole == 'user' || agencyRole == 'host')
+                      Expanded(
+                        child: actionButton(
+                          icon: Icons.home_work,
+                          label: 'Host Center',
+                          color: const Color(0xFF268CF4),
+                          onTap: () => _openHierarchyCenter('Host Center'),
+                          isNew: agencyInvites.isNotEmpty,
+                        ),
                       ),
-                    ),
-                    if (agencyRole == 'agency' ||
-                        agencyRole == 'bd' ||
-                        agencyRole == 'super_admin')
+                    if (agencyRole == 'agency')
                       Expanded(
                         child: actionButton(
                           icon: Icons.groups,
@@ -6296,13 +6399,31 @@ class _ProfilePageState extends State<ProfilePage> {
                           onTap: () => _openHierarchyCenter('Agency'),
                         ),
                       ),
-                    if (agencyRole == 'bd' || agencyRole == 'super_admin')
+                    if (agencyRole == 'agency' && agencyDirectMemberCount > 0)
+                      Expanded(
+                        child: actionButton(
+                          icon: Icons.home_work,
+                          label: 'Host Center',
+                          color: const Color(0xFF268CF4),
+                          onTap: () => _openHierarchyCenter('Host Center'),
+                        ),
+                      ),
+                    if (agencyRole == 'bd')
                       Expanded(
                         child: actionButton(
                           icon: Icons.business_center,
                           label: 'BD',
                           color: const Color(0xFF7255D9),
                           onTap: () => _openHierarchyCenter('BD'),
+                        ),
+                      ),
+                    if (agencyRole == 'bd' && agencyDirectMemberCount > 0)
+                      Expanded(
+                        child: actionButton(
+                          icon: Icons.groups,
+                          label: 'Agency',
+                          color: const Color(0xFFFF6738),
+                          onTap: () => _openHierarchyCenter('Agency'),
                         ),
                       ),
                     if (agencyRole == 'super_admin')
@@ -6314,43 +6435,20 @@ class _ProfilePageState extends State<ProfilePage> {
                           onTap: () => _openHierarchyCenter('Super Admin'),
                         ),
                       ),
+                    if (agencyRole == 'super_admin' &&
+                        agencyDirectMemberCount > 0)
+                      Expanded(
+                        child: actionButton(
+                          icon: Icons.business_center,
+                          label: 'BD',
+                          color: const Color(0xFF7255D9),
+                          onTap: () => _openHierarchyCenter('BD'),
+                        ),
+                      ),
                   ],
                 ),
               ),
 
-            if (agencyRole != 'user')
-              Container(
-                margin: const EdgeInsets.only(bottom: 14),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF6336B8), Color(0xFF32165F)],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.track_changes,
-                    color: Colors.white,
-                    size: 28,
-                  ),
-                  title: const Text(
-                    'Target Salary',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  subtitle: const Text(
-                    'Monthly targets, income and 10% benefits',
-                    style: TextStyle(color: Colors.white70, fontSize: 11),
-                  ),
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                    color: Colors.white,
-                  ),
-                  onTap: _openTargetSalary,
-                ),
-              ),
             // Main profile buttons
             Container(
               padding: const EdgeInsets.fromLTRB(8, 7, 8, 9),
