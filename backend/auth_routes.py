@@ -4136,9 +4136,15 @@ def agency_target_salary(
             reverse=True,
         )
 
+        joined_at_row = db.execute(
+            "SELECT created_at FROM users WHERE google_uid = ?",
+            (target_uid,),
+        ).fetchone()
+
         return {
             "success": True,
             "month": month,
+            "joined_at": joined_at_row["created_at"] if joined_at_row else None,
             "role": target_role,
             "view_uid": target_uid,
             "parent": ({

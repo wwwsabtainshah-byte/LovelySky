@@ -4532,6 +4532,13 @@ class _ProfilePageState extends State<ProfilePage> {
             final parentPhoto = '${parent['profile_photo'] ?? ''}';
             final parentName = '${parent['display_name'] ?? 'Parent'}';
             final parentCode = '${parent['user_code'] ?? ''}';
+            final joinedAt = '${report['joined_at'] ?? ''}';
+            final joinedDate = DateTime.tryParse(joinedAt)?.toLocal();
+            final joinedDateText = joinedDate == null
+                ? 'Unavailable'
+                : '${joinedDate.day.toString().padLeft(2, '0')}-'
+                      '${joinedDate.month.toString().padLeft(2, '0')}-'
+                      '${joinedDate.year}';
 
             final members = (report['members'] as List? ?? [])
                 .whereType<Map>()
@@ -4545,6 +4552,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 .toList();
 
             final role = '${report['role'] ?? ''}';
+            final isSuperAdminHome = role == 'super_admin' && stack.isEmpty;
             final restrictedBdView =
                 agencyRole == 'super_admin' && stack.isNotEmpty && role == 'bd';
             final income = own['income'] ?? 0;
@@ -4585,9 +4593,13 @@ class _ProfilePageState extends State<ProfilePage> {
             }
 
             return Scaffold(
-              backgroundColor: const Color(0xFF180D30),
+              backgroundColor: isSuperAdminHome
+                  ? const Color(0xFFDDF4FF)
+                  : const Color(0xFF180D30),
               appBar: AppBar(
-                backgroundColor: const Color(0xFF211044),
+                backgroundColor: isSuperAdminHome
+                    ? const Color(0xFFBCEBFF)
+                    : const Color(0xFF211044),
                 foregroundColor: Colors.white,
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back),
@@ -4634,6 +4646,537 @@ class _ProfilePageState extends State<ProfilePage> {
                             ],
                           ),
                         ),
+                      )
+                    : isSuperAdminHome
+                    ? ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [
+                                  Color(0xFFB9ECFF),
+                                  Color(0xFFE2F7FF),
+                                  Color(0xFFD8D5FF),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(color: Colors.white, width: 2),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x33245A86),
+                                  blurRadius: 14,
+                                  offset: Offset(0, 6),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Column(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 34,
+                                      backgroundColor: Colors.white,
+                                      backgroundImage:
+                                          parentPhoto.startsWith('http')
+                                          ? NetworkImage(parentPhoto)
+                                          : null,
+                                      child: parentPhoto.startsWith('http')
+                                          ? null
+                                          : const Icon(
+                                              Icons.person,
+                                              size: 35,
+                                              color: Color(0xFF397BA7),
+                                            ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'ID: ${parentCode.isEmpty ? '1' : parentCode}',
+                                      style: const TextStyle(
+                                        color: Color(0xFF174C70),
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 13,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          gradient: const LinearGradient(
+                                            colors: [
+                                              Color(0xFFFFD66B),
+                                              Color(0xFFFF9E38),
+                                              Color(0xFFFFD66B),
+                                            ],
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.white,
+                                            width: 1.5,
+                                          ),
+                                          boxShadow: const [
+                                            BoxShadow(
+                                              color: Color(0x665C3A12),
+                                              blurRadius: 5,
+                                              offset: Offset(0, 3),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Text(
+                                          '👑 OWNER',
+                                          style: TextStyle(
+                                            color: Color(0xFF713B13),
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 1.2,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 7),
+                                      Text(
+                                        parentName,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Color(0xFF164D70),
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 17,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        'INVITED BY',
+                                        style: TextStyle(
+                                          color: Color(0xFF477D9B),
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      const Icon(
+                                        Icons.calendar_month,
+                                        color: Color(0xFF6C55B5),
+                                        size: 23,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        'DATE OF JOIN',
+                                        textAlign: TextAlign.end,
+                                        style: TextStyle(
+                                          color: Color(0xFF62519A),
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      Text(
+                                        joinedDateText,
+                                        textAlign: TextAlign.end,
+                                        style: const TextStyle(
+                                          color: Color(0xFF293D75),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              IconButton(
+                                onPressed: month == lastKey
+                                    ? null
+                                    : () async {
+                                        month = lastKey;
+                                        await reload();
+                                      },
+                                icon: const Icon(
+                                  Icons.chevron_left,
+                                  color: Color(0xFF245D86),
+                                ),
+                              ),
+                              Text(
+                                month == currentKey
+                                    ? 'THIS MONTH'
+                                    : 'LAST MONTH',
+                                style: const TextStyle(
+                                  color: Color(0xFF245D86),
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: month == currentKey
+                                    ? null
+                                    : () async {
+                                        month = currentKey;
+                                        await reload();
+                                      },
+                                icon: const Icon(
+                                  Icons.chevron_right,
+                                  color: Color(0xFF245D86),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [
+                                  Color(0xFF6546C8),
+                                  Color(0xFF3E73D8),
+                                  Color(0xFF258EAE),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(22),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x332A5D9B),
+                                  blurRadius: 12,
+                                  offset: Offset(0, 5),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'CURRENT TARGET',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.1,
+                                  ),
+                                ),
+                                const SizedBox(height: 7),
+                                Text(
+                                  next == null
+                                      ? 'All targets completed'
+                                      : number(next),
+                                  style: const TextStyle(
+                                    color: Color(0xFFFFE18A),
+                                    fontSize: 25,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 17),
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final width = constraints.maxWidth;
+                                    final dotLeft =
+                                        ((width - 18) * progress / 100).clamp(
+                                          0.0,
+                                          width - 18,
+                                        );
+                                    return SizedBox(
+                                      height: 27,
+                                      child: Stack(
+                                        alignment: Alignment.centerLeft,
+                                        children: [
+                                          Container(
+                                            height: 9,
+                                            width: width,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.28,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                            ),
+                                          ),
+                                          Container(
+                                            height: 9,
+                                            width: width * progress / 100,
+                                            decoration: BoxDecoration(
+                                              gradient: const LinearGradient(
+                                                colors: [
+                                                  Color(0xFF68F0C0),
+                                                  Color(0xFFFFE36B),
+                                                ],
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                            ),
+                                          ),
+                                          AnimatedPositioned(
+                                            duration: const Duration(
+                                              milliseconds: 650,
+                                            ),
+                                            curve: Curves.easeOutCubic,
+                                            left: dotLeft,
+                                            top: 0,
+                                            child: Container(
+                                              width: 18,
+                                              height: 27,
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFFA83D),
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                                border: Border.all(
+                                                  color: Colors.white,
+                                                  width: 2,
+                                                ),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                    color: Colors.black26,
+                                                    blurRadius: 5,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'CURRENT SALARY',
+                                            style: TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          Text(
+                                            number(income),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          const Text(
+                                            'TARGET SALARY',
+                                            textAlign: TextAlign.end,
+                                            style: TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          Text(
+                                            next == null
+                                                ? 'Completed'
+                                                : number(next),
+                                            textAlign: TextAlign.end,
+                                            style: const TextStyle(
+                                              color: Color(0xFFFFE18A),
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  'Progress: ${progress.toStringAsFixed(1)}%',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          TextField(
+                            onChanged: (v) => setPageState(() => search = v),
+                            style: const TextStyle(color: Color(0xFF214F70)),
+                            decoration: InputDecoration(
+                              hintText: 'Search BD name or ID',
+                              prefixIcon: const Icon(
+                                Icons.search,
+                                color: Color(0xFF477FA2),
+                              ),
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 13,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(15),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 17),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'BD MEMBERS',
+                                style: TextStyle(
+                                  color: Color(0xFF245D86),
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Text(
+                                '${members.length} Members',
+                                style: const TextStyle(
+                                  color: Color(0xFF527D99),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          if (members.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.all(25),
+                              child: Text(
+                                'No BD members found.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Color(0xFF527D99)),
+                              ),
+                            ),
+                          ...members.map((member) {
+                            final photo = '${member['profile_photo'] ?? ''}';
+                            final name = '${member['display_name'] ?? 'BD'}';
+                            final code = '${member['user_code'] ?? ''}';
+                            return Card(
+                              elevation: 4,
+                              color: Colors.white,
+                              margin: const EdgeInsets.only(bottom: 11),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(17),
+                              ),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(17),
+                                onTap: () => openMember(member),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 13,
+                                    vertical: 14,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Column(
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 27,
+                                            backgroundColor: const Color(
+                                              0xFFD9F1FF,
+                                            ),
+                                            backgroundImage:
+                                                photo.startsWith('http')
+                                                ? NetworkImage(photo)
+                                                : null,
+                                            child: photo.startsWith('http')
+                                                ? null
+                                                : const Icon(
+                                                    Icons.person,
+                                                    color: Color(0xFF397BA7),
+                                                    size: 28,
+                                                  ),
+                                          ),
+                                          const SizedBox(height: 5),
+                                          Text(
+                                            'ID: $code',
+                                            style: const TextStyle(
+                                              color: Color(0xFF47718D),
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          name,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Color(0xFF254E70),
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          const Text(
+                                            'BENEFIT / SALARY',
+                                            style: TextStyle(
+                                              color: Color(0xFF7B65B7),
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                          Text(
+                                            number(member['benefit']),
+                                            style: const TextStyle(
+                                              color: Color(0xFF168B78),
+                                              fontSize: 17,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(width: 3),
+                                      const Icon(
+                                        Icons.chevron_right,
+                                        color: Color(0xFF8B83B7),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
                       )
                     : ListView(
                         padding: const EdgeInsets.all(16),
@@ -6363,91 +6906,6 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
 
             const SizedBox(height: 16),
-
-            // Role-based hierarchy buttons
-            if (agencyStatusLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 10),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else
-              Container(
-                margin: const EdgeInsets.only(bottom: 14),
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: [
-                    if (agencyRole == 'user' || agencyRole == 'host')
-                      Expanded(
-                        child: actionButton(
-                          icon: Icons.home_work,
-                          label: 'Host Center',
-                          color: const Color(0xFF268CF4),
-                          onTap: () => _openHierarchyCenter('Host Center'),
-                          isNew: agencyInvites.isNotEmpty,
-                        ),
-                      ),
-                    if (agencyRole == 'agency')
-                      Expanded(
-                        child: actionButton(
-                          icon: Icons.groups,
-                          label: 'Agency',
-                          color: const Color(0xFFFF6738),
-                          onTap: () => _openHierarchyCenter('Agency'),
-                        ),
-                      ),
-                    if (agencyRole == 'agency' && agencyDirectMemberCount > 0)
-                      Expanded(
-                        child: actionButton(
-                          icon: Icons.home_work,
-                          label: 'Host Center',
-                          color: const Color(0xFF268CF4),
-                          onTap: () => _openHierarchyCenter('Host Center'),
-                        ),
-                      ),
-                    if (agencyRole == 'bd')
-                      Expanded(
-                        child: actionButton(
-                          icon: Icons.business_center,
-                          label: 'BD',
-                          color: const Color(0xFF7255D9),
-                          onTap: () => _openHierarchyCenter('BD'),
-                        ),
-                      ),
-                    if (agencyRole == 'bd' && agencyDirectMemberCount > 0)
-                      Expanded(
-                        child: actionButton(
-                          icon: Icons.groups,
-                          label: 'Agency',
-                          color: const Color(0xFFFF6738),
-                          onTap: () => _openHierarchyCenter('Agency'),
-                        ),
-                      ),
-                    if (agencyRole == 'super_admin')
-                      Expanded(
-                        child: actionButton(
-                          icon: Icons.admin_panel_settings,
-                          label: 'Super Admin',
-                          color: const Color(0xFF00B88A),
-                          onTap: () => _openHierarchyCenter('Super Admin'),
-                        ),
-                      ),
-                    if (agencyRole == 'super_admin' &&
-                        agencyDirectMemberCount > 0)
-                      Expanded(
-                        child: actionButton(
-                          icon: Icons.business_center,
-                          label: 'BD',
-                          color: const Color(0xFF7255D9),
-                          onTap: () => _openHierarchyCenter('BD'),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
 
             // Main profile buttons
             Container(
