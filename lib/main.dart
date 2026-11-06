@@ -4181,17 +4181,36 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _manageSuperAdmin() async {
     final controller = TextEditingController();
+
     final code = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Super Admin Management'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'User ID',
-            hintText: 'Enter user code',
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'User ID',
+                hintText: 'Enter user code',
+              ),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  final id = controller.text.trim();
+                  if (id.isEmpty) return;
+                  Navigator.pop(dialogContext, 'on:$id');
+                },
+                icon: const Icon(Icons.verified_user),
+                label: const Text('Confirm Activation'),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -4203,25 +4222,26 @@ class _ProfilePageState extends State<ProfilePage> {
             child: const Text('Invite BD'),
           ),
           TextButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, 'off:${controller.text.trim()}'),
+            onPressed: () {
+              final id = controller.text.trim();
+              if (id.isEmpty) return;
+              Navigator.pop(dialogContext, 'off:$id');
+            },
             child: const Text('Deactivate'),
-          ),
-          ElevatedButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, 'on:${controller.text.trim()}'),
-            child: const Text('Activate'),
           ),
         ],
       ),
     );
+
     controller.dispose();
 
     if (code == 'invite_bd') {
       await _sendAgencyInvite('bd');
       return;
     }
+
     if (code == null || !code.contains(':')) return;
+
     final parts = code.split(':');
     if (parts.length != 2 || parts[1].isEmpty) return;
 
@@ -4231,7 +4251,9 @@ class _ProfilePageState extends State<ProfilePage> {
         '/agency/super-admins',
         body: {'user_code': parts[1], 'active': parts[0] == 'on'},
       );
+
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -6180,6 +6202,18 @@ class _ProfilePageState extends State<ProfilePage> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      _manageSuperAdmin();
+                    },
+                    icon: const Icon(Icons.admin_panel_settings),
+                    label: const Text('Super Admin Activation'),
                   ),
                 ),
                 const SizedBox(height: 18),
