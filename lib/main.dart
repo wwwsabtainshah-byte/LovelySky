@@ -4452,6 +4452,447 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<void> _openTargetSalary() async {
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month);
+    final lastMonth = DateTime(now.year, now.month - 1);
+
+    String monthKey(DateTime date) =>
+        '${date.year}-${date.month.toString().padLeft(2, '0')}';
+
+    final currentMonthKey = monthKey(currentMonth);
+    final lastMonthKey = monthKey(lastMonth);
+    String month = currentMonthKey;
+
+    bool loading = true;
+    String error = '';
+    Map<String, dynamic>? report;
+
+    String number(dynamic value) {
+      final n = int.tryParse(value?.toString() ?? '') ?? 0;
+      final raw = n.toString();
+      final result = StringBuffer();
+      for (int i = 0; i < raw.length; i++) {
+        if (i > 0 && (raw.length - i) % 3 == 0) {
+          result.write(',');
+        }
+        result.write(raw[i]);
+      }
+      return result.toString();
+    }
+
+    Future<void> load(StateSetter update) async {
+      update(() {
+        loading = true;
+        error = '';
+      });
+      try {
+        final data = await _giftRequest('GET', '/agency/targets?month=$month');
+        update(() {
+          report = data;
+          loading = false;
+        });
+      } catch (e) {
+        update(() {
+          error = e.toString();
+          loading = false;
+        });
+      }
+    }
+
+    await load((fn) {
+      fn();
+    });
+
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final own = report?['own'] is Map
+                ? Map<String, dynamic>.from(report!['own'] as Map)
+                : <String, dynamic>{};
+
+            final members = report?['members'] is List
+                ? (report!['members'] as List)
+                      .whereType<Map>()
+                      .map((e) => Map<String, dynamic>.from(e))
+                      .toList()
+                : <Map<String, dynamic>>[];
+
+            final income = own['income'] ?? 0;
+            final benefit = own['benefit'] ?? 0;
+            final completed = own['completed_target'] ?? 0;
+            final nextTarget = own['next_target'];
+            final progress = ((own['progress'] as num?) ?? 0).toDouble().clamp(
+              0.0,
+              100.0,
+            );
+
+            return Dialog(
+              backgroundColor: const Color(0xFF211044),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: SizedBox(
+                width: 500,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'TARGET SALARY',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 19,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            icon: const Icon(Icons.close, color: Colors.white),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          IconButton(
+                            onPressed: loading || month == lastMonthKey
+                                ? null
+                                : () async {
+                                    month = lastMonthKey;
+                                    await load(setDialogState);
+                                  },
+                            icon: const Icon(
+                              Icons.chevron_left,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Text(
+                            month == currentMonthKey
+                                ? 'This Month'
+                                : 'Last Month',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: loading || month == currentMonthKey
+                                ? null
+                                : () async {
+                                    month = currentMonthKey;
+                                    await load(setDialogState);
+                                  },
+                            icon: const Icon(
+                              Icons.chevron_right,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      if (loading)
+                        const Padding(
+                          padding: EdgeInsets.all(30),
+                          child: CircularProgressIndicator(color: Colors.white),
+                        )
+                      else if (error.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.all(18),
+                          child: Column(
+                            children: [
+                              const Icon(
+                                Icons.error_outline,
+                                color: Colors.redAccent,
+                                size: 35,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                error,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              TextButton(
+                                onPressed: () => load(setDialogState),
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        Flexible(
+                          child: ListView(
+                            shrinkWrap: true,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(15),
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFF7138C8),
+                                      Color(0xFF392078),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Column(
+                                  children: [
+                                    const Text(
+                                      'MY MONTHLY INCOME',
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      number(income),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 27,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Text(
+                                          'Completed Target',
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                        Text(
+                                          number(completed),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 7),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Text(
+                                          '10% Target Benefit',
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                          ),
+                                        ),
+                                        Text(
+                                          number(benefit),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    LinearProgressIndicator(
+                                      value: progress / 100,
+                                      minHeight: 8,
+                                      backgroundColor: Colors.white24,
+                                      valueColor:
+                                          const AlwaysStoppedAnimation<Color>(
+                                            Color(0xFFFFB347),
+                                          ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      nextTarget == null
+                                          ? 'Highest target completed'
+                                          : 'Progress: ${progress.toStringAsFixed(1)}%  |  Next: ${number(nextTarget)}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    'ALL TARGETS / MEMBERS',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${members.length} Members',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              if (members.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.all(20),
+                                  child: Text(
+                                    'No hierarchy members found.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: Colors.white70),
+                                  ),
+                                )
+                              else
+                                ...members.map((member) {
+                                  final name = member['display_name']
+                                      ?.toString();
+                                  final code =
+                                      member['user_code']?.toString() ?? '';
+                                  final memberName =
+                                      name == null || name.isEmpty
+                                      ? 'Member'
+                                      : name;
+                                  final memberProgress =
+                                      (((member['progress'] as num?) ?? 0)
+                                                  .toDouble() /
+                                              100)
+                                          .clamp(0.0, 1.0);
+
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    padding: const EdgeInsets.all(11),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.09,
+                                      ),
+                                      borderRadius: BorderRadius.circular(13),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Row(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 20,
+                                              backgroundColor: const Color(
+                                                0xFF7546C8,
+                                              ),
+                                              backgroundImage:
+                                                  (member['profile_photo']
+                                                          ?.toString()
+                                                          .startsWith('http') ??
+                                                      false)
+                                                  ? NetworkImage(
+                                                      member['profile_photo']
+                                                          .toString(),
+                                                    )
+                                                  : null,
+                                              child:
+                                                  member['profile_photo'] ==
+                                                      null
+                                                  ? const Icon(
+                                                      Icons.person,
+                                                      color: Colors.white,
+                                                    )
+                                                  : null,
+                                            ),
+                                            const SizedBox(width: 9),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    memberName,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    'ID: $code',
+                                                    style: const TextStyle(
+                                                      color: Colors.white70,
+                                                      fontSize: 11,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.end,
+                                              children: [
+                                                Text(
+                                                  number(member['income']),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  'Benefit: ${number(member['benefit'])}',
+                                                  style: const TextStyle(
+                                                    color: Color(0xFFFFC36B),
+                                                    fontSize: 11,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 9),
+                                        LinearProgressIndicator(
+                                          value: memberProgress,
+                                          minHeight: 5,
+                                          backgroundColor: Colors.white24,
+                                          valueColor:
+                                              const AlwaysStoppedAnimation<
+                                                Color
+                                              >(Color(0xFFFFB347)),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: Text(
+                                            'Target: ${number(member['completed_target'])}',
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 10,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _openWallet() async {
     try {
       final data = await _giftRequest('GET', '/games/wallet');
@@ -5812,6 +6253,39 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
 
+            if (agencyRole != 'user')
+              Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6336B8), Color(0xFF32165F)],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.track_changes,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                  title: const Text(
+                    'Target Salary',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Monthly targets, income and 10% benefits',
+                    style: TextStyle(color: Colors.white70, fontSize: 11),
+                  ),
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: Colors.white,
+                  ),
+                  onTap: _openTargetSalary,
+                ),
+              ),
             // Main profile buttons
             Container(
               padding: const EdgeInsets.fromLTRB(8, 7, 8, 9),

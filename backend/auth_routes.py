@@ -3846,3 +3846,229 @@ def agency_remove_host(
         raise
     finally:
         db.close()
+
+
+# ============================================================
+# TARGET SALARY SYSTEM - MONTHLY HIERARCHY
+# Host -> Agency -> BD -> Super Admin
+# ============================================================
+
+TARGET_LADDERS = {
+    "host": [(100_000, 10_000)],
+    "agency": [(50_000_000, 5_000_000)],
+    "bd": [
+        (200_000_000, 20_000_000),
+        (400_000_000, 40_000_000),
+        (800_000_000, 80_000_000),
+    ],
+    "super_admin": [(500_000_000, 100_000_000)],
+}
+
+
+def _target_salary_result(role, amount):
+    ladder = TARGET_LADDERS.get(role, [])
+    completed = [
+        {"target": target, "benefit": benefit}
+        for target, benefit in ladder
+        if amount >= target
+    ]
+
+    if not completed:
+        next_target = ladder[0][0] if ladder else 0
+        return {
+            "completed_target": 0,
+            "benefit": 0,
+            "next_target": next_target,
+            "progress": round(amount * 100 / next_target, 2)
+                if next_target else 0,
+        }
+
+    # Highest completed target only. No cumulative benefits.
+    selected = completed[-1]
+    next_targets = [
+        target for target, _ in ladder
+        if target > selected["target"]
+    ]
+
+    return {
+        "completed_target": selected["target"],
+        "benefit": selected["benefit"],
+        "next_target": next_targets[0] if next_targets else None,
+        "progress": 100 if not next_targets else round(
+            amount * 100 / next_targets[0], 2
+        ),
+    }
+
+
+@router.get("/agency/targets")
+def agency_target_salary(
+    month: str | None = None,
+    authorization: str | None = Header(default=None),
+):
+    user = _agency_user(authorization)
+
+    from datetime import datetime
+
+    if month is None:
+        month = datetime.now().strftime("%Y-%m")
+
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        raise HTTPException(400, "Month must use YYYY-MM format")
+
+    db = get_connection()
+
+    try:
+        role = _agency_role(
+            db, user["google_uid"], user["google_email"]
+        )
+
+        if role not in ("host", "agency", "bd", "super_admin"):
+            raise HTTPException(403, "Hierarchy access required")
+
+        diamond_rows = db.execute(
+            """
+            SELECT u.google_uid,
+                   COALESCE(SUM(g.diamonds_credited), 0) AS diamonds
+            FROM users u
+            LEFT JOIN gift_transactions g
+                ON g.receiver_user_id = u.id
+                AND substr(g.created_at, 1, 7) = ?
+            GROUP BY u.google_uid
+            """,
+            (month,),
+        ).fetchall()
+
+        diamond_income = {
+            str(row["google_uid"]): int(row["diamonds"] or 0)
+            for row in diamond_rows
+        }
+
+        membership_rows = db.execute(
+            """
+            SELECT user_uid, role, parent_uid
+            FROM agency_memberships
+            """
+        ).fetchall()
+
+        children = {}
+        roles = {}
+
+        for row in membership_rows:
+            uid = str(row["user_uid"])
+            parent = str(row["parent_uid"])
+            member_role = str(row["role"])
+
+            roles[uid] = member_role
+            children.setdefault(parent, []).append(uid)
+
+        user_rows = db.execute(
+            """
+            SELECT google_uid, user_code, display_name, profile_photo
+            FROM users
+            """
+        ).fetchall()
+
+        user_info = {
+            str(row["google_uid"]): dict(row)
+            for row in user_rows
+        }
+
+        cache = {}
+
+        def calculate(uid, current_role=None):
+            if uid in cache:
+                return cache[uid]
+
+            current_role = current_role or roles.get(uid)
+
+            if current_role is None:
+                current_role = _agency_role(
+                    db,
+                    uid,
+                    user_info.get(uid, {}).get("google_email", ""),
+                )
+
+            if current_role == "host":
+                amount = diamond_income.get(uid, 0)
+
+            elif current_role == "agency":
+                amount = sum(
+                    diamond_income.get(child, 0)
+                    for child in children.get(uid, [])
+                    if roles.get(child) == "host"
+                ) * 10 // 100
+
+            elif current_role == "bd":
+                amount = sum(
+                    calculate(child, "agency")["benefit"]
+                    for child in children.get(uid, [])
+                    if roles.get(child) == "agency"
+                )
+
+            elif current_role == "super_admin":
+                amount = sum(
+                    calculate(child, "bd")["benefit"]
+                    for child in children.get(uid, [])
+                    if roles.get(child) == "bd"
+                )
+
+            else:
+                amount = 0
+
+            result = _target_salary_result(current_role, int(amount))
+            result["role"] = current_role
+            result["income"] = int(amount)
+
+            if current_role == "host":
+                result["diamonds"] = diamond_income.get(uid, 0)
+
+            cache[uid] = result
+            return result
+
+        own = calculate(user["google_uid"], role)
+
+        child_role = {
+            "super_admin": "bd",
+            "bd": "agency",
+            "agency": "host",
+        }.get(role)
+
+        members = []
+
+        if child_role:
+            for child_uid in children.get(user["google_uid"], []):
+                if roles.get(child_uid) != child_role:
+                    continue
+
+                info = user_info.get(child_uid, {})
+                summary = calculate(child_uid, child_role)
+
+                members.append({
+                    "uid": child_uid,
+                    "user_code": info.get("user_code", ""),
+                    "display_name": info.get("display_name", ""),
+                    "profile_photo": info.get("profile_photo", ""),
+                    **summary,
+                })
+
+        members.sort(
+            key=lambda item: item.get("income", 0),
+            reverse=True,
+        )
+
+        return {
+            "success": True,
+            "month": month,
+            "role": role,
+            "own": own,
+            "members": members,
+            "member_count": len(members),
+            "all_targets_benefit": sum(
+                item.get("benefit", 0) for item in members
+            ),
+        }
+
+    finally:
+        db.close()
