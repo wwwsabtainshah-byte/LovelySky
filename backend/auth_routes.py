@@ -3873,29 +3873,20 @@ def _target_salary_result(role, amount):
         if amount >= target
     ]
 
-    if not completed:
-        next_target = ladder[0][0] if ladder else 0
-        return {
-            "completed_target": 0,
-            "benefit": 0,
-            "next_target": next_target,
-            "progress": round(amount * 100 / next_target, 2)
-                if next_target else 0,
-        }
-
-    # Highest completed target only. No cumulative benefits.
-    selected = completed[-1]
+    completed_target = completed[-1]["target"] if completed else 0
+    total_benefit = completed[-1]["benefit"] if completed else 0
     next_targets = [
-        target for target, _ in ladder
-        if target > selected["target"]
+        target for target, _ in ladder if target > amount
     ]
+    next_target = next_targets[0] if next_targets else None
 
     return {
-        "completed_target": selected["target"],
-        "benefit": selected["benefit"],
-        "next_target": next_targets[0] if next_targets else None,
-        "progress": 100 if not next_targets else round(
-            amount * 100 / next_targets[0], 2
+        "completed_target": completed_target,
+        "completed_targets": completed,
+        "benefit": total_benefit,
+        "next_target": next_target,
+        "progress": 100 if next_target is None else min(
+            100, round(amount * 100 / next_target, 2)
         ),
     }
 
@@ -3903,6 +3894,7 @@ def _target_salary_result(role, amount):
 @router.get("/agency/targets")
 def agency_target_salary(
     month: str | None = None,
+    parent_uid: str | None = None,
     authorization: str | None = Header(default=None),
 ):
     user = _agency_user(authorization)
@@ -3926,6 +3918,39 @@ def agency_target_salary(
 
         if role not in ("host", "agency", "bd", "super_admin"):
             raise HTTPException(403, "Hierarchy access required")
+
+        target_uid = str(user["google_uid"])
+        target_role = role
+
+        if parent_uid:
+            # Every role can open only its own direct child.
+            expected_child = {
+                "super_admin": "bd",
+                "bd": "agency",
+                "agency": "host",
+            }.get(role)
+
+            if expected_child is None:
+                raise HTTPException(403, "Further hierarchy access not allowed")
+
+            target_uid = str(parent_uid)
+            child_row = db.execute(
+                """
+                SELECT role, parent_uid
+                FROM agency_memberships
+                WHERE user_uid = ?
+                """,
+                (target_uid,),
+            ).fetchone()
+
+            if (
+                not child_row
+                or str(child_row["role"]) != expected_child
+                or str(child_row["parent_uid"]) != str(user["google_uid"])
+            ):
+                raise HTTPException(403, "Not your direct member")
+
+            target_role = expected_child
 
         diamond_rows = db.execute(
             """
@@ -3994,11 +4019,14 @@ def agency_target_salary(
                 amount = diamond_income.get(uid, 0)
 
             elif current_role == "agency":
-                amount = sum(
+                # Agency owner is also a host in their own agency.
+                agency_host_diamonds = diamond_income.get(uid, 0)
+                agency_host_diamonds += sum(
                     diamond_income.get(child, 0)
                     for child in children.get(uid, [])
                     if roles.get(child) == "host"
-                ) * 10 // 100
+                )
+                amount = agency_host_diamonds * 10 // 100
 
             elif current_role == "bd":
                 amount = sum(
@@ -4027,41 +4055,53 @@ def agency_target_salary(
             cache[uid] = result
             return result
 
-        own = calculate(user["google_uid"], role)
+        own = calculate(target_uid, target_role)
 
         child_role = {
             "super_admin": "bd",
             "bd": "agency",
             "agency": "host",
-        }.get(role)
+        }.get(target_role)
 
         members = []
 
         if child_role:
-            for child_uid in children.get(user["google_uid"], []):
+            for child_uid in children.get(target_uid, []):
                 if roles.get(child_uid) != child_role:
                     continue
 
                 info = user_info.get(child_uid, {})
                 summary = calculate(child_uid, child_role)
 
-                members.append({
-                    "uid": child_uid,
-                    "user_code": info.get("user_code", ""),
-                    "display_name": info.get("display_name", ""),
-                    "profile_photo": info.get("profile_photo", ""),
-                    **summary,
-                })
+                if target_role == "super_admin":
+                    # Super Admin sees only BD identity and salary/benefit.
+                    members.append({
+                        "uid": child_uid,
+                        "user_code": info.get("user_code", ""),
+                        "display_name": info.get("display_name", ""),
+                        "profile_photo": info.get("profile_photo", ""),
+                        "role": "bd",
+                        "benefit": int(summary.get("benefit", 0)),
+                    })
+                else:
+                    members.append({
+                        "uid": child_uid,
+                        "user_code": info.get("user_code", ""),
+                        "display_name": info.get("display_name", ""),
+                        "profile_photo": info.get("profile_photo", ""),
+                        **summary,
+                    })
 
         members.sort(
-            key=lambda item: item.get("income", 0),
+            key=lambda item: item.get("benefit", 0),
             reverse=True,
         )
 
         return {
             "success": True,
             "month": month,
-            "role": role,
+            "role": target_role,
+            "view_uid": target_uid,
             "own": own,
             "members": members,
             "member_count": len(members),

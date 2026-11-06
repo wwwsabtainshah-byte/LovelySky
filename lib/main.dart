@@ -2065,9 +2065,28 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
       'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',
     };
-    final response = method == 'POST'
-        ? await http.post(uri, headers: headers, body: jsonEncode(body ?? {}))
-        : await http.get(uri, headers: headers);
+    late http.Response response;
+    switch (method.toUpperCase()) {
+      case 'POST':
+        response = await http.post(
+          uri,
+          headers: headers,
+          body: jsonEncode(body ?? {}),
+        );
+        break;
+      case 'DELETE':
+        response = await http.delete(uri, headers: headers);
+        break;
+      case 'PUT':
+        response = await http.put(
+          uri,
+          headers: headers,
+          body: jsonEncode(body ?? {}),
+        );
+        break;
+      default:
+        response = await http.get(uri, headers: headers);
+    }
     final decoded = jsonDecode(response.body);
     if (decoded is! Map<String, dynamic>) throw Exception('Invalid response.');
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -4457,439 +4476,485 @@ class _ProfilePageState extends State<ProfilePage> {
     final currentMonth = DateTime(now.year, now.month);
     final lastMonth = DateTime(now.year, now.month - 1);
 
-    String monthKey(DateTime date) =>
-        '${date.year}-${date.month.toString().padLeft(2, '0')}';
+    String monthKey(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}';
 
-    final currentMonthKey = monthKey(currentMonth);
-    final lastMonthKey = monthKey(lastMonth);
-    String month = currentMonthKey;
-
-    bool loading = true;
+    final currentKey = monthKey(currentMonth);
+    final lastKey = monthKey(lastMonth);
+    String month = currentKey;
     String error = '';
-    Map<String, dynamic>? report;
+    bool loading = true;
+    Map<String, dynamic> report = {};
+    final stack = <Map<String, String>>[];
+    String search = '';
 
     String number(dynamic value) {
-      final n = int.tryParse(value?.toString() ?? '') ?? 0;
+      final n = int.tryParse('$value') ?? 0;
       final raw = n.toString();
-      final result = StringBuffer();
-      for (int i = 0; i < raw.length; i++) {
-        if (i > 0 && (raw.length - i) % 3 == 0) {
-          result.write(',');
-        }
-        result.write(raw[i]);
+      final out = StringBuffer();
+      for (var i = 0; i < raw.length; i++) {
+        if (i > 0 && (raw.length - i) % 3 == 0) out.write(',');
+        out.write(raw[i]);
       }
-      return result.toString();
+      return out.toString();
     }
 
-    Future<void> load(StateSetter update) async {
-      update(() {
-        loading = true;
-        error = '';
-      });
+    String path() {
+      final uid = stack.isEmpty ? '' : stack.last['uid']!;
+      return '/agency/targets?month=$month'
+          '${uid.isEmpty ? '' : '&parent_uid=${Uri.encodeQueryComponent(uid)}'}';
+    }
+
+    Future<void> fetch() async {
+      loading = true;
+      error = '';
       try {
-        final data = await _giftRequest('GET', '/agency/targets?month=$month');
-        update(() {
-          report = data;
-          loading = false;
-        });
+        final data = await _giftRequest('GET', path());
+        report = data;
       } catch (e) {
-        update(() {
-          error = e.toString();
-          loading = false;
-        });
+        error = e.toString();
       }
+      loading = false;
     }
 
-    await load((fn) {
-      fn();
-    });
-
+    await fetch();
     if (!mounted) return;
 
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final own = report?['own'] is Map
-                ? Map<String, dynamic>.from(report!['own'] as Map)
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (pageContext) => StatefulBuilder(
+          builder: (pageContext, setPageState) {
+            final own = report['own'] is Map
+                ? Map<String, dynamic>.from(report['own'] as Map)
                 : <String, dynamic>{};
 
-            final members = report?['members'] is List
-                ? (report!['members'] as List)
-                      .whereType<Map>()
-                      .map((e) => Map<String, dynamic>.from(e))
-                      .toList()
-                : <Map<String, dynamic>>[];
+            final members = (report['members'] as List? ?? [])
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .where((e) {
+                  final q = search.toLowerCase();
+                  return q.isEmpty ||
+                      '${e['display_name'] ?? ''}'.toLowerCase().contains(q) ||
+                      '${e['user_code'] ?? ''}'.toLowerCase().contains(q);
+                })
+                .toList();
 
+            final role = '${report['role'] ?? ''}';
             final income = own['income'] ?? 0;
             final benefit = own['benefit'] ?? 0;
-            final completed = own['completed_target'] ?? 0;
-            final nextTarget = own['next_target'];
             final progress = ((own['progress'] as num?) ?? 0).toDouble().clamp(
-              0.0,
-              100.0,
+              0,
+              100,
             );
+            final next = own['next_target'];
+            final title = stack.isEmpty
+                ? 'TARGET SALARY'
+                : '${stack.last['name']}';
 
-            return Dialog(
-              backgroundColor: const Color(0xFF211044),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22),
+            Future<void> reload() async {
+              setPageState(() => loading = true);
+              await fetch();
+              if (pageContext.mounted) setPageState(() {});
+            }
+
+            Future<void> openMember(Map<String, dynamic> member) async {
+              final uid = '${member['uid'] ?? ''}';
+              if (uid.isEmpty) return;
+              stack.add({
+                'uid': uid,
+                'name': '${member['display_name'] ?? 'Member'}',
+                'role': '${member['role'] ?? ''}',
+              });
+              search = '';
+              await reload();
+            }
+
+            return Scaffold(
+              backgroundColor: const Color(0xFF180D30),
+              appBar: AppBar(
+                backgroundColor: const Color(0xFF211044),
+                foregroundColor: Colors.white,
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () async {
+                    if (stack.isNotEmpty) {
+                      stack.removeLast();
+                      search = '';
+                      await reload();
+                    } else {
+                      Navigator.pop(pageContext);
+                    }
+                  },
+                ),
+                title: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 17,
+                  ),
+                ),
+                actions: [
+                  if (role == 'super_admin' || role == 'bd' || role == 'agency')
+                    IconButton(
+                      tooltip: 'Invite member',
+                      onPressed: () {
+                        final type = {
+                          'super_admin': 'bd',
+                          'bd': 'agent',
+                          'agency': 'host',
+                        }[role];
+                        if (type != null) _sendAgencyInvite(type);
+                      },
+                      icon: const Icon(Icons.person_add_alt_1),
+                    ),
+                ],
               ),
-              child: SizedBox(
-                width: 500,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'TARGET SALARY',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 19,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => Navigator.pop(dialogContext),
-                            icon: const Icon(Icons.close, color: Colors.white),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          IconButton(
-                            onPressed: loading || month == lastMonthKey
-                                ? null
-                                : () async {
-                                    month = lastMonthKey;
-                                    await load(setDialogState);
-                                  },
-                            icon: const Icon(
-                              Icons.chevron_left,
-                              color: Colors.white,
-                            ),
-                          ),
-                          Text(
-                            month == currentMonthKey
-                                ? 'This Month'
-                                : 'Last Month',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: loading || month == currentMonthKey
-                                ? null
-                                : () async {
-                                    month = currentMonthKey;
-                                    await load(setDialogState);
-                                  },
-                            icon: const Icon(
-                              Icons.chevron_right,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      if (loading)
-                        const Padding(
-                          padding: EdgeInsets.all(30),
-                          child: CircularProgressIndicator(color: Colors.white),
-                        )
-                      else if (error.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.all(18),
+              body: SafeArea(
+                child: loading
+                    ? const Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      )
+                    : error.isNotEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
                           child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(
-                                Icons.error_outline,
-                                color: Colors.redAccent,
-                                size: 35,
-                              ),
-                              const SizedBox(height: 8),
                               Text(
                                 error,
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(color: Colors.white),
                               ),
-                              TextButton(
-                                onPressed: () => load(setDialogState),
+                              const SizedBox(height: 12),
+                              ElevatedButton(
+                                onPressed: reload,
                                 child: const Text('Retry'),
                               ),
                             ],
                           ),
-                        )
-                      else
-                        Flexible(
-                          child: ListView(
-                            shrinkWrap: true,
+                        ),
+                      )
+                    : ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Container(
-                                padding: const EdgeInsets.all(15),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF7138C8),
-                                      Color(0xFF392078),
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(16),
+                              IconButton(
+                                onPressed: month == lastKey
+                                    ? null
+                                    : () async {
+                                        month = lastKey;
+                                        await reload();
+                                      },
+                                icon: const Icon(
+                                  Icons.chevron_left,
+                                  color: Colors.white,
                                 ),
-                                child: Column(
+                              ),
+                              Text(
+                                month == currentKey
+                                    ? 'This Month'
+                                    : 'Last Month',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: month == currentKey
+                                    ? null
+                                    : () async {
+                                        month = currentKey;
+                                        await reload();
+                                      },
+                                icon: const Icon(
+                                  Icons.chevron_right,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF7138C8), Color(0xFF392078)],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${role.toUpperCase()} MONTHLY TARGET',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  number(income),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 29,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
+                                    Text(
+                                      number(income),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                      ),
+                                    ),
                                     const Text(
-                                      'MY MONTHLY INCOME',
+                                      'TARGET',
                                       style: TextStyle(
                                         color: Colors.white70,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    const SizedBox(height: 5),
+                                  ],
+                                ),
+                                const SizedBox(height: 7),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: LinearProgressIndicator(
+                                    value: progress / 100,
+                                    minHeight: 10,
+                                    backgroundColor: Colors.white24,
+                                    valueColor: const AlwaysStoppedAnimation(
+                                      Color(0xFFFFB347),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'SALARY / BENEFIT',
+                                      style: TextStyle(color: Colors.white70),
+                                    ),
                                     Text(
-                                      number(income),
+                                      number(benefit),
                                       style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 27,
+                                        color: Color(0xFFFFD27A),
                                         fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        const Text(
-                                          'Completed Target',
-                                          style: TextStyle(
-                                            color: Colors.white70,
-                                          ),
-                                        ),
-                                        Text(
-                                          number(completed),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 7),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        const Text(
-                                          '10% Target Benefit',
-                                          style: TextStyle(
-                                            color: Colors.white70,
-                                          ),
-                                        ),
-                                        Text(
-                                          number(benefit),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    LinearProgressIndicator(
-                                      value: progress / 100,
-                                      minHeight: 8,
-                                      backgroundColor: Colors.white24,
-                                      valueColor:
-                                          const AlwaysStoppedAnimation<Color>(
-                                            Color(0xFFFFB347),
-                                          ),
-                                    ),
-                                    const SizedBox(height: 5),
-                                    Text(
-                                      nextTarget == null
-                                          ? 'Highest target completed'
-                                          : 'Progress: ${progress.toStringAsFixed(1)}%  |  Next: ${number(nextTarget)}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
+                                        fontSize: 18,
                                       ),
                                     ),
                                   ],
                                 ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  next == null
+                                      ? 'All targets completed'
+                                      : 'Next target: ${number(next)}',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          TextField(
+                            onChanged: (v) => setPageState(() => search = v),
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              hintText: 'Search name or easy ID',
+                              hintStyle: const TextStyle(color: Colors.white54),
+                              prefixIcon: const Icon(
+                                Icons.search,
+                                color: Colors.white70,
                               ),
-                              const SizedBox(height: 16),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text(
-                                    'ALL TARGETS / MEMBERS',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    '${members.length} Members',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                ],
+                              filled: true,
+                              fillColor: Colors.white.withValues(alpha: 0.09),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide.none,
                               ),
-                              const SizedBox(height: 8),
-                              if (members.isEmpty)
-                                const Padding(
-                                  padding: EdgeInsets.all(20),
-                                  child: Text(
-                                    'No hierarchy members found.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(color: Colors.white70),
-                                  ),
-                                )
-                              else
-                                ...members.map((member) {
-                                  final name = member['display_name']
-                                      ?.toString();
-                                  final code =
-                                      member['user_code']?.toString() ?? '';
-                                  final memberName =
-                                      name == null || name.isEmpty
-                                      ? 'Member'
-                                      : name;
-                                  final memberProgress =
-                                      (((member['progress'] as num?) ?? 0)
-                                                  .toDouble() /
-                                              100)
-                                          .clamp(0.0, 1.0);
+                            ),
+                          ),
+                          const SizedBox(height: 15),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                role == 'super_admin'
+                                    ? 'BD MEMBERS'
+                                    : role == 'bd'
+                                    ? 'AGENCIES'
+                                    : role == 'agency'
+                                    ? 'HOSTS'
+                                    : 'MEMBERS',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                '${members.length} Members',
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          if (members.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.all(25),
+                              child: Text(
+                                'No hierarchy members found.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.white70),
+                              ),
+                            ),
+                          ...members.map((member) {
+                            final photo = '${member['profile_photo'] ?? ''}';
+                            final name =
+                                '${member['display_name'] ?? 'Member'}';
+                            final code = '${member['user_code'] ?? ''}';
+                            final memberRole = '${member['role'] ?? ''}';
+                            final memberProgress =
+                                (((member['progress'] as num?) ?? 0)
+                                            .toDouble() /
+                                        100)
+                                    .clamp(0.0, 1.0);
 
-                                  return Container(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    padding: const EdgeInsets.all(11),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.09,
-                                      ),
-                                      borderRadius: BorderRadius.circular(13),
-                                    ),
-                                    child: Column(
-                                      children: [
-                                        Row(
-                                          children: [
-                                            CircleAvatar(
-                                              radius: 20,
-                                              backgroundColor: const Color(
-                                                0xFF7546C8,
-                                              ),
-                                              backgroundImage:
-                                                  (member['profile_photo']
-                                                          ?.toString()
-                                                          .startsWith('http') ??
-                                                      false)
-                                                  ? NetworkImage(
-                                                      member['profile_photo']
-                                                          .toString(),
-                                                    )
-                                                  : null,
-                                              child:
-                                                  member['profile_photo'] ==
-                                                      null
-                                                  ? const Icon(
-                                                      Icons.person,
-                                                      color: Colors.white,
-                                                    )
-                                                  : null,
-                                            ),
-                                            const SizedBox(width: 9),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    memberName,
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    'ID: $code',
-                                                    style: const TextStyle(
-                                                      color: Colors.white70,
-                                                      fontSize: 11,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            Column(
+                            return Card(
+                              color: const Color(0xFF2A1947),
+                              margin: const EdgeInsets.only(bottom: 10),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(15),
+                                onTap:
+                                    ((role == 'super_admin' &&
+                                            memberRole == 'bd') ||
+                                        (role == 'bd' &&
+                                            memberRole == 'agency') ||
+                                        (role == 'agency' &&
+                                            memberRole == 'host'))
+                                    ? () => openMember(member)
+                                    : null,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(13),
+                                  child: Column(
+                                    children: [
+                                      Row(
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 23,
+                                            backgroundImage:
+                                                photo.startsWith('http')
+                                                ? NetworkImage(photo)
+                                                : null,
+                                            child: photo.startsWith('http')
+                                                ? null
+                                                : const Icon(Icons.person),
+                                          ),
+                                          const SizedBox(width: 11),
+                                          Expanded(
+                                            child: Column(
                                               crossAxisAlignment:
-                                                  CrossAxisAlignment.end,
+                                                  CrossAxisAlignment.start,
                                               children: [
                                                 Text(
-                                                  number(member['income']),
+                                                  name,
                                                   style: const TextStyle(
                                                     color: Colors.white,
                                                     fontWeight: FontWeight.bold,
                                                   ),
                                                 ),
                                                 Text(
-                                                  'Benefit: ${number(member['benefit'])}',
+                                                  '$memberRole • ID: $code',
                                                   style: const TextStyle(
-                                                    color: Color(0xFFFFC36B),
+                                                    color: Colors.white70,
                                                     fontSize: 11,
                                                   ),
                                                 ),
                                               ],
                                             ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 9),
-                                        LinearProgressIndicator(
-                                          value: memberProgress,
-                                          minHeight: 5,
-                                          backgroundColor: Colors.white24,
-                                          valueColor:
-                                              const AlwaysStoppedAnimation<
-                                                Color
-                                              >(Color(0xFFFFB347)),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Align(
-                                          alignment: Alignment.centerLeft,
-                                          child: Text(
-                                            'Target: ${number(member['completed_target'])}',
-                                            style: const TextStyle(
+                                          ),
+                                          Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.end,
+                                            children: [
+                                              Text(
+                                                number(
+                                                  role == 'super_admin'
+                                                      ? member['benefit']
+                                                      : member['income'],
+                                                ),
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              Text(
+                                                role == 'super_admin'
+                                                    ? 'Salary / Benefit'
+                                                    : 'Benefit: ${number(member['benefit'])}',
+                                                style: const TextStyle(
+                                                  color: Color(0xFFFFC36B),
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          if (memberRole != 'host')
+                                            const Icon(
+                                              Icons.chevron_right,
                                               color: Colors.white70,
-                                              fontSize: 10,
                                             ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      LinearProgressIndicator(
+                                        value: memberProgress,
+                                        minHeight: 5,
+                                        backgroundColor: Colors.white24,
+                                        valueColor:
+                                            const AlwaysStoppedAnimation(
+                                              Color(0xFFFFB347),
+                                            ),
+                                      ),
+                                      const SizedBox(height: 5),
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          'Completed target: ${number(member['completed_target'])}',
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 11,
                                           ),
                                         ),
-                                      ],
-                                    ),
-                                  );
-                                }),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
               ),
             );
           },
-        );
-      },
+        ),
+      ),
     );
   }
 
