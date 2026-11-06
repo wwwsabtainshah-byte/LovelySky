@@ -3991,6 +3991,7 @@ class _ProfilePageState extends State<ProfilePage> {
   bool profileLoading = true;
   bool databaseChecking = false;
   String agencyRole = 'user';
+  bool isSuperAdmin = false;
   int agencyDirectMemberCount = 0;
   List<Map<String, dynamic>> agencyInvites = [];
   List<Map<String, dynamic>> agencyHosts = [];
@@ -4092,6 +4093,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) return;
       setState(() {
         agencyRole = data['role']?.toString() ?? 'user';
+        isSuperAdmin = data['is_super_admin'] == true || userCode == '1';
         agencyDirectMemberCount =
             int.tryParse('${data['direct_member_count'] ?? 0}') ?? 0;
         agencyInvites = invites;
@@ -4689,6 +4691,15 @@ class _ProfilePageState extends State<ProfilePage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _openSuperAdminCenter() async {
+    if (!mounted || !isSuperAdmin) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => _SuperAdminCenterPage(request: _giftRequest),
       ),
     );
   }
@@ -5877,6 +5888,31 @@ class _ProfilePageState extends State<ProfilePage> {
 
             const SizedBox(height: 17),
 
+            if (isSuperAdmin) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: Card(
+                  margin: EdgeInsets.zero,
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.admin_panel_settings),
+                    ),
+                    title: const Text(
+                      'Super Admin',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: const Text(
+                      'Search users, invite BDs and view direct BDs',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _openSuperAdminCenter,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 17),
+            ],
+
             // Feedback and settings
             Container(
               padding: const EdgeInsets.fromLTRB(8, 9, 8, 8),
@@ -6009,6 +6045,479 @@ class MenuTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ServiceInboxPage extends StatefulWidget {
+  const _ServiceInboxPage();
+
+  @override
+  State<_ServiceInboxPage> createState() => _ServiceInboxPageState();
+}
+
+class _ServiceInboxPageState extends State<_ServiceInboxPage> {
+  List<Map<String, dynamic>> invites = [];
+  bool loading = true;
+  final Set<int> busyInvites = {};
+
+  Future<Map<String, dynamic>> _request(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('lovely_token');
+    if (token == null || token.isEmpty) {
+      throw Exception('Please login again.');
+    }
+
+    final headers = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+    final uri = Uri.parse('$lovelyApi$path');
+    final response = method == 'POST'
+        ? await http.post(uri, headers: headers, body: jsonEncode(body ?? {}))
+        : await http.get(uri, headers: headers);
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('Invalid server response.');
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(decoded['detail']?.toString() ?? 'Request failed.');
+    }
+    return decoded;
+  }
+
+  Future<void> _loadInvites() async {
+    if (mounted) setState(() => loading = true);
+    try {
+      final data = await _request('GET', '/agency/status');
+      final rows = data['pending_invites'];
+      final result = rows is List
+          ? rows
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .toList()
+          : <Map<String, dynamic>>[];
+
+      if (mounted) {
+        setState(() {
+          invites = result;
+          loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
+    }
+  }
+
+  Future<void> _respond(Map<String, dynamic> invite, bool accept) async {
+    final id = int.tryParse('${invite['id']}');
+    if (id == null || busyInvites.contains(id)) return;
+
+    setState(() => busyInvites.add(id));
+    try {
+      await _request(
+        'POST',
+        '/agency/invites/$id/respond',
+        body: {'accept': accept},
+      );
+      if (!mounted) return;
+      setState(() {
+        invites.removeWhere((item) => '${item['id']}' == '$id');
+        busyInvites.remove(id);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(accept ? 'Invitation accepted.' : 'Invitation denied.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => busyInvites.remove(id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+      await _loadInvites();
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInvites();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFEAF7FF),
+      appBar: AppBar(
+        title: const Text('Inbox'),
+        backgroundColor: const Color(0xFF168BD0),
+        foregroundColor: Colors.white,
+      ),
+      body: RefreshIndicator(
+        onRefresh: _loadInvites,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            const Text(
+              'Service Messages',
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF174B70),
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (loading)
+              const Center(child: CircularProgressIndicator())
+            else if (invites.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(18),
+                  child: Text('No service messages or pending invitations.'),
+                ),
+              )
+            else
+              ...invites.map((invite) {
+                final id = int.tryParse('${invite['id']}') ?? -1;
+                final type = '${invite['invite_type'] ?? 'invitation'}';
+                final inviter = '${invite['inviter_name'] ?? 'User'}';
+                final code = '${invite['inviter_code'] ?? ''}';
+                final busy = busyInvites.contains(id);
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          type.toUpperCase() == 'BD'
+                              ? 'BD Invitation'
+                              : '${type.toUpperCase()} Invitation',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                        Text(
+                          'From: $inviter${code.isNotEmpty ? ' ($code)' : ''}',
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: busy
+                                    ? null
+                                    : () => _respond(invite, true),
+                                child: const Text('Accept'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: busy
+                                    ? null
+                                    : () => _respond(invite, false),
+                                child: const Text('Deny'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (busy)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 8),
+                            child: LinearProgressIndicator(),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            const SizedBox(height: 22),
+            const Divider(),
+            const SizedBox(height: 10),
+            const Text(
+              'Other Messages',
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF174B70),
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(18),
+                child: Text('No other messages yet.'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+typedef _AgencyRequest = Future<Map<String, dynamic>> Function(
+  String method,
+  String path, {
+  Map<String, dynamic>? body,
+});
+
+class _SuperAdminCenterPage extends StatefulWidget {
+  final _AgencyRequest request;
+
+  const _SuperAdminCenterPage({required this.request});
+
+  @override
+  State<_SuperAdminCenterPage> createState() => _SuperAdminCenterPageState();
+}
+
+class _SuperAdminCenterPageState extends State<_SuperAdminCenterPage> {
+  final TextEditingController _searchController = TextEditingController();
+
+  List<Map<String, dynamic>> _results = [];
+  List<Map<String, dynamic>> _members = [];
+  bool _searching = false;
+  bool _loadingMembers = false;
+  bool _sendingInvite = false;
+  bool _searched = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMembers();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _searchUsers() async {
+    final q = _searchController.text.trim();
+    if (q.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter at least 2 characters.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _searching = true;
+      _searched = true;
+      _results = [];
+    });
+
+    try {
+      final data = await widget.request(
+        'GET',
+        '/agency/search?q=${Uri.encodeQueryComponent(q)}',
+      );
+      final raw = data['users'];
+      final users = raw is List
+          ? raw
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+          : <Map<String, dynamic>>[];
+
+      if (mounted) setState(() => _results = users);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Search failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
+
+  Future<void> _inviteBd(String code) async {
+    if (_sendingInvite) return;
+    setState(() => _sendingInvite = true);
+
+    try {
+      await widget.request(
+        'POST',
+        '/agency/invites',
+        body: {'user_code': code, 'invite_type': 'bd'},
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _results.removeWhere((item) => item['user_code']?.toString() == code);
+      });
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('BD invitation sent to $code')));
+      await _loadMembers();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Invite failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _sendingInvite = false);
+    }
+  }
+
+  Future<void> _loadMembers() async {
+    if (mounted) setState(() => _loadingMembers = true);
+
+    try {
+      final month = DateTime.now().toIso8601String().substring(0, 7);
+      final data = await widget.request('GET', '/agency/targets?month=$month');
+      final raw = data['members'];
+      final members = raw is List
+          ? raw
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+          : <Map<String, dynamic>>[];
+
+      if (mounted) setState(() => _members = members);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('BD list failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _loadingMembers = false);
+    }
+  }
+
+  Widget _photo(String? value) {
+    final url = value?.trim() ?? '';
+    if (url.isEmpty) {
+      return const CircleAvatar(child: Icon(Icons.person));
+    }
+    return CircleAvatar(
+      child: ClipOval(
+        child: Image.network(
+          url,
+          width: 48,
+          height: 48,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => const Icon(Icons.person),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Super Admin Center')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Search User',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _searchController,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _searchUsers(),
+                    decoration: const InputDecoration(
+                      labelText: 'Enter User ID or name',
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton.icon(
+                    onPressed: _searching ? null : _searchUsers,
+                    icon: const Icon(Icons.search),
+                    label: const Text('Search'),
+                  ),
+                  if (_searching) const LinearProgressIndicator(),
+                  if (_searched && !_searching && _results.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(10),
+                      child: Text('No eligible users found.'),
+                    ),
+                  ..._results.map((user) {
+                    final code = user['user_code']?.toString() ?? '';
+                    final name = user['display_name']?.toString() ?? '';
+                    return Card(
+                      child: ListTile(
+                        leading: const CircleAvatar(child: Icon(Icons.person)),
+                        title: Text(name.isEmpty ? 'User $code' : name),
+                        subtitle: Text('User ID: $code'),
+                        trailing: TextButton(
+                          onPressed: _sendingInvite || code.isEmpty
+                              ? null
+                              : () => _inviteBd(code),
+                          child: const Text('BD Invite'),
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'My Direct BDs (${_members.length})',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: _loadingMembers ? null : _loadMembers,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+          if (_loadingMembers) const LinearProgressIndicator(),
+          if (!_loadingMembers && _members.isEmpty)
+            const Center(child: Text('No direct BDs found yet.')),
+          ..._members.map((member) {
+            final code = member['user_code']?.toString() ?? '';
+            final name = member['display_name']?.toString() ?? '';
+            final benefit = member['benefit'] ?? 0;
+            return Card(
+              child: ListTile(
+                leading: _photo(member['profile_photo']?.toString()),
+                title: Text(name.isEmpty ? 'BD $code' : name),
+                subtitle: Text('User ID: $code\nMonthly Benefit: $benefit'),
+                isThreeLine: true,
+                trailing: const Icon(Icons.verified_user, color: Colors.green),
+              ),
+            );
+          }),
+        ],
       ),
     );
   }
@@ -9035,9 +9544,13 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                             ),
                             _AnimatedRoomToolbarButton(
                               icon: Icons.inbox_rounded,
-                              onTap: () => showMessage(
-                                'Inbox feature baad mein connect hoga.',
-                              ),
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const _ServiceInboxPage(),
+                                  ),
+                                );
+                              },
                             ),
                             circleAction(Icons.grid_view_rounded, 'More', () {
                               showModalBottomSheet(
