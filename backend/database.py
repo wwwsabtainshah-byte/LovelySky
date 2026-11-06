@@ -357,6 +357,44 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
 
 """)
 
+
+    with get_connection() as db:
+        db.executescript("""
+        CREATE TABLE IF NOT EXISTS super_admins (
+            user_uid TEXT PRIMARY KEY,
+            activated_by TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS agency_memberships (
+            user_uid TEXT PRIMARY KEY,
+            role TEXT NOT NULL CHECK(role IN ('bd','agency','host')),
+            parent_uid TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_agency_parent
+            ON agency_memberships(parent_uid, role);
+
+        CREATE TABLE IF NOT EXISTS agency_invites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            inviter_uid TEXT NOT NULL,
+            invitee_uid TEXT NOT NULL,
+            invite_type TEXT NOT NULL CHECK(
+                invite_type IN ('bd','agent','host')
+            ),
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(
+                status IN ('pending','accepted','rejected','cancelled')
+            ),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            responded_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_agency_invitee
+            ON agency_invites(invitee_uid, status);
+        """)
+
 if __name__ == "__main__":
     initialize_database()
     print("LovelySky database tables created:", DB_PATH)

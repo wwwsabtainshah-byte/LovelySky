@@ -3430,3 +3430,419 @@ async def casino_wallet_refund(request: Request):
 @router.post("/casino/wallet/rollback")
 async def casino_wallet_rollback(request: Request):
     return await _casino_move_wallet(request, "rollback")
+
+
+# ============================================================
+# AGENCY / BD / HOST HIERARCHY
+# ============================================================
+
+class AgencyInviteRequest(BaseModel):
+    user_code: str
+    invite_type: str
+
+
+class AgencyInviteResponse(BaseModel):
+    accept: bool
+
+
+class SuperAdminRequest(BaseModel):
+    user_code: str
+    active: bool = True
+
+
+def _agency_user(authorization):
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Bearer token required")
+
+    claims = verify_token(authorization.split(" ", 1)[1].strip())
+    user = save_google_user(claims)
+    ensure_database()
+    return user
+
+
+def _agency_super_admin(db, uid, email):
+    if str(email).lower() == OWNER_EMAIL:
+        db.execute(
+            """INSERT INTO super_admins(user_uid, activated_by, is_active)
+               VALUES (?, ?, 1)
+               ON CONFLICT(user_uid) DO UPDATE SET is_active = 1""",
+            (uid, uid),
+        )
+        return True
+
+    row = db.execute(
+        "SELECT 1 FROM super_admins WHERE user_uid=? AND is_active=1",
+        (uid,),
+    ).fetchone()
+    return row is not None
+
+
+def _agency_role(db, uid, email):
+    if _agency_super_admin(db, uid, email):
+        return "super_admin"
+
+    row = db.execute(
+        "SELECT role FROM agency_memberships WHERE user_uid=?",
+        (uid,),
+    ).fetchone()
+    return str(row["role"]) if row else "user"
+
+
+def _agency_require_role(db, user, allowed):
+    role = _agency_role(
+        db, user["google_uid"], user["google_email"]
+    )
+    if role not in allowed:
+        raise HTTPException(403, "You are not allowed to perform this action")
+    return role
+
+
+@router.get("/agency/status")
+def agency_status(authorization: str | None = Header(default=None)):
+    user = _agency_user(authorization)
+    db = get_connection()
+    try:
+        role = _agency_role(db, user["google_uid"], user["google_email"])
+
+        invites = db.execute(
+            """
+            SELECT i.id, i.invite_type, i.created_at,
+                   u.user_code AS inviter_code,
+                   u.display_name AS inviter_name
+            FROM agency_invites i
+            LEFT JOIN users u ON u.google_uid=i.inviter_uid
+            WHERE i.invitee_uid=? AND i.status='pending'
+            ORDER BY i.id DESC
+            """,
+            (user["google_uid"],),
+        ).fetchall()
+
+        return {
+            "success": True,
+            "role": role,
+            "is_super_admin": role == "super_admin",
+            "show_host_center": True,
+            "show_agency_center": role in ("agency", "bd", "super_admin"),
+            "show_bd_center": role in ("bd", "super_admin"),
+            "show_super_admin_center": role == "super_admin",
+            "pending_invites": [dict(row) for row in invites],
+        }
+    finally:
+        db.close()
+
+
+@router.get("/agency/search")
+def agency_search(
+    q: str,
+    authorization: str | None = Header(default=None),
+):
+    user = _agency_user(authorization)
+    q = q.strip()
+    if len(q) < 2:
+        raise HTTPException(400, "Enter at least 2 characters")
+
+    db = get_connection()
+    try:
+        role = _agency_role(db, user["google_uid"], user["google_email"])
+        if role not in ("super_admin", "bd", "agency"):
+            raise HTTPException(403, "Invite permission required")
+
+        rows = db.execute(
+            """
+            SELECT u.google_uid, u.user_code, u.display_name
+            FROM users u
+            LEFT JOIN agency_memberships m ON m.user_uid=u.google_uid
+            LEFT JOIN super_admins s ON s.user_uid=u.google_uid AND s.is_active=1
+            WHERE (u.user_code LIKE ? OR u.display_name LIKE ?)
+              AND u.google_uid != ?
+              AND m.user_uid IS NULL
+              AND s.user_uid IS NULL
+            ORDER BY u.user_code
+            LIMIT 20
+            """,
+            (f"%{q}%", f"%{q}%", user["google_uid"]),
+        ).fetchall()
+
+        return {
+            "success": True,
+            "users": [
+                {
+                    "user_code": r["user_code"],
+                    "display_name": r["display_name"],
+                }
+                for r in rows
+            ],
+        }
+    finally:
+        db.close()
+
+
+@router.get("/agency/hosts")
+def agency_list_hosts(authorization: str | None = Header(default=None)):
+    user = _agency_user(authorization)
+    db = get_connection()
+    try:
+        role = _agency_role(db, user["google_uid"], user["google_email"])
+        if role != "agency":
+            raise HTTPException(403, "Only an Agency Owner can view their Hosts")
+
+        rows = db.execute(
+            """
+            SELECT m.user_uid AS host_uid, u.user_code, u.display_name
+            FROM agency_memberships m
+            JOIN users u ON u.google_uid=m.user_uid
+            WHERE m.role='host' AND m.parent_uid=?
+            ORDER BY u.user_code
+            """,
+            (user["google_uid"],),
+        ).fetchall()
+
+        return {"success": True, "hosts": [dict(row) for row in rows]}
+    finally:
+        db.close()
+
+
+@router.post("/agency/invites")
+def agency_create_invite(
+    payload: AgencyInviteRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _agency_user(authorization)
+    invite_type = payload.invite_type.strip().lower()
+    if invite_type not in ("bd", "agent", "host"):
+        raise HTTPException(400, "Invalid invitation type")
+
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        role = _agency_role(db, user["google_uid"], user["google_email"])
+
+        required = {
+            "bd": "super_admin",
+            "agent": "bd",
+            "host": "agency",
+        }[invite_type]
+
+        if role != required:
+            raise HTTPException(403, "You cannot send this invitation")
+
+        target = db.execute(
+            "SELECT google_uid FROM users WHERE user_code=?",
+            (payload.user_code.strip(),),
+        ).fetchone()
+
+        if not target:
+            raise HTTPException(404, "User ID not found")
+
+        target_uid = str(target["google_uid"])
+        if target_uid == user["google_uid"]:
+            raise HTTPException(400, "You cannot invite yourself")
+
+        if db.execute(
+            "SELECT 1 FROM agency_memberships WHERE user_uid=?",
+            (target_uid,),
+        ).fetchone():
+            raise HTTPException(409, "User already belongs to a hierarchy")
+
+        if db.execute(
+            "SELECT 1 FROM super_admins WHERE user_uid=? AND is_active=1",
+            (target_uid,),
+        ).fetchone():
+            raise HTTPException(409, "User is already a Super Admin")
+
+        pending = db.execute(
+            """SELECT 1 FROM agency_invites
+               WHERE invitee_uid=? AND status='pending'""",
+            (target_uid,),
+        ).fetchone()
+        if pending:
+            raise HTTPException(409, "User already has a pending invitation")
+
+        cur = db.execute(
+            """INSERT INTO agency_invites
+               (inviter_uid, invitee_uid, invite_type)
+               VALUES (?, ?, ?)""",
+            (user["google_uid"], target_uid, invite_type),
+        )
+
+        db.commit()
+        return {"success": True, "invite_id": cur.lastrowid}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.post("/agency/invites/{invite_id}/respond")
+def agency_respond_invite(
+    invite_id: int,
+    payload: AgencyInviteResponse,
+    authorization: str | None = Header(default=None),
+):
+    user = _agency_user(authorization)
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        invite = db.execute(
+            """SELECT * FROM agency_invites
+               WHERE id=? AND invitee_uid=? AND status='pending'""",
+            (invite_id, user["google_uid"]),
+        ).fetchone()
+
+        if not invite:
+            raise HTTPException(404, "Invitation not found or already answered")
+
+        if not payload.accept:
+            db.execute(
+                """UPDATE agency_invites
+                   SET status='rejected', responded_at=CURRENT_TIMESTAMP
+                   WHERE id=?""",
+                (invite_id,),
+            )
+            db.commit()
+            return {"success": True, "status": "rejected"}
+
+        inviter_uid = str(invite["inviter_uid"])
+        invite_type = str(invite["invite_type"])
+
+        inviter = db.execute(
+            "SELECT google_email FROM users WHERE google_uid=?",
+            (inviter_uid,),
+        ).fetchone()
+        if not inviter:
+            raise HTTPException(409, "Inviter account no longer exists")
+
+        inviter_role = _agency_role(
+            db, inviter_uid, inviter["google_email"]
+        )
+        required = {
+            "bd": "super_admin",
+            "agent": "bd",
+            "host": "agency",
+        }[invite_type]
+
+        if inviter_role != required:
+            raise HTTPException(409, "Inviter no longer has permission")
+
+        if db.execute(
+            "SELECT 1 FROM agency_memberships WHERE user_uid=?",
+            (user["google_uid"],),
+        ).fetchone():
+            raise HTTPException(409, "You already belong to a hierarchy")
+
+        new_role = {
+            "bd": "bd",
+            "agent": "agency",
+            "host": "host",
+        }[invite_type]
+
+        db.execute(
+            """INSERT INTO agency_memberships(user_uid, role, parent_uid)
+               VALUES (?, ?, ?)""",
+            (user["google_uid"], new_role, inviter_uid),
+        )
+        db.execute(
+            """UPDATE agency_invites
+               SET status='accepted', responded_at=CURRENT_TIMESTAMP
+               WHERE id=?""",
+            (invite_id,),
+        )
+        db.commit()
+        return {"success": True, "status": "accepted", "role": new_role}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.post("/agency/super-admins")
+def agency_manage_super_admin(
+    payload: SuperAdminRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _agency_user(authorization)
+    if str(user["google_email"]).lower() != OWNER_EMAIL:
+        raise HTTPException(403, "Only the Owner can manage Super Admins")
+
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        target = db.execute(
+            "SELECT google_uid FROM users WHERE user_code=?",
+            (payload.user_code.strip(),),
+        ).fetchone()
+
+        if not target:
+            raise HTTPException(404, "User ID not found")
+
+        target_uid = str(target["google_uid"])
+        if target_uid == user["google_uid"]:
+            raise HTTPException(400, "Owner Super Admin cannot be changed")
+
+        if payload.active:
+            if db.execute(
+                "SELECT 1 FROM agency_memberships WHERE user_uid=?",
+                (target_uid,),
+            ).fetchone():
+                raise HTTPException(409, "User already has an agency role")
+
+            db.execute(
+                """INSERT INTO super_admins(user_uid, activated_by, is_active)
+                   VALUES (?, ?, 1)
+                   ON CONFLICT(user_uid) DO UPDATE SET
+                   activated_by=excluded.activated_by, is_active=1""",
+                (target_uid, user["google_uid"]),
+            )
+        else:
+            db.execute(
+                "UPDATE super_admins SET is_active=0 WHERE user_uid=?",
+                (target_uid,),
+            )
+
+        db.commit()
+        return {"success": True, "active": payload.active}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.delete("/agency/hosts/{host_uid}")
+def agency_remove_host(
+    host_uid: str,
+    authorization: str | None = Header(default=None),
+):
+    user = _agency_user(authorization)
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        actor = db.execute(
+            """SELECT role FROM agency_memberships
+               WHERE user_uid=?""",
+            (user["google_uid"],),
+        ).fetchone()
+
+        if not actor or actor["role"] != "agency":
+            raise HTTPException(
+                403, "Only an Agency Owner can remove their own Host"
+            )
+
+        result = db.execute(
+            """DELETE FROM agency_memberships
+               WHERE user_uid=? AND role='host' AND parent_uid=?""",
+            (host_uid, user["google_uid"]),
+        )
+
+        if result.rowcount != 1:
+            raise HTTPException(404, "Your Host was not found")
+
+        db.commit()
+        return {"success": True, "removed": True}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()

@@ -5,13 +5,13 @@ import logging
 import sqlite3
 import firebase_admin
 from firebase_admin import auth, credentials
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 try:
-    from database import get_connection, initialize_database
+    from database import DB_PATH, get_connection, initialize_database
 except ModuleNotFoundError:
-    from backend.database import get_connection, initialize_database
+    from backend.database import DB_PATH, get_connection, initialize_database
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -409,23 +409,30 @@ def get_voice_room_seats(
 
         occupied = db.execute(
             """
-            SELECT seat_number, user_code
-            FROM voice_room_participants
-            WHERE room_id = ? AND seat_number BETWEEN 1 AND 18
+            SELECT p.seat_number, p.user_code,
+                   u.display_name, u.profile_photo
+            FROM voice_room_participants AS p
+            LEFT JOIN users AS u ON u.google_uid = p.user_uid
+            WHERE p.room_id = ? AND p.seat_number BETWEEN 1 AND 18
             """,
             (room_id,),
         ).fetchall()
 
-        by_seat = {row["seat_number"]: row["user_code"] for row in occupied}
+        by_seat = {row["seat_number"]: row for row in occupied}
         return {
             "success": True,
             "room_id": room_id,
             "seats": [
                 {
                     "seat_number": n,
-                    "user_code": by_seat.get(n),
+                    "user_code": by_seat[n]["user_code"] if n in by_seat else None,
+                    "display_name": by_seat[n]["display_name"] if n in by_seat else None,
+                    "profile_photo": by_seat[n]["profile_photo"] if n in by_seat else None,
                     "is_occupied": n in by_seat,
-                    "is_mine": n in by_seat and by_seat.get(n) == str(user["user_code"]),
+                    "is_mine": (
+                        n in by_seat
+                        and by_seat[n]["user_code"] == str(user["user_code"])
+                    ),
                 }
                 for n in range(1, 19)
             ],
@@ -571,6 +578,64 @@ def unfollow_voice_user(
         db.close()
 
 
+
+@router.get("/owner/database-diagnostic")
+def owner_database_diagnostic(
+    authorization: str | None = Header(default=None),
+):
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Bearer token required")
+
+    token = authorization.split(" ", 1)[1].strip()
+    claims = verify_token(token)
+
+    email = str(claims.get("email", "")).strip().lower()
+    if email != OWNER_EMAIL.lower() or claims.get("email_verified") is not True:
+        raise HTTPException(403, "Owner access required")
+
+    result = {
+        "database_file_exists": DB_PATH.is_file(),
+        "database_readable": False,
+        "database_size_bytes": DB_PATH.stat().st_size if DB_PATH.is_file() else 0,
+        "users_count": None,
+        "voice_rooms_count": None,
+        "note": "Read-only diagnostic; database path is not exposed.",
+    }
+
+    if not result["database_file_exists"]:
+        return result
+
+    db = None
+    try:
+        db = sqlite3.connect(
+            f"{DB_PATH.resolve().as_uri()}?mode=ro",
+            uri=True,
+            timeout=5,
+        )
+        tables = {
+            row[0] for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        result["database_readable"] = True
+
+        if "users" in tables:
+            result["users_count"] = db.execute(
+                "SELECT COUNT(*) FROM users"
+            ).fetchone()[0]
+
+        if "voice_rooms" in tables:
+            result["voice_rooms_count"] = db.execute(
+                "SELECT COUNT(*) FROM voice_rooms"
+            ).fetchone()[0]
+
+        return result
+    except sqlite3.Error:
+        raise HTTPException(503, "Database diagnostic could not read the SQLite file")
+    finally:
+        if db is not None:
+            db.close()
+
 @router.get("/me")
 def current_user(authorization: str | None = Header(default=None)):
     if not authorization or not authorization.lower().startswith("bearer "):
@@ -587,3 +652,189 @@ def current_user(authorization: str | None = Header(default=None)):
         "profile_photo": user["profile_photo"],
         "role": "owner" if user["google_email"].lower() == OWNER_EMAIL else "user"
     }
+class VoiceRoomMessageRequest(BaseModel):
+    message: str
+
+
+def _require_voice_room_member(db, room_id: int, user):
+    room = db.execute(
+        "SELECT id FROM voice_rooms WHERE id = ? AND is_active = 1",
+        (room_id,),
+    ).fetchone()
+    if not room:
+        raise HTTPException(404, "Voice room not found")
+    member = db.execute(
+        "SELECT 1 FROM voice_room_participants WHERE room_id = ? AND user_uid = ?",
+        (room_id, user["google_uid"]),
+    ).fetchone()
+    if not member:
+        raise HTTPException(403, "Join this voice room before using its chat")
+
+
+@router.get("/voice/rooms/{room_id}/messages")
+def get_voice_room_messages(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        _require_voice_room_member(db, room_id, user)
+        rows = db.execute(
+            """SELECT id, sender_uid, sender_code, message, created_at
+               FROM voice_room_messages
+               WHERE room_id = ? ORDER BY id DESC LIMIT 100""",
+            (room_id,),
+        ).fetchall()
+        return {"success": True, "messages": [dict(row) for row in reversed(rows)]}
+    finally:
+        db.close()
+
+
+@router.post("/voice/rooms/{room_id}/messages")
+def send_voice_room_message(
+    room_id: int,
+    payload: VoiceRoomMessageRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(400, "Message cannot be empty")
+    if len(message) > 500:
+        raise HTTPException(400, "Message cannot exceed 500 characters")
+    db = get_connection()
+    try:
+        _require_voice_room_member(db, room_id, user)
+        cursor = db.execute(
+            """INSERT INTO voice_room_messages
+               (room_id, sender_uid, sender_code, message)
+               VALUES (?, ?, ?, ?)""",
+            (room_id, user["google_uid"], str(user["user_code"]), message),
+        )
+        db.commit()
+        row = db.execute(
+            """SELECT id, sender_uid, sender_code, message, created_at
+               FROM voice_room_messages WHERE id = ?""",
+            (cursor.lastrowid,),
+        ).fetchone()
+        return {"success": True, "message": dict(row)}
+    finally:
+        db.close()
+
+
+# WebRTC signaling connections, indexed by room and user UID.
+VOICE_SIGNAL_CONNECTIONS: dict[int, dict[str, WebSocket]] = {}
+
+
+@router.websocket("/voice/rooms/{room_id}/signal")
+async def voice_room_signal(websocket: WebSocket, room_id: int):
+    await websocket.accept()
+    user = None
+    uid = None
+    connections = None
+
+    try:
+        auth_message = await websocket.receive_json()
+        token = auth_message.get("token") if isinstance(auth_message, dict) else None
+        if not isinstance(token, str) or not token.strip():
+            await websocket.close(code=4401, reason="Authentication required")
+            return
+
+        try:
+            claims = verify_token(token.strip())
+            user = save_google_user(claims)
+        except Exception:
+            await websocket.close(code=4401, reason="Authentication failed")
+            return
+
+        uid = str(user["google_uid"])
+        db = get_connection()
+        try:
+            room = db.execute(
+                "SELECT id FROM voice_rooms WHERE id = ? AND is_active = 1",
+                (room_id,),
+            ).fetchone()
+            member = db.execute(
+                "SELECT 1 FROM voice_room_participants WHERE room_id = ? AND user_uid = ?",
+                (room_id, user["google_uid"]),
+            ).fetchone()
+        finally:
+            db.close()
+
+        if not room or not member:
+            await websocket.close(code=4403, reason="Join this voice room first")
+            return
+
+        connections = VOICE_SIGNAL_CONNECTIONS.setdefault(room_id, {})
+        existing = [
+            {"uid": peer_uid}
+            for peer_uid in connections
+            if peer_uid != uid
+        ]
+        connections[uid] = websocket
+
+        await websocket.send_json({
+            "type": "existing_peers",
+            "payload": {"peers": existing},
+        })
+
+        for peer_uid, peer in list(connections.items()):
+            if peer_uid == uid:
+                continue
+            try:
+                await peer.send_json({
+                    "type": "peer_joined",
+                    "sender_uid": uid,
+                    "sender_code": str(user["user_code"]),
+                })
+            except Exception:
+                if connections.get(peer_uid) is peer:
+                    connections.pop(peer_uid, None)
+
+        while True:
+            message = await websocket.receive_json()
+            if not isinstance(message, dict):
+                continue
+
+            kind = message.get("type")
+            target_uid = message.get("target_uid")
+            if kind not in {"offer", "answer", "candidate"}:
+                continue
+            if not isinstance(target_uid, str) or target_uid == uid:
+                continue
+
+            peer = connections.get(target_uid)
+            if peer is None:
+                continue
+
+            await peer.send_json({
+                "type": kind,
+                "sender_uid": uid,
+                "sender_code": str(user["user_code"]),
+                "payload": message.get("payload"),
+            })
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.warning("Voice signaling disconnected (%s)", type(exc).__name__)
+    finally:
+        if connections is not None and uid is not None:
+            if connections.get(uid) is websocket:
+                connections.pop(uid, None)
+                for peer_uid, peer in list(connections.items()):
+                    try:
+                        await peer.send_json({
+                            "type": "peer_left",
+                            "sender_uid": uid,
+                        })
+                    except Exception:
+                        if connections.get(peer_uid) is peer:
+                            connections.pop(peer_uid, None)
+            if not connections:
+                VOICE_SIGNAL_CONNECTIONS.pop(room_id, None)
+        try:
+            await websocket.close()
+        except Exception:
+            pass

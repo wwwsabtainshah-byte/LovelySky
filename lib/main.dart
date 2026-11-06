@@ -1474,8 +1474,9 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
 
     final response = method == 'POST'
         ? await http.post(uri, headers: headers, body: jsonEncode(body ?? {}))
+        : method == 'DELETE'
+        ? await http.delete(uri, headers: headers)
         : await http.get(uri, headers: headers);
-
     final decoded = jsonDecode(response.body);
     if (decoded is! Map<String, dynamic>) {
       throw Exception('Invalid server response.');
@@ -3970,6 +3971,10 @@ class _ProfilePageState extends State<ProfilePage> {
   String profilePhoto = '';
   bool profileLoading = true;
   bool databaseChecking = false;
+  String agencyRole = 'user';
+  List<Map<String, dynamic>> agencyInvites = [];
+  List<Map<String, dynamic>> agencyHosts = [];
+  bool agencyStatusLoading = false;
 
   @override
   void initState() {
@@ -4011,6 +4016,7 @@ class _ProfilePageState extends State<ProfilePage> {
               profileLoading = false;
             });
           }
+          await _loadAgencyStatus();
           return;
         }
       }
@@ -4049,6 +4055,401 @@ class _ProfilePageState extends State<ProfilePage> {
       throw Exception(decoded['detail']?.toString() ?? 'Request failed.');
     }
     return decoded;
+  }
+
+  Future<void> _loadAgencyStatus() async {
+    if (!mounted) return;
+    setState(() => agencyStatusLoading = true);
+    try {
+      final data = await _giftRequest('GET', '/agency/status');
+      final raw = data['pending_invites'];
+      final invites = raw is List
+          ? raw
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+          : <Map<String, dynamic>>[];
+      if (!mounted) return;
+      setState(() {
+        agencyRole = data['role']?.toString() ?? 'user';
+        agencyInvites = invites;
+        agencyStatusLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => agencyStatusLoading = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Hierarchy status error: $e')));
+    }
+  }
+
+  Future<void> _respondAgencyInvite(int id, bool accept) async {
+    try {
+      await _giftRequest(
+        'POST',
+        '/agency/invites/$id/respond',
+        body: {'accept': accept},
+      );
+      await _loadAgencyStatus();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(accept ? 'Invitation accepted' : 'Invitation rejected'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Invitation error: $e')));
+    }
+  }
+
+  Future<void> _sendAgencyInvite(String inviteType) async {
+    final controller = TextEditingController();
+    final title = inviteType == 'bd'
+        ? 'Invite BD'
+        : inviteType == 'agent'
+        ? 'Invite Agency Owner'
+        : 'Invite Host';
+
+    final code = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'User ID',
+            hintText: 'Enter user code',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Send invitation'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (code == null || code.isEmpty) return;
+    try {
+      await _giftRequest(
+        'POST',
+        '/agency/invites',
+        body: {'user_code': code, 'invite_type': inviteType},
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invitation sent successfully')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Invitation error: $e')));
+    }
+  }
+
+  Future<void> _manageSuperAdmin() async {
+    final controller = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Super Admin Management'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'User ID',
+            hintText: 'Enter user code',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'invite_bd'),
+            child: const Text('Invite BD'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, 'off:${controller.text.trim()}'),
+            child: const Text('Deactivate'),
+          ),
+          ElevatedButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, 'on:${controller.text.trim()}'),
+            child: const Text('Activate'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (code == 'invite_bd') {
+      await _sendAgencyInvite('bd');
+      return;
+    }
+    if (code == null || !code.contains(':')) return;
+    final parts = code.split(':');
+    if (parts.length != 2 || parts[1].isEmpty) return;
+
+    try {
+      await _giftRequest(
+        'POST',
+        '/agency/super-admins',
+        body: {'user_code': parts[1], 'active': parts[0] == 'on'},
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            parts[0] == 'on'
+                ? 'Super Admin activated'
+                : 'Super Admin deactivated',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Super Admin error: $e')));
+    }
+  }
+
+  Future<void> _openHostCenter() async {
+    await _loadAgencyStatus();
+    if (!mounted) return;
+    if (agencyInvites.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No pending invitations')));
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Host Center - Invitations'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: agencyInvites.map((invite) {
+              final id = int.tryParse('${invite['id']}');
+              final type = invite['invite_type']?.toString() ?? '';
+              final inviter = invite['inviter_name']?.toString() ?? 'User';
+              final label = type == 'bd'
+                  ? 'BD invitation'
+                  : type == 'agent'
+                  ? 'Agency Owner invitation'
+                  : 'Host invitation';
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(label),
+                subtitle: Text('From: $inviter'),
+                trailing: id == null
+                    ? null
+                    : Wrap(
+                        spacing: 2,
+                        children: [
+                          IconButton(
+                            tooltip: 'Reject',
+                            icon: const Icon(Icons.close, color: Colors.red),
+                            onPressed: () {
+                              Navigator.pop(dialogContext);
+                              _respondAgencyInvite(id, false);
+                            },
+                          ),
+                          IconButton(
+                            tooltip: 'Accept',
+                            icon: const Icon(
+                              Icons.check_circle,
+                              color: Colors.green,
+                            ),
+                            onPressed: () {
+                              Navigator.pop(dialogContext);
+                              _respondAgencyInvite(id, true);
+                            },
+                          ),
+                        ],
+                      ),
+              );
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _loadAgencyHosts() async {
+    try {
+      final data = await _giftRequest('GET', '/agency/hosts');
+      final raw = data['hosts'];
+      final hosts = raw is List
+          ? raw
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+          : <Map<String, dynamic>>[];
+      if (!mounted) return;
+      setState(() => agencyHosts = hosts);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Hosts loading error: $e')));
+    }
+  }
+
+  Future<void> _removeAgencyHost(String hostUid, String hostName) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove Host?'),
+        content: Text(
+          'Are you sure you want to remove $hostName from your Agency?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _giftRequest(
+        'DELETE',
+        '/agency/hosts/${Uri.encodeComponent(hostUid)}',
+      );
+      await _loadAgencyHosts();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$hostName removed from your Agency')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Host removal error: $e')));
+    }
+  }
+
+  Future<void> _openAgencyCenter() async {
+    if (agencyRole != 'agency') {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Agency network access')));
+      return;
+    }
+
+    await _loadAgencyHosts();
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Agency Center'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 380),
+            child: agencyHosts.isEmpty
+                ? const Center(child: Text('No Hosts in your Agency yet'))
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: agencyHosts.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final host = agencyHosts[index];
+                      final uid = host['host_uid']?.toString() ?? '';
+                      final name = host['display_name']?.toString().trim();
+                      final code = host['user_code']?.toString() ?? '';
+                      final display = (name == null || name.isEmpty)
+                          ? 'Host'
+                          : name;
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(display),
+                        subtitle: Text('ID: $code'),
+                        trailing: IconButton(
+                          tooltip: 'Remove Host',
+                          icon: const Icon(
+                            Icons.person_remove,
+                            color: Colors.red,
+                          ),
+                          onPressed: uid.isEmpty
+                              ? null
+                              : () {
+                                  Navigator.pop(dialogContext);
+                                  _removeAgencyHost(uid, display);
+                                },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _sendAgencyInvite('host');
+            },
+            child: const Text('Invite Host'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openHierarchyCenter(String center) async {
+    switch (center) {
+      case 'Host Center':
+        await _openHostCenter();
+        break;
+      case 'Agency':
+        if (agencyRole == 'agency') {
+          await _openAgencyCenter();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Agency network access')),
+          );
+        }
+        break;
+      case 'BD':
+        await _sendAgencyInvite('agent');
+        break;
+      case 'Super Admin':
+        await _manageSuperAdmin();
+        break;
+    }
   }
 
   Future<void> _openWallet() async {
@@ -5353,6 +5754,64 @@ class _ProfilePageState extends State<ProfilePage> {
 
             const SizedBox(height: 16),
 
+            // Role-based hierarchy buttons
+            if (agencyStatusLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else
+              Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: actionButton(
+                        icon: Icons.home_work,
+                        label: 'Host Center',
+                        color: const Color(0xFF268CF4),
+                        onTap: () => _openHierarchyCenter('Host Center'),
+                        isNew: agencyInvites.isNotEmpty,
+                      ),
+                    ),
+                    if (agencyRole == 'agency' ||
+                        agencyRole == 'bd' ||
+                        agencyRole == 'super_admin')
+                      Expanded(
+                        child: actionButton(
+                          icon: Icons.groups,
+                          label: 'Agency',
+                          color: const Color(0xFFFF6738),
+                          onTap: () => _openHierarchyCenter('Agency'),
+                        ),
+                      ),
+                    if (agencyRole == 'bd' || agencyRole == 'super_admin')
+                      Expanded(
+                        child: actionButton(
+                          icon: Icons.business_center,
+                          label: 'BD',
+                          color: const Color(0xFF7255D9),
+                          onTap: () => _openHierarchyCenter('BD'),
+                        ),
+                      ),
+                    if (agencyRole == 'super_admin')
+                      Expanded(
+                        child: actionButton(
+                          icon: Icons.admin_panel_settings,
+                          label: 'Super Admin',
+                          color: const Color(0xFF00B88A),
+                          onTap: () => _openHierarchyCenter('Super Admin'),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
             // Main profile buttons
             Container(
               padding: const EdgeInsets.fromLTRB(8, 7, 8, 9),
@@ -5396,18 +5855,6 @@ class _ProfilePageState extends State<ProfilePage> {
                     label: 'My level',
                     color: const Color(0xFFFF8B22),
                     onTap: () => comingSoon('My level'),
-                  ),
-                  actionButton(
-                    icon: Icons.groups,
-                    label: 'Agency',
-                    color: const Color(0xFFFF6738),
-                    onTap: () => comingSoon('Agency'),
-                  ),
-                  actionButton(
-                    icon: Icons.bookmark,
-                    label: 'Points Center',
-                    color: const Color(0xFF00B88A),
-                    onTap: () => comingSoon('Points Center'),
                   ),
                   actionButton(
                     icon: Icons.badge,
