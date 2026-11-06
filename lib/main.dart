@@ -4643,6 +4643,24 @@ class _ProfilePageState extends State<ProfilePage> {
             children: [
               Card(
                 child: ListTile(
+                  leading: const Icon(Icons.verified_user),
+                  title: const Text('My Super Admin Status'),
+                  subtitle: const Text('Check Owner Super Admin access'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _openMySuperAdminStatusPage,
+                ),
+              ),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.groups),
+                  title: const Text('Active Super Admins'),
+                  subtitle: const Text('View all active Super Admin accounts'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _openActiveSuperAdminsPage,
+                ),
+              ),
+              Card(
+                child: ListTile(
                   leading: const Icon(Icons.admin_panel_settings),
                   title: const Text('Super Admin Activation'),
                   subtitle: const Text('Activate or deactivate a User ID'),
@@ -4673,6 +4691,122 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       ),
     );
+  }
+
+  Future<void> _openMySuperAdminStatusPage() async {
+    if (userCode != '1') return;
+
+    try {
+      final data = await _giftRequest('GET', '/agency/status');
+      if (!mounted) return;
+
+      final active = data['is_super_admin'] == true;
+      final role = data['role']?.toString() ?? 'unknown';
+
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (pageContext) => Scaffold(
+            appBar: AppBar(title: const Text('My Super Admin Status')),
+            body: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                ListTile(
+                  leading: Icon(
+                    active ? Icons.verified_user : Icons.warning,
+                    color: active ? Colors.green : Colors.red,
+                  ),
+                  title: const Text('Owner Account'),
+                  subtitle: Text('User ID: $userCode'),
+                ),
+                ListTile(
+                  title: const Text('Super Admin Access'),
+                  subtitle: Text(active ? 'ACTIVE' : 'INACTIVE'),
+                ),
+                ListTile(
+                  title: const Text('Server Role'),
+                  subtitle: Text(role.toUpperCase()),
+                ),
+                const Text(
+                  'Owner Super Admin access is automatic and cannot be deactivated.',
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Super Admin status error: $e')));
+    }
+  }
+
+  Future<void> _openActiveSuperAdminsPage() async {
+    if (userCode != '1') return;
+
+    try {
+      final data = await _giftRequest('GET', '/agency/super-admins');
+      if (!mounted) return;
+
+      final raw = data['super_admins'];
+      final admins = raw is List
+          ? raw
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .where(
+                  (admin) =>
+                      admin['is_active'] == 1 || admin['is_active'] == true,
+                )
+                .toList()
+          : <Map<String, dynamic>>[];
+
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (pageContext) => Scaffold(
+            appBar: AppBar(title: const Text('Active Super Admins')),
+            body: admins.isEmpty
+                ? const Center(child: Text('No active Super Admins found.'))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: admins.length,
+                    itemBuilder: (context, index) {
+                      final admin = admins[index];
+                      final code = admin['user_code']?.toString() ?? '';
+                      final name =
+                          admin['display_name']?.toString().trim() ?? '';
+                      final email = admin['google_email']?.toString() ?? '';
+                      final isOwner = code == '1';
+
+                      return Card(
+                        child: ListTile(
+                          leading: Icon(
+                            isOwner
+                                ? Icons.workspace_premium
+                                : Icons.admin_panel_settings,
+                          ),
+                          title: Text(name.isEmpty ? 'User $code' : name),
+                          subtitle: Text(
+                            'User ID: $code\n$email\n'
+                            '${isOwner ? 'OWNER ACCOUNT' : 'SUPER ADMIN'}',
+                          ),
+                          isThreeLine: true,
+                          trailing: const Icon(
+                            Icons.check_circle,
+                            color: Colors.green,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Super Admin list error: $e')));
+    }
   }
 
   Future<void> _openSuperAdminPage() async {

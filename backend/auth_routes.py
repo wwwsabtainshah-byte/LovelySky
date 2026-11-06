@@ -3776,6 +3776,48 @@ def agency_respond_invite(
         db.close()
 
 
+@router.get("/agency/super-admins")
+def agency_list_super_admins(authorization: str | None = Header(default=None)):
+    user = _agency_user(authorization)
+    if str(user["google_email"]).lower() != OWNER_EMAIL:
+        raise HTTPException(403, "Only the Owner can view Super Admins")
+
+    db = get_connection()
+    try:
+        _agency_role(db, user["google_uid"], user["google_email"])
+        db.commit()
+
+        rows = db.execute(
+            """
+            SELECT
+                u.user_code,
+                u.display_name,
+                u.google_email,
+                CASE
+                    WHEN lower(u.google_email)=? THEN 1
+                    ELSE COALESCE(s.is_active, 0)
+                END AS is_active,
+                COALESCE(s.activated_by, '') AS activated_by,
+                COALESCE(s.created_at, '') AS created_at
+            FROM users u
+            LEFT JOIN super_admins s ON s.user_uid=u.google_uid
+            WHERE s.user_uid IS NOT NULL
+               OR lower(u.google_email)=?
+            ORDER BY
+                CASE WHEN lower(u.google_email)=? THEN 0 ELSE 1 END,
+                CAST(u.user_code AS INTEGER)
+            """,
+            (OWNER_EMAIL, OWNER_EMAIL, OWNER_EMAIL),
+        ).fetchall()
+
+        return {
+            "success": True,
+            "super_admins": [dict(row) for row in rows],
+        }
+    finally:
+        db.close()
+
+
 @router.post("/agency/super-admins")
 def agency_manage_super_admin(
     payload: SuperAdminRequest,
