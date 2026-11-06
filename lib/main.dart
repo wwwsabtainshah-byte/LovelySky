@@ -1682,7 +1682,7 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
                   ? Image.network(
                       imageUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(
+                      errorBuilder: (_, _, _) => const Icon(
                         Icons.casino_rounded,
                         size: 42,
                         color: Color(0xFF168FFF),
@@ -1789,8 +1789,7 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
                           padding: const EdgeInsets.symmetric(horizontal: 14),
                           scrollDirection: Axis.horizontal,
                           itemCount: recentGames.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(width: 10),
+                          separatorBuilder: (_, _) => const SizedBox(width: 10),
                           itemBuilder: (_, index) => SizedBox(
                             width: 145,
                             child: _gameTile(recentGames[index]),
@@ -3403,7 +3402,7 @@ Future<void> _openLovelyVoiceRoomGiftStore(
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         itemCount: members.length + 1,
-                        separatorBuilder: (_, __) => const SizedBox(width: 9),
+                        separatorBuilder: (_, _) => const SizedBox(width: 9),
                         itemBuilder: (ctx, index) {
                           if (index == members.length) {
                             final active =
@@ -3500,7 +3499,7 @@ Future<void> _openLovelyVoiceRoomGiftStore(
                                               ? Image.network(
                                                   photo,
                                                   fit: BoxFit.cover,
-                                                  errorBuilder: (_, __, ___) =>
+                                                  errorBuilder: (_, _, _) =>
                                                       const Icon(Icons.person),
                                                 )
                                               : const ColoredBox(
@@ -3931,8 +3930,9 @@ Future<void> openLovelyRoomGiftStore(
                         receiverController.dispose();
                         if (receiverCode == null ||
                             receiverCode.isEmpty ||
-                            !sheetContext.mounted)
+                            !sheetContext.mounted) {
                           return;
+                        }
 
                         try {
                           final result = await _roomGiftRequest(
@@ -4105,1528 +4105,6 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  Future<void> _respondAgencyInvite(int id, bool accept) async {
-    try {
-      await _giftRequest(
-        'POST',
-        '/agency/invites/$id/respond',
-        body: {'accept': accept},
-      );
-      await _loadAgencyStatus();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(accept ? 'Invitation accepted' : 'Invitation rejected'),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Invitation error: $e')));
-    }
-  }
-
-  Future<void> _sendAgencyInvite(String inviteType) async {
-    final controller = TextEditingController();
-    final title = inviteType == 'bd'
-        ? 'Invite BD'
-        : inviteType == 'agent'
-        ? 'Invite Agency Owner'
-        : 'Invite Host';
-
-    final code = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'User ID',
-            hintText: 'Enter user code',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, controller.text.trim()),
-            child: const Text('Send invitation'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-
-    if (code == null || code.isEmpty) return;
-    try {
-      await _giftRequest(
-        'POST',
-        '/agency/invites',
-        body: {'user_code': code, 'invite_type': inviteType},
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invitation sent successfully')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Invitation error: $e')));
-    }
-  }
-
-  Future<void> _manageSuperAdmin() async {
-    final controller = TextEditingController();
-
-    final code = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Super Admin Management'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'User ID',
-                hintText: 'Enter user code',
-              ),
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  final id = controller.text.trim();
-                  if (id.isEmpty) return;
-                  Navigator.pop(dialogContext, 'on:$id');
-                },
-                icon: const Icon(Icons.verified_user),
-                label: const Text('Confirm Activation'),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, 'invite_bd'),
-            child: const Text('Invite BD'),
-          ),
-          TextButton(
-            onPressed: () {
-              final id = controller.text.trim();
-              if (id.isEmpty) return;
-              Navigator.pop(dialogContext, 'off:$id');
-            },
-            child: const Text('Deactivate'),
-          ),
-        ],
-      ),
-    );
-
-    controller.dispose();
-
-    if (code == 'invite_bd') {
-      await _sendAgencyInvite('bd');
-      return;
-    }
-
-    if (code == null || !code.contains(':')) return;
-
-    final parts = code.split(':');
-    if (parts.length != 2 || parts[1].isEmpty) return;
-
-    try {
-      await _giftRequest(
-        'POST',
-        '/agency/super-admins',
-        body: {'user_code': parts[1], 'active': parts[0] == 'on'},
-      );
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            parts[0] == 'on'
-                ? 'Super Admin activated'
-                : 'Super Admin deactivated',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Super Admin error: $e')));
-    }
-  }
-
-  Future<void> _openHostCenter() async {
-    await _loadAgencyStatus();
-    if (!mounted) return;
-    if (agencyInvites.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No pending invitations')));
-      return;
-    }
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Host Center - Invitations'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: agencyInvites.map((invite) {
-              final id = int.tryParse('${invite['id']}');
-              final type = invite['invite_type']?.toString() ?? '';
-              final inviter = invite['inviter_name']?.toString() ?? 'User';
-              final label = type == 'bd'
-                  ? 'BD invitation'
-                  : type == 'agent'
-                  ? 'Agency Owner invitation'
-                  : 'Host invitation';
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(label),
-                subtitle: Text('From: $inviter'),
-                trailing: id == null
-                    ? null
-                    : Wrap(
-                        spacing: 2,
-                        children: [
-                          IconButton(
-                            tooltip: 'Reject',
-                            icon: const Icon(Icons.close, color: Colors.red),
-                            onPressed: () {
-                              Navigator.pop(dialogContext);
-                              _respondAgencyInvite(id, false);
-                            },
-                          ),
-                          IconButton(
-                            tooltip: 'Accept',
-                            icon: const Icon(
-                              Icons.check_circle,
-                              color: Colors.green,
-                            ),
-                            onPressed: () {
-                              Navigator.pop(dialogContext);
-                              _respondAgencyInvite(id, true);
-                            },
-                          ),
-                        ],
-                      ),
-              );
-            }).toList(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _loadAgencyHosts() async {
-    try {
-      final data = await _giftRequest('GET', '/agency/hosts');
-      final raw = data['hosts'];
-      final hosts = raw is List
-          ? raw
-                .whereType<Map>()
-                .map((e) => Map<String, dynamic>.from(e))
-                .toList()
-          : <Map<String, dynamic>>[];
-      if (!mounted) return;
-      setState(() => agencyHosts = hosts);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Hosts loading error: $e')));
-    }
-  }
-
-  Future<void> _removeAgencyHost(String hostUid, String hostName) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Remove Host?'),
-        content: Text(
-          'Are you sure you want to remove $hostName from your Agency?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    try {
-      await _giftRequest(
-        'DELETE',
-        '/agency/hosts/${Uri.encodeComponent(hostUid)}',
-      );
-      await _loadAgencyHosts();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$hostName removed from your Agency')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Host removal error: $e')));
-    }
-  }
-
-  Future<void> _openAgencyCenter() async {
-    if (agencyRole != 'agency') {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Agency network access')));
-      return;
-    }
-
-    await _loadAgencyHosts();
-    if (!mounted) return;
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Agency Center'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 380),
-            child: agencyHosts.isEmpty
-                ? const Center(child: Text('No Hosts in your Agency yet'))
-                : ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: agencyHosts.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final host = agencyHosts[index];
-                      final uid = host['host_uid']?.toString() ?? '';
-                      final name = host['display_name']?.toString().trim();
-                      final code = host['user_code']?.toString() ?? '';
-                      final display = (name == null || name.isEmpty)
-                          ? 'Host'
-                          : name;
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(display),
-                        subtitle: Text('ID: $code'),
-                        trailing: IconButton(
-                          tooltip: 'Remove Host',
-                          icon: const Icon(
-                            Icons.person_remove,
-                            color: Colors.red,
-                          ),
-                          onPressed: uid.isEmpty
-                              ? null
-                              : () {
-                                  Navigator.pop(dialogContext);
-                                  _removeAgencyHost(uid, display);
-                                },
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _sendAgencyInvite('host');
-            },
-            child: const Text('Invite Host'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _openHierarchyCenter(String center) async {
-    switch (center) {
-      case 'Host Center':
-        if (agencyRole == 'user') {
-          await _openHostCenter();
-        } else {
-          await _openTargetSalary();
-        }
-        break;
-      case 'Agency':
-      case 'BD':
-      case 'Super Admin':
-        await _openTargetSalary();
-        break;
-    }
-  }
-
-  Future<void> _openTargetSalary() async {
-    final now = DateTime.now();
-    final currentMonth = DateTime(now.year, now.month);
-    final lastMonth = DateTime(now.year, now.month - 1);
-
-    String monthKey(DateTime d) =>
-        '${d.year}-${d.month.toString().padLeft(2, '0')}';
-
-    final currentKey = monthKey(currentMonth);
-    final lastKey = monthKey(lastMonth);
-    String month = currentKey;
-    String error = '';
-    bool loading = true;
-    Map<String, dynamic> report = {};
-    final stack = <Map<String, String>>[];
-    String search = '';
-
-    String number(dynamic value) {
-      final n = int.tryParse('$value') ?? 0;
-      final raw = n.toString();
-      final out = StringBuffer();
-      for (var i = 0; i < raw.length; i++) {
-        if (i > 0 && (raw.length - i) % 3 == 0) out.write(',');
-        out.write(raw[i]);
-      }
-      return out.toString();
-    }
-
-    String path() {
-      final uid = stack.isEmpty ? '' : stack.last['uid']!;
-      return '/agency/targets?month=$month'
-          '${uid.isEmpty ? '' : '&parent_uid=${Uri.encodeQueryComponent(uid)}'}';
-    }
-
-    Future<void> fetch() async {
-      loading = true;
-      error = '';
-      try {
-        final data = await _giftRequest('GET', path());
-        report = data;
-      } catch (e) {
-        error = e.toString();
-      }
-      loading = false;
-    }
-
-    await fetch();
-    if (!mounted) return;
-
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute<void>(
-        builder: (pageContext) => StatefulBuilder(
-          builder: (pageContext, setPageState) {
-            final own = report['own'] is Map
-                ? Map<String, dynamic>.from(report['own'] as Map)
-                : <String, dynamic>{};
-
-            final parent = report['parent'] is Map
-                ? Map<String, dynamic>.from(report['parent'] as Map)
-                : <String, dynamic>{};
-            final parentPhoto = '${parent['profile_photo'] ?? ''}';
-            final parentName = '${parent['display_name'] ?? 'Parent'}';
-            final parentCode = '${parent['user_code'] ?? ''}';
-            final joinedAt = '${report['joined_at'] ?? ''}';
-            final joinedDate = DateTime.tryParse(joinedAt)?.toLocal();
-            final joinedDateText = joinedDate == null
-                ? 'Unavailable'
-                : '${joinedDate.day.toString().padLeft(2, '0')}-'
-                      '${joinedDate.month.toString().padLeft(2, '0')}-'
-                      '${joinedDate.year}';
-
-            final members = (report['members'] as List? ?? [])
-                .whereType<Map>()
-                .map((e) => Map<String, dynamic>.from(e))
-                .where((e) {
-                  final q = search.toLowerCase();
-                  return q.isEmpty ||
-                      '${e['display_name'] ?? ''}'.toLowerCase().contains(q) ||
-                      '${e['user_code'] ?? ''}'.toLowerCase().contains(q);
-                })
-                .toList();
-
-            final role = '${report['role'] ?? ''}';
-            final isSuperAdminHome = role == 'super_admin' && stack.isEmpty;
-            final restrictedBdView =
-                agencyRole == 'super_admin' && stack.isNotEmpty && role == 'bd';
-            final income = own['income'] ?? 0;
-            final benefit = own['benefit'] ?? 0;
-            final progress = ((own['progress'] as num?) ?? 0).toDouble().clamp(
-              0,
-              100,
-            );
-            final next = own['next_target'];
-            final title = stack.isNotEmpty
-                ? '${stack.last['name']}'
-                : role == 'super_admin'
-                ? 'SUPER ADMIN CENTER'
-                : role == 'bd'
-                ? 'BD CENTER'
-                : role == 'agency'
-                ? 'AGENCY CENTER'
-                : role == 'host'
-                ? 'HOST CENTER'
-                : 'TARGET SALARY';
-
-            Future<void> reload() async {
-              setPageState(() => loading = true);
-              await fetch();
-              if (pageContext.mounted) setPageState(() {});
-            }
-
-            Future<void> openMember(Map<String, dynamic> member) async {
-              final uid = '${member['uid'] ?? ''}';
-              if (uid.isEmpty) return;
-              stack.add({
-                'uid': uid,
-                'name': '${member['display_name'] ?? 'Member'}',
-                'role': '${member['role'] ?? ''}',
-              });
-              search = '';
-              await reload();
-            }
-
-            return Scaffold(
-              backgroundColor: isSuperAdminHome
-                  ? const Color(0xFFDDF4FF)
-                  : const Color(0xFF180D30),
-              appBar: AppBar(
-                backgroundColor: isSuperAdminHome
-                    ? const Color(0xFFBCEBFF)
-                    : const Color(0xFF211044),
-                foregroundColor: Colors.white,
-                leading: IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () async {
-                    if (stack.isNotEmpty) {
-                      stack.removeLast();
-                      search = '';
-                      await reload();
-                    } else {
-                      Navigator.pop(pageContext);
-                    }
-                  },
-                ),
-                title: Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 17,
-                  ),
-                ),
-              ),
-              body: SafeArea(
-                child: loading
-                    ? const Center(
-                        child: CircularProgressIndicator(color: Colors.white),
-                      )
-                    : error.isNotEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                error,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                              const SizedBox(height: 12),
-                              ElevatedButton(
-                                onPressed: reload,
-                                child: const Text('Retry'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    : isSuperAdminHome
-                    ? ListView(
-                        padding: const EdgeInsets.all(16),
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [
-                                  Color(0xFFB9ECFF),
-                                  Color(0xFFE2F7FF),
-                                  Color(0xFFD8D5FF),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(22),
-                              border: Border.all(color: Colors.white, width: 2),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x33245A86),
-                                  blurRadius: 14,
-                                  offset: Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Column(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 34,
-                                      backgroundColor: Colors.white,
-                                      backgroundImage:
-                                          parentPhoto.startsWith('http')
-                                          ? NetworkImage(parentPhoto)
-                                          : null,
-                                      child: parentPhoto.startsWith('http')
-                                          ? null
-                                          : const Icon(
-                                              Icons.person,
-                                              size: 35,
-                                              color: Color(0xFF397BA7),
-                                            ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'ID: ${parentCode.isEmpty ? '1' : parentCode}',
-                                      style: const TextStyle(
-                                        color: Color(0xFF174C70),
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 13,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          gradient: const LinearGradient(
-                                            colors: [
-                                              Color(0xFFFFD66B),
-                                              Color(0xFFFF9E38),
-                                              Color(0xFFFFD66B),
-                                            ],
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                          border: Border.all(
-                                            color: Colors.white,
-                                            width: 1.5,
-                                          ),
-                                          boxShadow: const [
-                                            BoxShadow(
-                                              color: Color(0x665C3A12),
-                                              blurRadius: 5,
-                                              offset: Offset(0, 3),
-                                            ),
-                                          ],
-                                        ),
-                                        child: const Text(
-                                          '👑 OWNER',
-                                          style: TextStyle(
-                                            color: Color(0xFF713B13),
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: 1.2,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 7),
-                                      Text(
-                                        parentName,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Color(0xFF164D70),
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 17,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      const Text(
-                                        'INVITED BY',
-                                        style: TextStyle(
-                                          color: Color(0xFF477D9B),
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      const Icon(
-                                        Icons.calendar_month,
-                                        color: Color(0xFF6C55B5),
-                                        size: 23,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      const Text(
-                                        'DATE OF JOIN',
-                                        textAlign: TextAlign.end,
-                                        style: TextStyle(
-                                          color: Color(0xFF62519A),
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                      ),
-                                      Text(
-                                        joinedDateText,
-                                        textAlign: TextAlign.end,
-                                        style: const TextStyle(
-                                          color: Color(0xFF293D75),
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              IconButton(
-                                onPressed: month == lastKey
-                                    ? null
-                                    : () async {
-                                        month = lastKey;
-                                        await reload();
-                                      },
-                                icon: const Icon(
-                                  Icons.chevron_left,
-                                  color: Color(0xFF245D86),
-                                ),
-                              ),
-                              Text(
-                                month == currentKey
-                                    ? 'THIS MONTH'
-                                    : 'LAST MONTH',
-                                style: const TextStyle(
-                                  color: Color(0xFF245D86),
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: month == currentKey
-                                    ? null
-                                    : () async {
-                                        month = currentKey;
-                                        await reload();
-                                      },
-                                icon: const Icon(
-                                  Icons.chevron_right,
-                                  color: Color(0xFF245D86),
-                                ),
-                              ),
-                            ],
-                          ),
-                          Container(
-                            padding: const EdgeInsets.all(18),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [
-                                  Color(0xFF6546C8),
-                                  Color(0xFF3E73D8),
-                                  Color(0xFF258EAE),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(22),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x332A5D9B),
-                                  blurRadius: 12,
-                                  offset: Offset(0, 5),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'CURRENT TARGET',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1.1,
-                                  ),
-                                ),
-                                const SizedBox(height: 7),
-                                Text(
-                                  next == null
-                                      ? 'All targets completed'
-                                      : number(next),
-                                  style: const TextStyle(
-                                    color: Color(0xFFFFE18A),
-                                    fontSize: 25,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                                const SizedBox(height: 17),
-                                LayoutBuilder(
-                                  builder: (context, constraints) {
-                                    final width = constraints.maxWidth;
-                                    final dotLeft =
-                                        ((width - 18) * progress / 100).clamp(
-                                          0.0,
-                                          width - 18,
-                                        );
-                                    return SizedBox(
-                                      height: 27,
-                                      child: Stack(
-                                        alignment: Alignment.centerLeft,
-                                        children: [
-                                          Container(
-                                            height: 9,
-                                            width: width,
-                                            decoration: BoxDecoration(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.28,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(20),
-                                            ),
-                                          ),
-                                          Container(
-                                            height: 9,
-                                            width: width * progress / 100,
-                                            decoration: BoxDecoration(
-                                              gradient: const LinearGradient(
-                                                colors: [
-                                                  Color(0xFF68F0C0),
-                                                  Color(0xFFFFE36B),
-                                                ],
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(20),
-                                            ),
-                                          ),
-                                          AnimatedPositioned(
-                                            duration: const Duration(
-                                              milliseconds: 650,
-                                            ),
-                                            curve: Curves.easeOutCubic,
-                                            left: dotLeft,
-                                            top: 0,
-                                            child: Container(
-                                              width: 18,
-                                              height: 27,
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFFFFA83D),
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                                border: Border.all(
-                                                  color: Colors.white,
-                                                  width: 2,
-                                                ),
-                                                boxShadow: const [
-                                                  BoxShadow(
-                                                    color: Colors.black26,
-                                                    blurRadius: 5,
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          const Text(
-                                            'CURRENT SALARY',
-                                            style: TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          Text(
-                                            number(income),
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.end,
-                                        children: [
-                                          const Text(
-                                            'TARGET SALARY',
-                                            textAlign: TextAlign.end,
-                                            style: TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          Text(
-                                            next == null
-                                                ? 'Completed'
-                                                : number(next),
-                                            textAlign: TextAlign.end,
-                                            style: const TextStyle(
-                                              color: Color(0xFFFFE18A),
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  'Progress: ${progress.toStringAsFixed(1)}%',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                          TextField(
-                            onChanged: (v) => setPageState(() => search = v),
-                            style: const TextStyle(color: Color(0xFF214F70)),
-                            decoration: InputDecoration(
-                              hintText: 'Search BD name or ID',
-                              prefixIcon: const Icon(
-                                Icons.search,
-                                color: Color(0xFF477FA2),
-                              ),
-                              filled: true,
-                              fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 13,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(15),
-                                borderSide: BorderSide.none,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 17),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                'BD MEMBERS',
-                                style: TextStyle(
-                                  color: Color(0xFF245D86),
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              Text(
-                                '${members.length} Members',
-                                style: const TextStyle(
-                                  color: Color(0xFF527D99),
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          if (members.isEmpty)
-                            const Padding(
-                              padding: EdgeInsets.all(25),
-                              child: Text(
-                                'No BD members found.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Color(0xFF527D99)),
-                              ),
-                            ),
-                          ...members.map((member) {
-                            final photo = '${member['profile_photo'] ?? ''}';
-                            final name = '${member['display_name'] ?? 'BD'}';
-                            final code = '${member['user_code'] ?? ''}';
-                            return Card(
-                              elevation: 4,
-                              color: Colors.white,
-                              margin: const EdgeInsets.only(bottom: 11),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(17),
-                              ),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(17),
-                                onTap: () => openMember(member),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 13,
-                                    vertical: 14,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Column(
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 27,
-                                            backgroundColor: const Color(
-                                              0xFFD9F1FF,
-                                            ),
-                                            backgroundImage:
-                                                photo.startsWith('http')
-                                                ? NetworkImage(photo)
-                                                : null,
-                                            child: photo.startsWith('http')
-                                                ? null
-                                                : const Icon(
-                                                    Icons.person,
-                                                    color: Color(0xFF397BA7),
-                                                    size: 28,
-                                                  ),
-                                          ),
-                                          const SizedBox(height: 5),
-                                          Text(
-                                            'ID: $code',
-                                            style: const TextStyle(
-                                              color: Color(0xFF47718D),
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Text(
-                                          name,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            color: Color(0xFF254E70),
-                                            fontWeight: FontWeight.w900,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.end,
-                                        children: [
-                                          const Text(
-                                            'BENEFIT / SALARY',
-                                            style: TextStyle(
-                                              color: Color(0xFF7B65B7),
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                          Text(
-                                            number(member['benefit']),
-                                            style: const TextStyle(
-                                              color: Color(0xFF168B78),
-                                              fontSize: 17,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(width: 3),
-                                      const Icon(
-                                        Icons.chevron_right,
-                                        color: Color(0xFF8B83B7),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-                        ],
-                      )
-                    : ListView(
-                        padding: const EdgeInsets.all(16),
-                        children: [
-                          if (parent.isNotEmpty) ...[
-                            Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: Colors.white24),
-                              ),
-                              child: Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 27,
-                                    backgroundColor: const Color(0xFF7138C8),
-                                    backgroundImage: parentPhoto.isNotEmpty
-                                        ? NetworkImage(parentPhoto)
-                                        : null,
-                                    child: parentPhoto.isEmpty
-                                        ? const Icon(
-                                            Icons.person,
-                                            color: Colors.white,
-                                            size: 28,
-                                          )
-                                        : null,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'PARENT / INVITED BY',
-                                          style: TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          parentName,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                        if (parentCode.isNotEmpty)
-                                          Text(
-                                            'Easy ID: $parentCode',
-                                            style: const TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              IconButton(
-                                onPressed: month == lastKey
-                                    ? null
-                                    : () async {
-                                        month = lastKey;
-                                        await reload();
-                                      },
-                                icon: const Icon(
-                                  Icons.chevron_left,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              Text(
-                                month == currentKey
-                                    ? 'This Month'
-                                    : 'Last Month',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: month == currentKey
-                                    ? null
-                                    : () async {
-                                        month = currentKey;
-                                        await reload();
-                                      },
-                                icon: const Icon(
-                                  Icons.chevron_right,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Container(
-                            padding: const EdgeInsets.all(18),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF7138C8), Color(0xFF392078)],
-                              ),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${role.toUpperCase()} MONTHLY TARGET',
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                if (!restrictedBdView) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    number(income),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 29,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        number(income),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                      const Text(
-                                        'TARGET',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 7),
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: LinearProgressIndicator(
-                                      value: progress / 100,
-                                      minHeight: 10,
-                                      backgroundColor: Colors.white24,
-                                      valueColor: const AlwaysStoppedAnimation(
-                                        Color(0xFFFFB347),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                ],
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Text(
-                                      'SALARY / BENEFIT',
-                                      style: TextStyle(color: Colors.white70),
-                                    ),
-                                    Text(
-                                      number(benefit),
-                                      style: const TextStyle(
-                                        color: Color(0xFFFFD27A),
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (!restrictedBdView) ...[
-                                  const SizedBox(height: 5),
-                                  Text(
-                                    next == null
-                                        ? 'All targets completed'
-                                        : 'Next target: ${number(next)}',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  onChanged: (v) =>
-                                      setPageState(() => search = v),
-                                  style: const TextStyle(color: Colors.white),
-                                  decoration: InputDecoration(
-                                    hintText: 'Search name or easy ID',
-                                    hintStyle: const TextStyle(
-                                      color: Colors.white54,
-                                    ),
-                                    prefixIcon: const Icon(
-                                      Icons.search,
-                                      color: Colors.white70,
-                                    ),
-                                    filled: true,
-                                    fillColor: Colors.white.withValues(
-                                      alpha: 0.09,
-                                    ),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              if (stack.isEmpty &&
-                                  (role == 'super_admin' ||
-                                      role == 'bd' ||
-                                      role == 'agency'))
-                                const SizedBox(width: 8),
-                              if (stack.isEmpty &&
-                                  (role == 'super_admin' ||
-                                      role == 'bd' ||
-                                      role == 'agency'))
-                                SizedBox(
-                                  height: 52,
-                                  child: ElevatedButton.icon(
-                                    onPressed: () {
-                                      final type = {
-                                        'super_admin': 'bd',
-                                        'bd': 'agent',
-                                        'agency': 'host',
-                                      }[role];
-                                      if (type != null) _sendAgencyInvite(type);
-                                    },
-                                    icon: const Icon(
-                                      Icons.person_add_alt_1,
-                                      size: 18,
-                                    ),
-                                    label: const Text('Invite'),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 15),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                role == 'super_admin'
-                                    ? 'BD MEMBERS'
-                                    : role == 'bd'
-                                    ? 'AGENCIES'
-                                    : role == 'agency'
-                                    ? 'HOSTS'
-                                    : 'MEMBERS',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                '${members.length} Members',
-                                style: const TextStyle(color: Colors.white70),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          if (members.isEmpty)
-                            const Padding(
-                              padding: EdgeInsets.all(25),
-                              child: Text(
-                                'No hierarchy members found.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.white70),
-                              ),
-                            ),
-                          ...members.map((member) {
-                            final photo = '${member['profile_photo'] ?? ''}';
-                            final name =
-                                '${member['display_name'] ?? 'Member'}';
-                            final code = '${member['user_code'] ?? ''}';
-                            final memberRole = '${member['role'] ?? ''}';
-                            final memberProgress =
-                                (((member['progress'] as num?) ?? 0)
-                                            .toDouble() /
-                                        100)
-                                    .clamp(0.0, 1.0);
-
-                            return Card(
-                              color: const Color(0xFF2A1947),
-                              margin: const EdgeInsets.only(bottom: 10),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(15),
-                                onTap:
-                                    ((role == 'super_admin' &&
-                                            memberRole == 'bd') ||
-                                        (role == 'bd' &&
-                                            memberRole == 'agency') ||
-                                        (role == 'agency' &&
-                                            memberRole == 'host'))
-                                    ? () => openMember(member)
-                                    : null,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(13),
-                                  child: Column(
-                                    children: [
-                                      Row(
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 23,
-                                            backgroundImage:
-                                                photo.startsWith('http')
-                                                ? NetworkImage(photo)
-                                                : null,
-                                            child: photo.startsWith('http')
-                                                ? null
-                                                : const Icon(Icons.person),
-                                          ),
-                                          const SizedBox(width: 11),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  name,
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                                Text(
-                                                  '$memberRole • ID: $code',
-                                                  style: const TextStyle(
-                                                    color: Colors.white70,
-                                                    fontSize: 11,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.end,
-                                            children: [
-                                              Text(
-                                                number(
-                                                  role == 'super_admin'
-                                                      ? member['benefit']
-                                                      : member['income'],
-                                                ),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              Text(
-                                                role == 'super_admin'
-                                                    ? 'Salary / Benefit'
-                                                    : 'Benefit: ${number(member['benefit'])}',
-                                                style: const TextStyle(
-                                                  color: Color(0xFFFFC36B),
-                                                  fontSize: 11,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          if (memberRole != 'host')
-                                            const Icon(
-                                              Icons.chevron_right,
-                                              color: Colors.white70,
-                                            ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 10),
-                                      LinearProgressIndicator(
-                                        value: memberProgress,
-                                        minHeight: 5,
-                                        backgroundColor: Colors.white24,
-                                        valueColor:
-                                            const AlwaysStoppedAnimation(
-                                              Color(0xFFFFB347),
-                                            ),
-                                      ),
-                                      const SizedBox(height: 5),
-                                      Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: Text(
-                                          'Completed target: ${number(member['completed_target'])}',
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-                        ],
-                      ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
   Future<void> _openWallet() async {
     try {
       final data = await _giftRequest('GET', '/games/wallet');
@@ -5764,6 +4242,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                     'GET',
                                     '/games/wallet',
                                   );
+                                  if (!mounted || !sheetContext.mounted) return;
                                   coins =
                                       int.tryParse(
                                         '${updated['coins'] ?? result['coins'] ?? 0}',
@@ -5784,7 +4263,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                           .toList();
                                   exchangeController.clear();
                                   setSheetState(() {});
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                  ScaffoldMessenger.of(
+                                    sheetContext,
+                                  ).showSnackBar(
                                     SnackBar(
                                       content: Text(
                                         '${result['coins_received']} Coins added successfully!',
@@ -5875,7 +4356,7 @@ class _ProfilePageState extends State<ProfilePage> {
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -5941,7 +4422,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     child: ListView.separated(
                       shrinkWrap: true,
                       itemCount: gifts.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      separatorBuilder: (_, _) => const Divider(height: 1),
                       itemBuilder: (context, index) {
                         final gift = gifts[index];
                         final cost = int.tryParse('${gift['coin_cost']}') ?? 0;
@@ -5984,8 +4465,9 @@ class _ProfilePageState extends State<ProfilePage> {
                               ),
                             );
                             receiverController.dispose();
-                            if (receiverCode == null || receiverCode.isEmpty)
+                            if (receiverCode == null || receiverCode.isEmpty) {
                               return;
+                            }
 
                             try {
                               final result = await _giftRequest(
@@ -5998,9 +4480,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                 },
                               );
                               wallet['coins'] = result['sender_coins'];
-                              if (!mounted) return;
+                              if (!mounted || !sheetContext.mounted) return;
                               setSheetState(() {});
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              ScaffoldMessenger.of(sheetContext).showSnackBar(
                                 SnackBar(
                                   content: Text(
                                     '${gift['name']} sent! '
@@ -6009,8 +4491,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               );
                             } catch (e) {
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              if (!mounted || !sheetContext.mounted) return;
+                              ScaffoldMessenger.of(sheetContext).showSnackBar(
                                 SnackBar(content: Text(e.toString())),
                               );
                             }
@@ -6149,6 +4631,202 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<void> _openOwnerDashboard() async {
+    if (userCode != '1') return;
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (dashboardContext) => Scaffold(
+          appBar: AppBar(title: const Text('Owner Dashboard')),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.admin_panel_settings),
+                  title: const Text('Super Admin Activation'),
+                  subtitle: const Text('Activate or deactivate a User ID'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _openSuperAdminPage,
+                ),
+              ),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.account_balance_wallet),
+                  title: const Text('Coins Issuance'),
+                  subtitle: const Text('Issue coins to a user ID'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _showOwnerCoinPanel,
+                ),
+              ),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.storage),
+                  title: const Text('Cloud Database Check'),
+                  subtitle: const Text('Owner-only server diagnostic'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _openCloudDatabasePage,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openSuperAdminPage() async {
+    if (userCode != '1') return;
+
+    final controller = TextEditingController();
+    bool processing = false;
+
+    Future<void> updateStatus(
+      bool active,
+      BuildContext pageContext,
+      StateSetter setPageState,
+    ) async {
+      final code = controller.text.trim();
+
+      if (code.isEmpty || int.tryParse(code) == null) {
+        ScaffoldMessenger.of(
+          pageContext,
+        ).showSnackBar(const SnackBar(content: Text('Enter a valid User ID')));
+        return;
+      }
+
+      setPageState(() => processing = true);
+
+      try {
+        await _giftRequest(
+          'POST',
+          '/agency/super-admins',
+          body: {'user_code': code, 'active': active},
+        );
+
+        if (!pageContext.mounted) return;
+
+        ScaffoldMessenger.of(pageContext).showSnackBar(
+          SnackBar(
+            content: Text(
+              active ? 'Super Admin activated' : 'Super Admin deactivated',
+            ),
+          ),
+        );
+        controller.clear();
+      } catch (e) {
+        if (!pageContext.mounted) return;
+
+        ScaffoldMessenger.of(pageContext)
+            .showSnackBar(SnackBar(content: Text('Super Admin error: $e')));
+      } finally {
+        if (pageContext.mounted) {
+          setPageState(() => processing = false);
+        }
+      }
+    }
+
+    try {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (pageContext) => Scaffold(
+            appBar: AppBar(title: const Text('Super Admin Activation')),
+            body: StatefulBuilder(
+              builder: (pageContext, setPageState) => ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  const Text(
+                    'Manage Super Admin',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('Enter the user ID to change its status.'),
+                  const SizedBox(height: 18),
+                  TextField(
+                    controller: controller,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'User ID',
+                      hintText: 'Enter user code',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: processing
+                          ? null
+                          : () => updateStatus(true, pageContext, setPageState),
+                      icon: const Icon(Icons.check_circle),
+                      label: const Text('Activate Super Admin'),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: processing
+                          ? null
+                          : () =>
+                                updateStatus(false, pageContext, setPageState),
+                      icon: const Icon(Icons.remove_circle_outline),
+                      label: const Text('Deactivate Super Admin'),
+                    ),
+                  ),
+                  if (processing) ...[
+                    const SizedBox(height: 18),
+                    const Center(child: CircularProgressIndicator()),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+
+  Future<void> _openCloudDatabasePage() async {
+    if (userCode != '1') return;
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (pageContext) => Scaffold(
+          appBar: AppBar(title: const Text('Cloud Database Check')),
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.storage, size: 64),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Run the owner-only cloud database diagnostic.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: databaseChecking ? null : _checkCloudDatabase,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Run Database Check'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _showOwnerCoinPanel() async {
     final idController = TextEditingController();
     const amounts = <int>[1000, 2000, 5000, 10000, 100000, 1000000, 5000000];
@@ -6166,328 +4844,348 @@ class _ProfilePageState extends State<ProfilePage> {
     bool lookingUp = false;
 
     try {
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.white,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        builder: (sheetContext) => StatefulBuilder(
-          builder: (sheetContext, setSheetState) => Padding(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              22,
-              20,
-              MediaQuery.of(sheetContext).viewInsets.bottom + 24,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Owner Wallet',
-                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                const Text('Enter the recipient User ID'),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: idController,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: 'User ID',
-                    hintText: 'e.g. 1001',
-                    prefixIcon: const Icon(Icons.person_search_rounded),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (pageContext) => Scaffold(
+            appBar: AppBar(title: const Text('Coins Issuance')),
+            body: SafeArea(
+              child: StatefulBuilder(
+                builder: (pageContext, setSheetState) => Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    22,
+                    20,
+                    MediaQuery.of(pageContext).viewInsets.bottom + 24,
                   ),
-                ),
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(sheetContext);
-                      _manageSuperAdmin();
-                    },
-                    icon: const Icon(Icons.admin_panel_settings),
-                    label: const Text('Super Admin Activation'),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                const Text(
-                  'Select Coins',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: amounts.map((amount) {
-                    return ChoiceChip(
-                      label: Text(labels[amount]!),
-                      selected: selectedAmount == amount,
-                      onSelected: (selected) {
-                        if (selected) {
-                          setSheetState(() => selectedAmount = amount);
-                        }
-                      },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: lookingUp
-                        ? null
-                        : () async {
-                            final code = idController.text.trim();
-                            if (code.isEmpty || int.tryParse(code) == null) {
-                              if (!sheetContext.mounted || !mounted) return;
-                              ScaffoldMessenger.of(sheetContext).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Enter a valid User ID'),
-                                ),
-                              );
-                              return;
-                            }
-
-                            setSheetState(() => lookingUp = true);
-                            try {
-                              final prefs =
-                                  await SharedPreferences.getInstance();
-                              final token = prefs.getString('lovely_token');
-                              if (token == null || token.isEmpty) {
-                                throw Exception(
-                                  'Login required. Please sign in again.',
-                                );
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Owner Wallet',
+                        style: TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text('Enter the recipient User ID'),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: idController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: 'User ID',
+                          hintText: 'e.g. 1001',
+                          prefixIcon: const Icon(Icons.person_search_rounded),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      const Text(
+                        'Select Coins',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: amounts.map((amount) {
+                          return ChoiceChip(
+                            label: Text(labels[amount]!),
+                            selected: selectedAmount == amount,
+                            onSelected: (selected) {
+                              if (selected) {
+                                setSheetState(() => selectedAmount = amount);
                               }
+                            },
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: lookingUp
+                              ? null
+                              : () async {
+                                  final code = idController.text.trim();
+                                  if (code.isEmpty ||
+                                      int.tryParse(code) == null) {
+                                    if (!pageContext.mounted || !mounted) {
+                                      return;
+                                    }
+                                    ScaffoldMessenger.of(
+                                      pageContext,
+                                    ).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Enter a valid User ID'),
+                                      ),
+                                    );
+                                    return;
+                                  }
 
-                              final response = await http
-                                  .get(
-                                    Uri.parse(
-                                      '$lovelyApi/owner/coins/lookup/$code',
-                                    ),
-                                    headers: {'Authorization': 'Bearer $token'},
-                                  )
-                                  .timeout(const Duration(seconds: 20));
+                                  setSheetState(() => lookingUp = true);
+                                  try {
+                                    final prefs =
+                                        await SharedPreferences.getInstance();
+                                    final token = prefs.getString(
+                                      'lovely_token',
+                                    );
+                                    if (token == null || token.isEmpty) {
+                                      throw Exception(
+                                        'Login required. Please sign in again.',
+                                      );
+                                    }
 
-                              final decoded = jsonDecode(response.body);
-                              if (response.statusCode != 200 ||
-                                  decoded is! Map<String, dynamic> ||
-                                  decoded['user'] is! Map) {
-                                final detail = decoded is Map
-                                    ? decoded['detail']?.toString()
-                                    : null;
-                                throw Exception(detail ?? 'User lookup failed');
-                              }
+                                    final response = await http
+                                        .get(
+                                          Uri.parse(
+                                            '$lovelyApi/owner/coins/lookup/$code',
+                                          ),
+                                          headers: {
+                                            'Authorization': 'Bearer $token',
+                                          },
+                                        )
+                                        .timeout(const Duration(seconds: 20));
 
-                              final recipient = Map<String, dynamic>.from(
-                                decoded['user'] as Map,
-                              );
-                              final recipientName =
-                                  recipient['display_name']?.toString() ??
-                                  'Lovely User';
-                              final recipientCode =
-                                  recipient['user_code']?.toString() ?? code;
-                              final photo =
-                                  recipient['profile_photo']?.toString() ?? '';
+                                    final decoded = jsonDecode(response.body);
+                                    if (response.statusCode != 200 ||
+                                        decoded is! Map<String, dynamic> ||
+                                        decoded['user'] is! Map) {
+                                      final detail = decoded is Map
+                                          ? decoded['detail']?.toString()
+                                          : null;
+                                      throw Exception(
+                                        detail ?? 'User lookup failed',
+                                      );
+                                    }
 
-                              if (!mounted) return;
-                              if (!sheetContext.mounted) return;
-                              Navigator.of(sheetContext).pop();
+                                    final recipient = Map<String, dynamic>.from(
+                                      decoded['user'] as Map,
+                                    );
+                                    final recipientName =
+                                        recipient['display_name']?.toString() ??
+                                        'Lovely User';
+                                    final recipientCode =
+                                        recipient['user_code']?.toString() ??
+                                        code;
+                                    final photo =
+                                        recipient['profile_photo']
+                                            ?.toString() ??
+                                        '';
 
-                              bool issuing = false;
-                              await showDialog<void>(
-                                context: context,
-                                barrierDismissible: false,
-                                builder: (dialogContext) => StatefulBuilder(
-                                  builder: (dialogContext, setDialogState) => AlertDialog(
-                                    title: const Text('Confirm Coin Issue'),
-                                    content: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        CircleAvatar(
-                                          radius: 34,
-                                          backgroundImage:
-                                              photo.startsWith('http')
-                                              ? NetworkImage(photo)
-                                              : null,
-                                          child: photo.startsWith('http')
-                                              ? null
-                                              : const Icon(
-                                                  Icons.person,
-                                                  size: 34,
+                                    if (!mounted) return;
+                                    if (!pageContext.mounted) return;
+                                    Navigator.of(pageContext).pop();
+
+                                    bool issuing = false;
+                                    await showDialog<void>(
+                                      context: context,
+                                      barrierDismissible: false,
+                                      builder: (dialogContext) => StatefulBuilder(
+                                        builder: (dialogContext, setDialogState) => AlertDialog(
+                                          title: const Text(
+                                            'Confirm Coin Issue',
+                                          ),
+                                          content: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              CircleAvatar(
+                                                radius: 34,
+                                                backgroundImage:
+                                                    photo.startsWith('http')
+                                                    ? NetworkImage(photo)
+                                                    : null,
+                                                child: photo.startsWith('http')
+                                                    ? null
+                                                    : const Icon(
+                                                        Icons.person,
+                                                        size: 34,
+                                                      ),
+                                              ),
+                                              const SizedBox(height: 12),
+                                              Text(
+                                                recipientName,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 18,
                                                 ),
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Text(
-                                          recipientName,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 18,
+                                              ),
+                                              Text('User ID: $recipientCode'),
+                                              const SizedBox(height: 14),
+                                              Text(
+                                                '${labels[selectedAmount]} Coins',
+                                                style: const TextStyle(
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Color(0xFF087FE8),
+                                                ),
+                                              ),
+                                              const SizedBox(height: 8),
+                                              const Text(
+                                                'Coins will be issued by the system. '
+                                                'Your personal wallet will not be debited.',
+                                                textAlign: TextAlign.center,
+                                              ),
+                                            ],
                                           ),
-                                        ),
-                                        Text('User ID: $recipientCode'),
-                                        const SizedBox(height: 14),
-                                        Text(
-                                          '${labels[selectedAmount]} Coins',
-                                          style: const TextStyle(
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFF087FE8),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        const Text(
-                                          'Coins will be issued by the system. '
-                                          'Your personal wallet will not be debited.',
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ],
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: issuing
-                                            ? null
-                                            : () =>
-                                                  Navigator.of(dialogContext)
-                                                      .pop(),
-                                        child: const Text('Cancel'),
-                                      ),
-                                      ElevatedButton(
-                                        onPressed: issuing
-                                            ? null
-                                            : () async {
-                                                setDialogState(
-                                                  () => issuing = true,
-                                                );
-                                                try {
-                                                  final prefs =
-                                                      await SharedPreferences.getInstance();
-                                                  final token = prefs.getString(
-                                                    'lovely_token',
-                                                  );
-                                                  if (token == null ||
-                                                      token.isEmpty) {
-                                                    throw Exception(
-                                                      'Login required',
-                                                    );
-                                                  }
-
-                                                  final issueResponse = await http
-                                                      .post(
-                                                        Uri.parse(
-                                                          '$lovelyApi/owner/coins/issue',
-                                                        ),
-                                                        headers: {
-                                                          'Authorization':
-                                                              'Bearer $token',
-                                                          'Content-Type': 'application/json',
-                                                        },
-                                                        body: jsonEncode({
-                                                          'user_code':
-                                                              recipientCode,
-                                                          'amount':
-                                                              selectedAmount,
-                                                        }),
-                                                      )
-                                                      .timeout(
-                                                        const Duration(
-                                                          seconds: 20,
-                                                        ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: issuing
+                                                  ? null
+                                                  : () => Navigator.of(
+                                                      dialogContext,
+                                                    ).pop(),
+                                              child: const Text('Cancel'),
+                                            ),
+                                            ElevatedButton(
+                                              onPressed: issuing
+                                                  ? null
+                                                  : () async {
+                                                      setDialogState(
+                                                        () => issuing = true,
                                                       );
+                                                      try {
+                                                        final prefs =
+                                                            await SharedPreferences.getInstance();
+                                                        final token = prefs
+                                                            .getString(
+                                                              'lovely_token',
+                                                            );
+                                                        if (token == null ||
+                                                            token.isEmpty) {
+                                                          throw Exception(
+                                                            'Login required',
+                                                          );
+                                                        }
 
-                                                  final result = jsonDecode(
-                                                    issueResponse.body,
-                                                  );
-                                                  if (issueResponse
-                                                              .statusCode !=
-                                                          200 ||
-                                                      result is! Map ||
-                                                      result['success'] !=
-                                                          true) {
-                                                    final detail = result is Map
-                                                        ? result['detail']
-                                                              ?.toString()
-                                                        : null;
-                                                    throw Exception(
-                                                      detail ??
-                                                          'Coin issue failed',
-                                                    );
-                                                  }
+                                                        final issueResponse = await http
+                                                            .post(
+                                                              Uri.parse(
+                                                                '$lovelyApi/owner/coins/issue',
+                                                              ),
+                                                              headers: {
+                                                                'Authorization':
+                                                                    'Bearer $token',
+                                                                'Content-Type': 'application/json',
+                                                              },
+                                                              body: jsonEncode({
+                                                                'user_code':
+                                                                    recipientCode,
+                                                                'amount':
+                                                                    selectedAmount,
+                                                              }),
+                                                            )
+                                                            .timeout(
+                                                              const Duration(
+                                                                seconds: 20,
+                                                              ),
+                                                            );
 
-                                                  final newBalance =
-                                                      result['new_balance'];
-                                                  if (!mounted) return;
-                                                  if (!dialogContext.mounted) {
-                                                    return;
-                                                  }
-                                                  Navigator.of(dialogContext)
-                                                      .pop();
-                                                  ScaffoldMessenger.of(
-                                                    context,
-                                                  ).showSnackBar(
-                                                    SnackBar(
-                                                      content: Text(
-                                                        '${labels[selectedAmount]} Coins added to ID $recipientCode. '
-                                                        'New balance: $newBalance',
-                                                      ),
-                                                      duration: const Duration(
-                                                        seconds: 4,
-                                                      ),
-                                                    ),
-                                                  );
-                                                } catch (e) {
-                                                  setDialogState(
-                                                    () => issuing = false,
-                                                  );
-                                                  ScaffoldMessenger.of(context)
-                                                      .showSnackBar(
-                                                        SnackBar(
-                                                          content: Text(
-                                                            e.toString(),
+                                                        final result =
+                                                            jsonDecode(
+                                                              issueResponse
+                                                                  .body,
+                                                            );
+                                                        if (issueResponse
+                                                                    .statusCode !=
+                                                                200 ||
+                                                            result is! Map ||
+                                                            result['success'] !=
+                                                                true) {
+                                                          final detail =
+                                                              result is Map
+                                                              ? result['detail']
+                                                                    ?.toString()
+                                                              : null;
+                                                          throw Exception(
+                                                            detail ?? 'Coin issue failed',
+                                                          );
+                                                        }
+
+                                                        final newBalance =
+                                                            result['new_balance'];
+                                                        if (!mounted) return;
+                                                        if (!dialogContext
+                                                            .mounted) {
+                                                          return;
+                                                        }
+                                                        Navigator.of(
+                                                          dialogContext,
+                                                        ).pop();
+                                                        ScaffoldMessenger.of(
+                                                          context,
+                                                        ).showSnackBar(
+                                                          SnackBar(
+                                                            content: Text(
+                                                              '${labels[selectedAmount]} Coins added to ID $recipientCode. '
+                                                              'New balance: $newBalance',
+                                                            ),
+                                                            duration:
+                                                                const Duration(
+                                                                  seconds: 4,
+                                                                ),
                                                           ),
-                                                        ),
-                                                      );
-                                                }
-                                              },
-                                        child: issuing
-                                            ? const SizedBox(
-                                                width: 18,
-                                                height: 18,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2,
+                                                        );
+                                                      } catch (e) {
+                                                        setDialogState(
+                                                          () => issuing = false,
+                                                        );
+                                                        ScaffoldMessenger.of(
+                                                          context,
+                                                        ).showSnackBar(
+                                                          SnackBar(
+                                                            content: Text(
+                                                              e.toString(),
+                                                            ),
+                                                          ),
+                                                        );
+                                                      }
+                                                    },
+                                              child: issuing
+                                                  ? const SizedBox(
+                                                      width: 18,
+                                                      height: 18,
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                            strokeWidth: 2,
+                                                          ),
+                                                    )
+                                                  : const Text(
+                                                      'Confirm & Issue',
                                                     ),
-                                              )
-                                            : const Text('Confirm & Issue'),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ],
+                                    );
+                                  } catch (e) {
+                                    if (!pageContext.mounted) return;
+                                    setSheetState(() => lookingUp = false);
+                                    ScaffoldMessenger.of(pageContext)
+                                        .showSnackBar(
+                                          SnackBar(content: Text(e.toString())),
+                                        );
+                                  }
+                                },
+                          child: lookingUp
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
                                   ),
-                                ),
-                              );
-                            } catch (e) {
-                              if (!sheetContext.mounted) return;
-                              setSheetState(() => lookingUp = false);
-                              ScaffoldMessenger.of(sheetContext).showSnackBar(
-                                SnackBar(content: Text(e.toString())),
-                              );
-                            }
-                          },
-                    child: lookingUp
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Continue'),
+                                )
+                              : const Text('Continue'),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -6593,14 +5291,14 @@ class _ProfilePageState extends State<ProfilePage> {
                     height: 49,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [color, color.withOpacity(0.72)],
+                        colors: [color, color.withValues(alpha: 0.72)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(15),
                       boxShadow: [
                         BoxShadow(
-                          color: color.withOpacity(0.24),
+                          color: color.withValues(alpha: 0.24),
                           blurRadius: 9,
                           offset: const Offset(0, 4),
                         ),
@@ -6736,7 +5434,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 borderRadius: BorderRadius.circular(27),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF6300A8).withOpacity(0.25),
+                    color: const Color(0xFF6300A8).withValues(alpha: 0.25),
                     blurRadius: 18,
                     offset: const Offset(0, 8),
                   ),
@@ -7082,30 +5780,11 @@ class _ProfilePageState extends State<ProfilePage> {
               Card(
                 color: Colors.white,
                 child: ListTile(
-                  leading: const Icon(
-                    Icons.account_balance_wallet,
-                    color: blue,
-                  ),
-                  title: const Text('Owner Wallet'),
-                  subtitle: const Text('Issue coins to a user ID'),
+                  leading: const Icon(Icons.dashboard_customize, color: blue),
+                  title: const Text('Owner Dashboard'),
+                  subtitle: const Text('Super Admin, Coins and Cloud Database'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: _showOwnerCoinPanel,
-                ),
-              ),
-              Card(
-                color: Colors.white,
-                child: ListTile(
-                  leading: const Icon(Icons.storage, color: blue),
-                  title: const Text('Cloud Database Check'),
-                  subtitle: const Text('Owner-only server diagnostic'),
-                  trailing: databaseChecking
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.chevron_right),
-                  onTap: databaseChecking ? null : _checkCloudDatabase,
+                  onTap: _openOwnerDashboard,
                 ),
               ),
             ],
@@ -7657,7 +6336,7 @@ class _LuckyCashbackBannerOverlay extends StatelessWidget {
                   ? Image.network(
                       image,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _fallback(),
+                      errorBuilder: (_, _, _) => _fallback(),
                     )
                   : _fallback(),
             ),
@@ -9751,7 +8430,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                               ? null
                               : const Icon(
                                   Icons.person,
-                                  color: const Color(0xFF123B5A),
+                                  color: Color(0xFF123B5A),
                                 ),
                         ),
                       ),
@@ -9765,7 +8444,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: const Color(0xFF123B5A),
+                                color: Color(0xFF123B5A),
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
                               ),
@@ -10029,7 +8708,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                       ? null
                                       : const Icon(
                                           Icons.person,
-                                          color: const Color(0xFF123B5A),
+                                          color: Color(0xFF123B5A),
                                           size: 19,
                                         ),
                                 ),
@@ -10080,7 +8759,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           const Text(
                             'Room Chat',
                             style: TextStyle(
-                              color: const Color(0xFF123B5A),
+                              color: Color(0xFF123B5A),
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
                             ),
@@ -10089,7 +8768,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           Text(
                             '${messages.length} messages',
                             style: const TextStyle(
-                              color: const Color(0xFF6D91A8),
+                              color: Color(0xFF6D91A8),
                               fontSize: 10,
                             ),
                           ),
@@ -10103,7 +8782,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                             child: Text(
                               'Welcome to Lovely Sky!',
                               style: TextStyle(
-                                color: const Color(0xFF6D91A8),
+                                color: Color(0xFF6D91A8),
                                 fontSize: 12,
                               ),
                             ),
@@ -10126,7 +8805,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                   child: Text(
                                     message['text'].toString(),
                                     style: const TextStyle(
-                                      color: const Color(0xFF123B5A),
+                                      color: Color(0xFF123B5A),
                                       fontSize: 12,
                                     ),
                                   ),
@@ -10134,7 +8813,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                 Text(
                                   message['time'].toString(),
                                   style: const TextStyle(
-                                    color: const Color(0xFF8AA9BC),
+                                    color: Color(0xFF8AA9BC),
                                     fontSize: 9,
                                   ),
                                 ),
