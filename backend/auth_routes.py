@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 import base64
@@ -226,9 +227,7 @@ def create_voice_room(
     if len(description) > 200:
         raise HTTPException(400, "Description must be 200 characters or fewer")
 
-    claims = verify_token(authorization.split(" ", 1)[1].strip())
-    user = save_google_user(claims)
-    ensure_database()
+    user = _voice_authenticated_user(authorization)
 
     db = get_connection()
     try:
@@ -257,9 +256,7 @@ def my_voice_rooms(authorization: str | None = Header(default=None)):
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(401, "Bearer token required")
 
-    claims = verify_token(authorization.split(" ", 1)[1].strip())
-    user = save_google_user(claims)
-    ensure_database()
+    user = _voice_authenticated_user(authorization)
 
     db = get_connection()
     try:
@@ -274,12 +271,86 @@ def my_voice_rooms(authorization: str | None = Header(default=None)):
 
 
 
+def _ensure_pakistan_official_room(user):
+    if str(user.get("google_email", "")).strip().lower() != OWNER_EMAIL.lower():
+        return None
+
+    owner_uid = str(user.get("google_uid", "")).strip()
+    owner_code = str(user.get("user_code", "")).strip()
+    if not owner_uid or not owner_code:
+        raise HTTPException(403, "Verified owner account details are missing")
+
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        verified = db.execute(
+            "SELECT google_uid FROM users WHERE lower(google_email) = lower(?)",
+            (OWNER_EMAIL,),
+        ).fetchone()
+        if not verified or str(verified["google_uid"]) != owner_uid:
+            raise HTTPException(403, "Pakistan Official owner verification failed")
+
+        official_rooms = db.execute(
+            "SELECT id, owner_uid FROM voice_rooms "
+            "WHERE is_official = 1 ORDER BY id"
+        ).fetchall()
+
+        # Never adopt or modify an official room belonging to another account.
+        if any(str(row["owner_uid"]) != owner_uid for row in official_rooms):
+            raise HTTPException(
+                409,
+                "Another account already owns an official room; manual review required",
+            )
+
+        room = official_rooms[0] if official_rooms else None
+
+        if not room:
+            room = db.execute(
+                "SELECT id FROM voice_rooms WHERE owner_uid = ? ORDER BY id LIMIT 1",
+                (owner_uid,),
+            ).fetchone()
+
+        if room:
+            room_id = room["id"]
+            db.execute(
+                """UPDATE voice_rooms
+                   SET owner_uid=?, owner_code=?, name=?, description=?,
+                       is_active=1, is_official=1
+                   WHERE id=?""",
+                (owner_uid, owner_code, "Pakistan Official",
+                 "Official Pakistan community room", room_id),
+            )
+        else:
+            cursor = db.execute(
+                """INSERT INTO voice_rooms
+                   (owner_uid, owner_code, name, description, is_active, is_official)
+                   VALUES (?, ?, ?, ?, 1, 1)""",
+                (owner_uid, owner_code, "Pakistan Official",
+                 "Official Pakistan community room"),
+            )
+            room_id = cursor.lastrowid
+
+        db.execute(
+            "UPDATE voice_rooms SET is_official=0 "
+            "WHERE is_official=1 AND owner_uid=? AND id!=?",
+            (owner_uid, room_id),
+        )
+        db.commit()
+        return room_id
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def _voice_authenticated_user(authorization: str | None):
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(401, "Bearer token required")
     claims = verify_token(authorization.split(" ", 1)[1].strip())
     user = save_google_user(claims)
     ensure_database()
+    _ensure_pakistan_official_room(user)
     return user
 
 
@@ -471,13 +542,27 @@ class VoiceRoomAdminRequest(BaseModel):
 
 def _voice_room_role(db, room_id: int, user_uid: str):
     room = db.execute(
-        "SELECT owner_uid FROM voice_rooms WHERE id = ? AND is_active = 1",
+        "SELECT owner_uid, is_official FROM voice_rooms "
+        "WHERE id = ? AND is_active = 1",
         (room_id,),
     ).fetchone()
     if not room:
         raise HTTPException(404, "Voice room not found")
-    if room["owner_uid"] == user_uid:
+
+    if int(room["is_official"] or 0) == 1:
+        verified_owner = db.execute(
+            "SELECT google_uid FROM users WHERE lower(google_email) = lower(?)",
+            (OWNER_EMAIL,),
+        ).fetchone()
+        if (
+            verified_owner
+            and str(verified_owner["google_uid"]) == str(user_uid)
+            and str(room["owner_uid"]) == str(user_uid)
+        ):
+            return "owner"
+    elif str(room["owner_uid"]) == str(user_uid):
         return "owner"
+
     admin = db.execute(
         "SELECT 1 FROM voice_room_admins WHERE room_id = ? AND user_uid = ?",
         (room_id, user_uid),
@@ -1780,8 +1865,42 @@ async def voice_room_signal(websocket: WebSocket, room_id: int):
                     connections.pop(peer_uid, None)
 
         while True:
-            message = await websocket.receive_json()
-            if not isinstance(message, dict):
+            try:
+                message = await asyncio.wait_for(
+                    websocket.receive_json(),
+                    timeout=5.0,
+                )
+            except asyncio.TimeoutError:
+                message = None
+
+            # Revalidate room access even when the socket is idle.
+            db = get_connection()
+            try:
+                access_room = db.execute(
+                    "SELECT 1 FROM voice_rooms WHERE id = ? AND is_active = 1",
+                    (room_id,),
+                ).fetchone()
+                access_member = db.execute(
+                    "SELECT 1 FROM voice_room_participants "
+                    "WHERE room_id = ? AND user_uid = ?",
+                    (room_id, uid),
+                ).fetchone()
+                access_block = db.execute(
+                    "SELECT 1 FROM voice_room_blocks "
+                    "WHERE room_id = ? AND user_uid = ?",
+                    (room_id, uid),
+                ).fetchone()
+            finally:
+                db.close()
+
+            if not access_room or not access_member or access_block:
+                await websocket.close(
+                    code=4403,
+                    reason="Room access revoked",
+                )
+                break
+
+            if message is None or not isinstance(message, dict):
                 continue
 
             kind = message.get("type")
@@ -1811,6 +1930,10 @@ async def voice_room_signal(websocket: WebSocket, room_id: int):
                            WHERE room_id = ? AND user_uid = ?""",
                         (room_id, target_uid),
                     ).fetchone()
+                    target_role = (
+                        _voice_room_role(db, room_id, target_uid)
+                        if target else None
+                    )
                 finally:
                     db.close()
 
@@ -1818,6 +1941,15 @@ async def voice_room_signal(websocket: WebSocket, room_id: int):
                     await websocket.send_json({
                         "type": "moderation_error",
                         "message": "Target member has not joined this room",
+                    })
+                    continue
+
+                if target_role == "owner" or (
+                    target_role == "admin" and role != "owner"
+                ):
+                    await websocket.send_json({
+                        "type": "moderation_error",
+                        "message": "Admins cannot moderate the owner or another admin",
                     })
                     continue
 

@@ -148,16 +148,6 @@ def initialize_database():
     if "is_official" not in columns:
         db.execute("ALTER TABLE voice_rooms ADD COLUMN is_official INTEGER NOT NULL DEFAULT 0")
 
-    official = db.execute(
-        "SELECT id FROM voice_rooms WHERE owner_code = '1' ORDER BY id LIMIT 1"
-    ).fetchone()
-    if official:
-        db.execute("UPDATE voice_rooms SET is_official = 0")
-        db.execute(
-            "UPDATE voice_rooms SET name = 'Pak Official Room', is_official = 1 WHERE id = ?",
-            (official["id"],),
-        )
-
     db.executescript("""
         CREATE TABLE IF NOT EXISTS voice_room_messages (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
