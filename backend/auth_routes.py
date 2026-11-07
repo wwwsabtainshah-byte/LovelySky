@@ -3642,7 +3642,12 @@ def agency_create_invite(
             "host": "agency",
         }[invite_type]
 
-        if role != required:
+        owner_agency_invite = (
+            invite_type == "agent"
+            and role == "super_admin"
+            and str(user["google_email"]).lower() == OWNER_EMAIL.lower()
+        )
+        if role != required and not owner_agency_invite:
             raise HTTPException(403, "You cannot send this invitation")
 
         target = db.execute(
@@ -3741,7 +3746,12 @@ def agency_respond_invite(
             "host": "agency",
         }[invite_type]
 
-        if inviter_role != required:
+        owner_agency_invite = (
+            invite_type == "agent"
+            and inviter_role == "super_admin"
+            and str(inviter["google_email"]).lower() == OWNER_EMAIL.lower()
+        )
+        if inviter_role != required and not owner_agency_invite:
             raise HTTPException(409, "Inviter no longer has permission")
 
         if db.execute(
@@ -3969,6 +3979,7 @@ def _target_salary_result(role, amount):
 def agency_target_salary(
     month: str | None = None,
     parent_uid: str | None = None,
+    view_role: str | None = None,
     authorization: str | None = Header(default=None),
 ):
     user = _agency_user(authorization)
@@ -3995,6 +4006,22 @@ def agency_target_salary(
 
         target_uid = str(user["google_uid"])
         target_role = role
+
+        if view_role is not None:
+            if view_role != "bd":
+                raise HTTPException(400, "Invalid target view")
+
+            if (
+                role != "super_admin"
+                or str(user["google_email"]).lower() != OWNER_EMAIL.lower()
+            ):
+                raise HTTPException(403, "Only the Owner can open the BD target view")
+
+            if parent_uid:
+                raise HTTPException(400, "A target view cannot be combined with parent_uid")
+
+            # Separate BD calculation; Owner remains Super Admin.
+            target_role = "bd"
 
         if parent_uid:
             # Every role can open only its own direct child.

@@ -4713,8 +4713,15 @@ class _ProfilePageState extends State<ProfilePage> {
     if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            _RoleCenterPage(title: title, role: role, request: _giftRequest),
+        builder: (_) => _RoleCenterPage(
+          title: title,
+          role: role,
+          request: _giftRequest,
+          displayName: displayName,
+          userCode: userCode,
+          profilePhoto: profilePhoto,
+          isSuperAdmin: isSuperAdmin,
+        ),
       ),
     );
   }
@@ -5843,7 +5850,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         color: const Color(0xFF8A42DC),
                         onTap: () => _openRoleCenter('Agency Center', 'agency'),
                       ),
-                    if (agencyRole == 'bd' || isSuperAdmin)
+                    if (agencyRole == 'bd' || (isSuperAdmin && userCode == '1'))
                       _AnimatedRoleCenterButton(
                         label: 'BD Center',
                         icon: Icons.groups_rounded,
@@ -6514,11 +6521,19 @@ class _RoleCenterPage extends StatefulWidget {
   final String title;
   final String role;
   final _AgencyRequest request;
+  final String displayName;
+  final String userCode;
+  final String profilePhoto;
+  final bool isSuperAdmin;
 
   const _RoleCenterPage({
     required this.title,
     required this.role,
     required this.request,
+    this.displayName = '',
+    this.userCode = '',
+    this.profilePhoto = '',
+    this.isSuperAdmin = false,
   });
 
   @override
@@ -6526,15 +6541,48 @@ class _RoleCenterPage extends StatefulWidget {
 }
 
 class _RoleCenterPageState extends State<_RoleCenterPage> {
+  final TextEditingController _inviteController = TextEditingController();
+  bool _searchingAgencies = false;
+  bool _agenciesSearched = false;
+  List<Map<String, dynamic>> _agencyResults = [];
+
   bool _loading = true;
+  bool _sendingInvite = false;
+  bool _showInvitePage = false;
   String? _error;
+
   Map<String, dynamic> _own = {};
   List<Map<String, dynamic>> _members = [];
   List<Map<String, dynamic>> _invites = [];
   String _month = '';
 
+  bool get _ownerBdView =>
+      widget.role == 'bd' && widget.isSuperAdmin && widget.userCode == '1';
+
   int _number(dynamic value) =>
       value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+
+  double _amount(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String _formatAmount(dynamic value) {
+    final amount = _amount(value);
+    if (amount >= 1000000000) {
+      final v = amount / 1000000000;
+      return '${v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1)}B';
+    }
+    if (amount >= 1000000) {
+      final v = amount / 1000000;
+      return '${v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1)}M';
+    }
+    if (amount >= 1000) {
+      final v = amount / 1000;
+      return '${v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1)}K';
+    }
+    return amount.toStringAsFixed(0);
+  }
 
   List<Map<String, dynamic>> _mapList(dynamic value) {
     if (value is! List) return [];
@@ -6548,6 +6596,12 @@ class _RoleCenterPageState extends State<_RoleCenterPage> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _inviteController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -6567,19 +6621,96 @@ class _RoleCenterPageState extends State<_RoleCenterPage> {
           'member_count': data['direct_member_count'] ?? 0,
         };
       } else {
-        final data = await widget.request('GET', '/agency/targets');
+        final month = DateTime.now().toIso8601String().substring(0, 7);
+        final path = _ownerBdView
+            ? '/agency/targets?month=$month&view_role=bd'
+            : '/agency/targets?month=$month';
+
+        final data = await widget.request('GET', path);
         final own = data['own'];
         _own = own is Map
             ? Map<String, dynamic>.from(own)
             : <String, dynamic>{};
         _members = _mapList(data['members']);
-        _month = data['month']?.toString() ?? '';
+        _month = data['month']?.toString() ?? month;
       }
     } catch (e) {
       _error = e.toString();
     }
 
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _searchAgencies() async {
+    final q = _inviteController.text.trim();
+    if (q.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter at least 1 character.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _searchingAgencies = true;
+      _agenciesSearched = true;
+      _agencyResults = [];
+    });
+
+    try {
+      final data = await widget.request(
+        'GET',
+        '/agency/search?q=${Uri.encodeQueryComponent(q)}',
+      );
+      final raw = data['users'];
+      final users = raw is List
+          ? raw
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+          : <Map<String, dynamic>>[];
+
+      if (mounted) setState(() => _agencyResults = users);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Agency search failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _searchingAgencies = false);
+    }
+  }
+
+  Future<void> _inviteAgency(String code) async {
+    if (_sendingInvite || code.trim().isEmpty) return;
+    setState(() => _sendingInvite = true);
+
+    try {
+      await widget.request(
+        'POST',
+        '/agency/invites',
+        body: {'user_code': code, 'invite_type': 'agent'},
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _agencyResults.removeWhere(
+          (item) => item['user_code']?.toString() == code,
+        );
+      });
+      _inviteController.clear();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Agency invitation sent to $code')),
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Agency invite failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _sendingInvite = false);
+    }
   }
 
   String _roleName(dynamic role) {
@@ -6595,6 +6726,550 @@ class _RoleCenterPageState extends State<_RoleCenterPage> {
       default:
         return 'User';
     }
+  }
+
+  Widget _photo(String? value) {
+    final url = value?.trim() ?? '';
+    if (url.isEmpty) {
+      return const CircleAvatar(child: Icon(Icons.person));
+    }
+    return CircleAvatar(
+      backgroundImage: url.startsWith('http') ? NetworkImage(url) : null,
+      child: url.startsWith('http') ? null : const Icon(Icons.person),
+    );
+  }
+
+  Widget _buildBdHeader() {
+    final photoUrl = widget.profilePhoto.trim();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF172B70), Color(0xFF6537A8), Color(0xFF087F91)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF4430A0).withValues(alpha: 0.30),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [
+                  Color(0xFFFFD76A),
+                  Color(0xFFFF70C5),
+                  Color(0xFF54E8E0),
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.25),
+                  blurRadius: 10,
+                ),
+              ],
+            ),
+            child: CircleAvatar(
+              radius: 29,
+              backgroundColor: const Color(0xFF263B76),
+              backgroundImage: photoUrl.startsWith('http')
+                  ? NetworkImage(photoUrl)
+                  : null,
+              child: photoUrl.startsWith('http')
+                  ? null
+                  : const Icon(Icons.person, color: Colors.white, size: 30),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.displayName.isEmpty
+                      ? (_ownerBdView ? 'Owner BD View' : 'Business Developer')
+                      : widget.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'ID: ${widget.userCode.isEmpty ? '—' : widget.userCode}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFFE0E8FF),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  _ownerBdView
+                      ? '✦ OWNER • SEPARATE BD TARGET'
+                      : '✦ BUSINESS DEVELOPER',
+                  style: TextStyle(
+                    color: Color(0xFFFFE18A),
+                    fontSize: 8,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 7),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(15),
+              onTap: () => setState(() => _showInvitePage = true),
+              child: Ink(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 11,
+                  vertical: 13,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(15),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFFFFD45C),
+                      Color(0xFFFF873D),
+                      Color(0xFFFF4F91),
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFF794A).withValues(alpha: 0.45),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.apartment_rounded,
+                      color: Colors.white,
+                      size: 23,
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Invite Agency',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBdTargetCard() {
+    final income = _own['income'] ?? 0;
+    final target = _own['target'] ?? _own['next_target'] ?? 0;
+    final currentSalary = _own['benefit'] ?? 0;
+    final targetSalary = _own['target_benefit'] ?? currentSalary;
+    final level = _own['level'] ?? 1;
+    final progress = (_amount(_own['progress']) / 100).clamp(0.0, 1.0);
+    final colors = Theme.of(context).colorScheme;
+
+    Widget metric(
+      String label,
+      String value, {
+      bool center = false,
+      bool right = false,
+    }) {
+      return Expanded(
+        child: Column(
+          crossAxisAlignment: center
+              ? CrossAxisAlignment.center
+              : right
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              textAlign: center
+                  ? TextAlign.center
+                  : right
+                  ? TextAlign.end
+                  : TextAlign.start,
+              style: TextStyle(
+                color: colors.onSurface.withValues(alpha: 0.65),
+                fontSize: 8,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 1),
+            Text(
+              value,
+              textAlign: center
+                  ? TextAlign.center
+                  : right
+                  ? TextAlign.end
+                  : TextAlign.start,
+              style: TextStyle(
+                color: colors.onSurface,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              metric('CURRENT INCOME', _formatAmount(income)),
+              metric('LEVEL $level', 'BUSINESS DEVELOPER', center: true),
+              metric('TOTAL TARGET', _formatAmount(target), right: true),
+            ],
+          ),
+          const SizedBox(height: 5),
+          SizedBox(
+            height: 16,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final maxLeft = (constraints.maxWidth - 12)
+                    .clamp(0.0, double.infinity)
+                    .toDouble();
+                final dotLeft = (constraints.maxWidth * progress - 6)
+                    .clamp(0.0, maxLeft)
+                    .toDouble();
+
+                return Stack(
+                  alignment: Alignment.centerLeft,
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: colors.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: colors.shadow.withValues(alpha: 0.20),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: FractionallySizedBox(
+                          widthFactor: progress,
+                          child: Container(
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Color(0xFF4776FF),
+                                  Color(0xFF16D9C3),
+                                  Color(0xFFB4F36B),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 900),
+                      curve: Curves.easeInOutCubic,
+                      left: dotLeft,
+                      top: 2,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color(0xFFFFFFFF),
+                              Color(0xFF20E0C0),
+                              Color(0xFF2584FF),
+                            ],
+                          ),
+                          border: Border.all(color: Colors.white, width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF20DDBD)
+                                  .withValues(alpha: 0.75),
+                              blurRadius: 7,
+                              spreadRadius: 1,
+                            ),
+                            const BoxShadow(
+                              color: Color(0x66000000),
+                              blurRadius: 3,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 5),
+          Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Text(
+                      'Current Benefit: ',
+                      style: TextStyle(
+                        color: colors.onSurface.withValues(alpha: 0.65),
+                        fontSize: 9,
+                      ),
+                    ),
+                    Flexible(
+                      child: Text(
+                        _formatAmount(currentSalary),
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.onSurface,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Target Benefit: ',
+                      style: TextStyle(
+                        color: colors.onSurface.withValues(alpha: 0.65),
+                        fontSize: 9,
+                      ),
+                    ),
+                    Flexible(
+                      child: Text(
+                        _formatAmount(targetSalary),
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.onSurface,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _memberCard(Map<String, dynamic> member) {
+    final code = member['user_code']?.toString() ?? '';
+    final name = member['display_name']?.toString() ?? '';
+    final benefit = member['benefit'] ?? 0;
+
+    return Card(
+      child: ListTile(
+        leading: _photo(member['profile_photo']?.toString()),
+        title: Text(name.isEmpty ? 'Agency $code' : name),
+        subtitle: Text(
+          'User ID: $code\nMonthly Benefit: ${_formatAmount(benefit)}',
+        ),
+        isThreeLine: true,
+        trailing: const Icon(Icons.verified_user, color: Colors.green),
+      ),
+    );
+  }
+
+  Widget _buildBdInvitePage() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Invite a New Agency',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                const Text('Search eligible users by User ID or name.'),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _inviteController,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => _searchAgencies(),
+                  decoration: const InputDecoration(
+                    labelText: 'Enter Agency User ID or name',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ElevatedButton.icon(
+                  onPressed: _searchingAgencies ? null : _searchAgencies,
+                  icon: const Icon(Icons.search),
+                  label: const Text('Search Users'),
+                ),
+                if (_searchingAgencies) const LinearProgressIndicator(),
+                if (_agenciesSearched &&
+                    !_searchingAgencies &&
+                    _agencyResults.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: Text('No eligible users found.'),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        ..._agencyResults.map((user) {
+          final code = user['user_code']?.toString() ?? '';
+          final name = user['display_name']?.toString() ?? '';
+          return Card(
+            child: ListTile(
+              leading: _photo(user['profile_photo']?.toString()),
+              title: Text(name.isEmpty ? 'User $code' : name),
+              subtitle: Text('User ID: $code'),
+              trailing: TextButton(
+                onPressed: _sendingInvite || code.isEmpty
+                    ? null
+                    : () => _inviteAgency(code),
+                child: const Text('Agency Invite'),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildBdCenter() {
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: !_showInvitePage,
+        leading: _showInvitePage
+            ? IconButton(
+                onPressed: () => setState(() => _showInvitePage = false),
+                icon: const Icon(Icons.arrow_back),
+              )
+            : null,
+        title: Text(_showInvitePage ? 'Invite Agency' : widget.title),
+      ),
+      body: _showInvitePage
+          ? _buildBdInvitePage()
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _buildBdHeader(),
+                  const SizedBox(height: 17),
+                  if (_loading) const LinearProgressIndicator(),
+                  if (_error != null)
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          children: [
+                            const Icon(Icons.error_outline, color: Colors.red),
+                            const SizedBox(height: 8),
+                            Text(_error!),
+                            TextButton(
+                              onPressed: _load,
+                              child: const Text('Try again'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (!_loading && _error == null) ...[
+                    _buildBdTargetCard(),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'My Direct Agencies (${_members.length})',
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: _load,
+                          icon: const Icon(Icons.refresh_rounded),
+                        ),
+                      ],
+                    ),
+                    if (_members.isEmpty)
+                      const Card(
+                        child: ListTile(
+                          leading: Icon(Icons.apartment_rounded),
+                          title: Text('No direct Agencies yet'),
+                          subtitle: Text(
+                            'Invite an Agency to build your team.',
+                          ),
+                        ),
+                      ),
+                    ..._members.map(_memberCard),
+                  ],
+                ],
+              ),
+            ),
+    );
   }
 
   Widget _detail(String label, dynamic value) {
@@ -6617,36 +7292,10 @@ class _RoleCenterPageState extends State<_RoleCenterPage> {
     );
   }
 
-  Widget _memberCard(Map<String, dynamic> member) {
-    final name = member['display_name']?.toString().trim();
-    final code = member['user_code']?.toString() ?? '';
-    final role = _roleName(member['role']);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: const Color(0xFFECE5FA),
-          child: Icon(
-            role == 'Host' ? Icons.home_work : Icons.person,
-            color: const Color(0xFF7041B5),
-          ),
-        ),
-        title: Text(
-          name == null || name.isEmpty ? role : name,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text('ID: $code  •  $role'),
-        trailing: Text(
-          '${_number(member['benefit'])}',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    if (widget.role == 'bd') return _buildBdCenter();
+
     final progress = (_number(_own['progress']) / 100)
         .clamp(0.0, 1.0)
         .toDouble();
@@ -6715,8 +7364,7 @@ class _RoleCenterPageState extends State<_RoleCenterPage> {
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
                         const Text(
-                          'Your Host target and progress become available '
-                          'after your Host role is activated.',
+                          'Your Host target and progress become available after your Host role is activated.',
                           style: TextStyle(color: Colors.black54),
                         ),
                       ] else ...[
@@ -6782,11 +7430,7 @@ class _RoleCenterPageState extends State<_RoleCenterPage> {
               if (widget.role != 'user') ...[
                 const SizedBox(height: 16),
                 Text(
-                  widget.role == 'agency'
-                      ? 'Your Hosts'
-                      : widget.role == 'bd'
-                      ? 'Your Agencies'
-                      : 'Your Members',
+                  widget.role == 'agency' ? 'Your Hosts' : 'Your Members',
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.bold,
