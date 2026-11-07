@@ -6818,6 +6818,9 @@ class _SuperAdminCenterPageState extends State<_SuperAdminCenterPage> {
 
   List<Map<String, dynamic>> _results = [];
   List<Map<String, dynamic>> _members = [];
+  Map<String, dynamic> _ownTarget = {};
+  Timer? _targetRefreshTimer;
+  bool _refreshingTargets = false;
   bool _searching = false;
   bool _loadingMembers = false;
   bool _sendingInvite = false;
@@ -6827,10 +6830,15 @@ class _SuperAdminCenterPageState extends State<_SuperAdminCenterPage> {
   void initState() {
     super.initState();
     _loadMembers();
+    _targetRefreshTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _loadMembers(silent: true),
+    );
   }
 
   @override
   void dispose() {
+    _targetRefreshTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -6902,12 +6910,23 @@ class _SuperAdminCenterPageState extends State<_SuperAdminCenterPage> {
     }
   }
 
-  Future<void> _loadMembers() async {
-    if (mounted) setState(() => _loadingMembers = true);
+  Future<void> _loadMembers({bool silent = false}) async {
+    if (_refreshingTargets) return;
+    _refreshingTargets = true;
+
+    if (!silent && mounted) {
+      setState(() => _loadingMembers = true);
+    }
 
     try {
       final month = DateTime.now().toIso8601String().substring(0, 7);
       final data = await widget.request('GET', '/agency/targets?month=$month');
+
+      final ownRaw = data['own'];
+      final own = ownRaw is Map
+          ? Map<String, dynamic>.from(ownRaw)
+          : <String, dynamic>{};
+
       final raw = data['members'];
       final members = raw is List
           ? raw
@@ -6916,15 +6935,263 @@ class _SuperAdminCenterPageState extends State<_SuperAdminCenterPage> {
                 .toList()
           : <Map<String, dynamic>>[];
 
-      if (mounted) setState(() => _members = members);
-    } catch (e) {
       if (mounted) {
+        setState(() {
+          _ownTarget = own;
+          _members = members;
+        });
+      }
+    } catch (e) {
+      if (!silent && mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('BD list failed: $e')));
+            .showSnackBar(SnackBar(content: Text('Target/BD list failed: $e')));
       }
     } finally {
-      if (mounted) setState(() => _loadingMembers = false);
+      _refreshingTargets = false;
+      if (!silent && mounted) {
+        setState(() => _loadingMembers = false);
+      }
     }
+  }
+
+  double _targetNumber(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String _formatTargetAmount(dynamic value) {
+    final amount = _targetNumber(value);
+    if (amount >= 1000000000) {
+      final v = amount / 1000000000;
+      return '${v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1)}B';
+    }
+    if (amount >= 1000000) {
+      final v = amount / 1000000;
+      return '${v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1)}M';
+    }
+    if (amount >= 1000) {
+      final v = amount / 1000;
+      return '${v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1)}K';
+    }
+    return amount.toStringAsFixed(0);
+  }
+
+  Widget _buildOwnTargetCard() {
+    final income = _ownTarget['income'] ?? 0;
+    final target = _ownTarget['target'] ?? _ownTarget['next_target'] ?? 0;
+    final currentSalary = _ownTarget['benefit'] ?? 0;
+    final targetSalary = _ownTarget['target_benefit'] ?? currentSalary;
+    final level = _ownTarget['level'] ?? 1;
+    final progress = (_targetNumber(_ownTarget['progress']) / 100).clamp(
+      0.0,
+      1.0,
+    );
+    final progressPercent = progress * 100;
+
+    Widget metric(String label, String value, {bool center = false}) {
+      return Expanded(
+        child: Column(
+          crossAxisAlignment: center
+              ? CrossAxisAlignment.center
+              : CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              textAlign: center ? TextAlign.center : TextAlign.start,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.7,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              value,
+              textAlign: center ? TextAlign.center : TextAlign.start,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 19,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF172B63), Color(0xFF263F91), Color(0xFF101B43)],
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white24, width: 1),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x66000000),
+            blurRadius: 16,
+            offset: Offset(0, 9),
+          ),
+          BoxShadow(
+            color: Color(0x557C9BFF),
+            blurRadius: 8,
+            offset: Offset(0, -3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'MY SUPER ADMIN TARGET',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              metric('CURRENT TARGET', _formatTargetAmount(income)),
+              metric('CURRENT LEVEL', 'LEVEL $level', center: true),
+              metric('TOTAL TARGET', _formatTargetAmount(target)),
+            ],
+          ),
+          const SizedBox(height: 22),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'TARGET PROGRESS',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                '${progressPercent.toStringAsFixed(1)}%',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            height: 17,
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              color: const Color(0xFF09132F),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white24),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black54,
+                  blurRadius: 5,
+                  offset: Offset(0, 3),
+                ),
+                BoxShadow(
+                  color: Colors.white12,
+                  blurRadius: 3,
+                  offset: Offset(0, -2),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: progress,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [
+                          Color(0xFF00E5FF),
+                          Color(0xFF39F5A5),
+                          Color(0xFFFFD54F),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: const [
+                        BoxShadow(color: Color(0xAA00E5FF), blurRadius: 7),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Divider(color: Colors.white24, height: 1),
+          const SizedBox(height: 15),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'CURRENT SALARY',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _formatTargetAmount(currentSalary),
+                      style: const TextStyle(
+                        color: Color(0xFF69F0AE),
+                        fontSize: 21,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text(
+                      'TARGET SALARY',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _formatTargetAmount(targetSalary),
+                      textAlign: TextAlign.end,
+                      style: const TextStyle(
+                        color: Color(0xFFFFD54F),
+                        fontSize: 21,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _photo(String? value) {
@@ -6952,6 +7219,8 @@ class _SuperAdminCenterPageState extends State<_SuperAdminCenterPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _buildOwnTargetCard(),
+          const SizedBox(height: 18),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(14),

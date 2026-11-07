@@ -3922,7 +3922,10 @@ TARGET_LADDERS = {
         (400_000_000, 40_000_000),
         (800_000_000, 80_000_000),
     ],
-    "super_admin": [(500_000_000, 100_000_000)],
+    "super_admin": [
+        (500_000_000, 100_000_000),
+        (1_000_000_000, 200_000_000),
+    ],
 }
 
 
@@ -3936,16 +3939,26 @@ def _target_salary_result(role, amount):
 
     completed_target = completed[-1]["target"] if completed else 0
     total_benefit = completed[-1]["benefit"] if completed else 0
-    next_targets = [
-        target for target, _ in ladder if target > amount
+    next_entries = [
+        (target, benefit) for target, benefit in ladder
+        if target > amount
     ]
-    next_target = next_targets[0] if next_targets else None
+    next_entry = next_entries[0] if next_entries else None
+    next_target = next_entry[0] if next_entry else None
+    target_benefit = next_entry[1] if next_entry else total_benefit
+    current_level = min(len(completed) + 1, len(ladder)) if ladder else 0
+    display_target = next_target if next_target is not None else (
+        ladder[-1][0] if ladder else 0
+    )
 
     return {
         "completed_target": completed_target,
         "completed_targets": completed,
         "benefit": total_benefit,
         "next_target": next_target,
+        "target": display_target,
+        "target_benefit": target_benefit,
+        "level": current_level,
         "progress": 100 if next_target is None else min(
             100, round(amount * 100 / next_target, 2)
         ),
