@@ -6986,32 +6986,47 @@ class _SuperAdminCenterPageState extends State<_SuperAdminCenterPage> {
       0.0,
       1.0,
     );
-    final progressPercent = progress * 100;
+    final colors = Theme.of(context).colorScheme;
 
-    Widget metric(String label, String value, {bool center = false}) {
+    Widget metric(
+      String label,
+      String value, {
+      bool center = false,
+      bool right = false,
+    }) {
       return Expanded(
         child: Column(
           crossAxisAlignment: center
               ? CrossAxisAlignment.center
+              : right
+              ? CrossAxisAlignment.end
               : CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               label,
-              textAlign: center ? TextAlign.center : TextAlign.start,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.7,
+              textAlign: center
+                  ? TextAlign.center
+                  : right
+                  ? TextAlign.end
+                  : TextAlign.start,
+              style: TextStyle(
+                color: colors.onSurface.withValues(alpha: 0.65),
+                fontSize: 8,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 7),
+            const SizedBox(height: 1),
             Text(
               value,
-              textAlign: center ? TextAlign.center : TextAlign.start,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 19,
+              textAlign: center
+                  ? TextAlign.center
+                  : right
+                  ? TextAlign.end
+                  : TextAlign.start,
+              style: TextStyle(
+                color: colors.onSurface,
+                fontSize: 12,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -7020,168 +7035,101 @@ class _SuperAdminCenterPageState extends State<_SuperAdminCenterPage> {
       );
     }
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF172B63), Color(0xFF263F91), Color(0xFF101B43)],
-        ),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white24, width: 1),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x66000000),
-            blurRadius: 16,
-            offset: Offset(0, 9),
-          ),
-          BoxShadow(
-            color: Color(0x557C9BFF),
-            blurRadius: 8,
-            offset: Offset(0, -3),
-          ),
-        ],
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            'MY SUPER ADMIN TARGET',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.1,
-            ),
-          ),
-          const SizedBox(height: 20),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               metric('CURRENT TARGET', _formatTargetAmount(income)),
-              metric('CURRENT LEVEL', 'LEVEL $level', center: true),
-              metric('TOTAL TARGET', _formatTargetAmount(target)),
+              metric('LEVEL $level', 'SUPER ADMIN', center: true),
+              metric('TOTAL TARGET', _formatTargetAmount(target), right: true),
             ],
           ),
-          const SizedBox(height: 22),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'TARGET PROGRESS',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                '${progressPercent.toStringAsFixed(1)}%',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 5),
           Container(
-            height: 17,
-            padding: const EdgeInsets.all(2),
+            height: 6,
             decoration: BoxDecoration(
-              color: const Color(0xFF09132F),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white24),
-              boxShadow: const [
+              color: colors.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: [
                 BoxShadow(
-                  color: Colors.black54,
-                  blurRadius: 5,
-                  offset: Offset(0, 3),
+                  color: colors.shadow.withValues(alpha: 0.18),
+                  blurRadius: 3,
+                  offset: const Offset(0, 2),
                 ),
                 BoxShadow(
-                  color: Colors.white12,
-                  blurRadius: 3,
-                  offset: Offset(0, -2),
+                  color: colors.onSurface.withValues(alpha: 0.08),
+                  blurRadius: 2,
+                  offset: const Offset(0, -1),
                 ),
               ],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(10),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: FractionallySizedBox(
                   widthFactor: progress,
-                  child: Container(
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [
-                          Color(0xFF00E5FF),
-                          Color(0xFF39F5A5),
-                          Color(0xFFFFD54F),
-                        ],
+                      gradient: LinearGradient(
+                        colors: [colors.primary, const Color(0xFF21D6A3)],
                       ),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: const [
-                        BoxShadow(color: Color(0xAA00E5FF), blurRadius: 7),
-                      ],
                     ),
                   ),
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 20),
-          const Divider(color: Colors.white24, height: 1),
-          const SizedBox(height: 15),
+          const SizedBox(height: 5),
           Row(
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    const Text(
-                      'CURRENT SALARY',
+                    Text(
+                      'Current Salary: ',
                       style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
+                        color: colors.onSurface.withValues(alpha: 0.65),
+                        fontSize: 9,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _formatTargetAmount(currentSalary),
-                      style: const TextStyle(
-                        color: Color(0xFF69F0AE),
-                        fontSize: 21,
-                        fontWeight: FontWeight.w900,
+                    Flexible(
+                      child: Text(
+                        _formatTargetAmount(currentSalary),
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.onSurface,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    const Text(
-                      'TARGET SALARY',
+                    Text(
+                      'Target Salary: ',
                       style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
+                        color: colors.onSurface.withValues(alpha: 0.65),
+                        fontSize: 9,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _formatTargetAmount(targetSalary),
-                      textAlign: TextAlign.end,
-                      style: const TextStyle(
-                        color: Color(0xFFFFD54F),
-                        fontSize: 21,
-                        fontWeight: FontWeight.w900,
+                    Flexible(
+                      child: Text(
+                        _formatTargetAmount(targetSalary),
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.onSurface,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
                   ],
