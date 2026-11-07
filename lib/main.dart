@@ -5843,7 +5843,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         color: const Color(0xFF8A42DC),
                         onTap: () => _openRoleCenter('Agency Center', 'agency'),
                       ),
-                    if (agencyRole == 'bd')
+                    if (agencyRole == 'bd' || isSuperAdmin)
                       _AnimatedRoleCenterButton(
                         label: 'BD Center',
                         icon: Icons.groups_rounded,
