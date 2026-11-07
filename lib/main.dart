@@ -7787,44 +7787,25 @@ class _RoleCenterPageState extends State<_RoleCenterPage> {
   }
 
   Widget _buildHostTargetCard() {
-    final diamonds = _own['diamonds'] ?? 0;
-    final income = _own['income'] ?? 0;
-    final target = _own['target'] ?? _own['next_target'] ?? 0;
-    final benefit = _own['benefit'] ?? 0;
-    final targetBenefit = _own['target_benefit'] ?? 0;
-    final progress = (_amount(_own['progress']) / 100)
-        .clamp(0.0, 1.0)
-        .toDouble();
-    final colors = Theme.of(context).colorScheme;
+    const levels = <int>[20000000, 40000000, 60000000, 100000000];
 
-    Widget metric(String label, String value, {bool right = false}) {
-      return Expanded(
-        child: Column(
-          crossAxisAlignment: right
-              ? CrossAxisAlignment.end
-              : CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: colors.onSurface.withValues(alpha: 0.65),
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: TextStyle(
-                color: colors.onSurface,
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    final diamonds = _amount(_own['diamonds']).round();
+    final completedLevels = levels.where((v) => diamonds >= v).length;
+    final currentLevel = completedLevels;
+    final isComplete = completedLevels == levels.length;
+
+    final previousTarget = completedLevels == 0
+        ? 0
+        : levels[completedLevels - 1];
+    final nextTarget = isComplete ? levels.last : levels[completedLevels];
+
+    final progress = isComplete
+        ? 1.0
+        : ((diamonds - previousTarget) / (nextTarget - previousTarget))
+              .clamp(0.0, 1.0)
+              .toDouble();
+
+    final colors = Theme.of(context).colorScheme;
 
     return Card(
       elevation: 1,
@@ -7839,49 +7820,55 @@ class _RoleCenterPageState extends State<_RoleCenterPage> {
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
-                    'Monthly Host Target',
+                    'Monthly Host Diamond Levels',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
                   ),
                 ),
                 Text(
-                  '${_own['progress'] ?? 0}%',
+                  'LEVEL $currentLevel',
                   style: const TextStyle(
                     color: Color(0xFF6652C8),
                     fontWeight: FontWeight.w900,
+                    fontSize: 12,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                metric('TOTAL DIAMONDS', _formatAmount(diamonds)),
-                metric('MONTHLY INCOME', _formatAmount(income), right: true),
-              ],
+            const SizedBox(height: 18),
+            Text(
+              _formatAmount(diamonds),
+              style: TextStyle(
+                color: colors.onSurface,
+                fontSize: 27,
+                fontWeight: FontWeight.w900,
+              ),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                metric('CURRENT BENEFIT', _formatAmount(benefit)),
-                metric(
-                  'TARGET BENEFIT',
-                  _formatAmount(targetBenefit),
-                  right: true,
-                ),
-              ],
+            const SizedBox(height: 3),
+            Text(
+              'Total diamonds received this month',
+              style: TextStyle(
+                color: colors.onSurface.withValues(alpha: 0.65),
+                fontSize: 10,
+              ),
             ),
-            const SizedBox(height: 15),
+            const SizedBox(height: 18),
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Target Progress',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+                    isComplete
+                        ? 'All monthly levels completed!'
+                        : 'Progress to Level ${currentLevel + 1}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
                 Text(
-                  '${_own['progress'] ?? 0}%',
+                  isComplete ? '100%' : '${(progress * 100).round()}%',
                   style: const TextStyle(
+                    color: Color(0xFF6652C8),
                     fontSize: 11,
                     fontWeight: FontWeight.w900,
                   ),
@@ -7903,23 +7890,77 @@ class _RoleCenterPageState extends State<_RoleCenterPage> {
                 ),
               ),
             ),
+            const SizedBox(height: 18),
+            const Text(
+              'MONTHLY LEVEL PROGRESSION',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.5,
+              ),
+            ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Target: ${_formatAmount(target)}',
-                    style: const TextStyle(fontSize: 11),
-                  ),
+            ...List.generate(levels.length, (index) {
+              final achieved = diamonds >= levels[index];
+              final levelNumber = index + 1;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 7),
+                child: Row(
+                  children: [
+                    Icon(
+                      achieved ? Icons.check_circle : Icons.lock_outline,
+                      size: 19,
+                      color: achieved
+                          ? const Color(0xFF269B69)
+                          : colors.onSurface.withValues(alpha: 0.45),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Level $levelNumber',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: colors.onSurface,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${_formatAmount(levels[index])} diamonds',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: achieved
+                            ? const Color(0xFF269B69)
+                            : colors.onSurface.withValues(alpha: 0.7),
+                      ),
+                    ),
+                    if (achieved) ...[
+                      const SizedBox(width: 5),
+                      const Text(
+                        'DONE',
+                        style: TextStyle(
+                          color: Color(0xFF269B69),
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                Text(
-                  'Completed: ${_formatAmount(_own['completed_target'] ?? 0)}',
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+              );
+            }),
+            const SizedBox(height: 8),
+            Text(
+              isComplete
+                  ? 'You have completed all 4 monthly levels.'
+                  : 'Next target: ${_formatAmount(nextTarget)} diamonds',
+              style: TextStyle(
+                color: colors.onSurface.withValues(alpha: 0.65),
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             if (_month.isNotEmpty) ...[
               const SizedBox(height: 10),
