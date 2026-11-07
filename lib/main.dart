@@ -4704,6 +4704,16 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  Future<void> _openRoleCenter(String title, String role) async {
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            _RoleCenterPage(title: title, role: role, request: _giftRequest),
+      ),
+    );
+  }
+
   Future<void> _openMySuperAdminStatusPage() async {
     if (userCode != '1') return;
 
@@ -5784,6 +5794,69 @@ class _ProfilePageState extends State<ProfilePage> {
 
             const SizedBox(height: 16),
 
+            // Animated hierarchy centers. Existing profile grid remains unchanged.
+            if (agencyRole == 'user' ||
+                agencyRole == 'host' ||
+                agencyRole == 'agency' ||
+                agencyRole == 'bd' ||
+                isSuperAdmin) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.fromLTRB(7, 9, 7, 7),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE9E8F4)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 12,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: GridView.count(
+                  crossAxisCount: 4,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  childAspectRatio: 0.88,
+                  mainAxisSpacing: 2,
+                  crossAxisSpacing: 2,
+                  children: [
+                    if ((agencyRole == 'user' || agencyRole == 'host') &&
+                        !isSuperAdmin)
+                      _AnimatedRoleCenterButton(
+                        label: 'Host Center',
+                        icon: Icons.home_work_rounded,
+                        color: const Color(0xFF168FE8),
+                        onTap: () => _openRoleCenter('Host Center', agencyRole),
+                      ),
+                    if (agencyRole == 'agency')
+                      _AnimatedRoleCenterButton(
+                        label: 'Agency',
+                        icon: Icons.apartment_rounded,
+                        color: const Color(0xFF8A42DC),
+                        onTap: () => _openRoleCenter('Agency Center', 'agency'),
+                      ),
+                    if (agencyRole == 'bd')
+                      _AnimatedRoleCenterButton(
+                        label: 'BD Center',
+                        icon: Icons.groups_rounded,
+                        color: const Color(0xFF00A985),
+                        onTap: () => _openRoleCenter('BD Center', 'bd'),
+                      ),
+                    if (isSuperAdmin)
+                      _AnimatedRoleCenterButton(
+                        label: 'Super Admin',
+                        icon: Icons.admin_panel_settings_rounded,
+                        color: const Color(0xFFE58A16),
+                        onTap: _openSuperAdminCenter,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+
             // Main profile buttons
             Container(
               padding: const EdgeInsets.fromLTRB(8, 7, 8, 9),
@@ -6274,11 +6347,462 @@ class _ServiceInboxPageState extends State<_ServiceInboxPage> {
   }
 }
 
+class _AnimatedRoleCenterButton extends StatefulWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _AnimatedRoleCenterButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  State<_AnimatedRoleCenterButton> createState() =>
+      _AnimatedRoleCenterButtonState();
+}
+
+class _AnimatedRoleCenterButtonState extends State<_AnimatedRoleCenterButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _float;
+  bool _pressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1700),
+    )..repeat(reverse: true);
+
+    _float = Tween<double>(
+      begin: 0,
+      end: -4,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
+      },
+      child: AnimatedBuilder(
+        animation: _float,
+        builder: (context, child) => Transform.translate(
+          offset: Offset(0, _pressed ? 2 : _float.value),
+          child: AnimatedScale(
+            scale: _pressed ? 0.93 : 1,
+            duration: const Duration(milliseconds: 110),
+            child: child,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 55,
+                height: 55,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      widget.color.withValues(alpha: 0.78),
+                      widget.color,
+                      Color.lerp(widget.color, Colors.black, 0.22)!,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(17),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.65),
+                    width: 1.3,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: widget.color.withValues(alpha: 0.38),
+                      blurRadius: _pressed ? 5 : 12,
+                      offset: Offset(0, _pressed ? 2 : 6),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.16),
+                      blurRadius: 2,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    Positioned(
+                      top: 5,
+                      left: 7,
+                      right: 7,
+                      child: Container(
+                        height: 9,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.17),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    Center(
+                      child: Icon(
+                        widget.icon,
+                        color: Colors.white,
+                        size: 29,
+                        shadows: const [
+                          Shadow(
+                            color: Colors.black38,
+                            blurRadius: 4,
+                            offset: Offset(1, 2),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                widget.label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF343047),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 typedef _AgencyRequest = Future<Map<String, dynamic>> Function(
   String method,
   String path, {
   Map<String, dynamic>? body,
 });
+
+class _RoleCenterPage extends StatefulWidget {
+  final String title;
+  final String role;
+  final _AgencyRequest request;
+
+  const _RoleCenterPage({
+    required this.title,
+    required this.role,
+    required this.request,
+  });
+
+  @override
+  State<_RoleCenterPage> createState() => _RoleCenterPageState();
+}
+
+class _RoleCenterPageState extends State<_RoleCenterPage> {
+  bool _loading = true;
+  String? _error;
+  Map<String, dynamic> _own = {};
+  List<Map<String, dynamic>> _members = [];
+  List<Map<String, dynamic>> _invites = [];
+  String _month = '';
+
+  int _number(dynamic value) =>
+      value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+
+  List<Map<String, dynamic>> _mapList(dynamic value) {
+    if (value is! List) return [];
+    return value
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+
+    try {
+      if (widget.role == 'user') {
+        final data = await widget.request('GET', '/agency/status');
+        _invites = _mapList(data['pending_invites']);
+        _own = {
+          'role': data['role'] ?? 'user',
+          'member_count': data['direct_member_count'] ?? 0,
+        };
+      } else {
+        final data = await widget.request('GET', '/agency/targets');
+        final own = data['own'];
+        _own = own is Map
+            ? Map<String, dynamic>.from(own)
+            : <String, dynamic>{};
+        _members = _mapList(data['members']);
+        _month = data['month']?.toString() ?? '';
+      }
+    } catch (e) {
+      _error = e.toString();
+    }
+
+    if (mounted) setState(() => _loading = false);
+  }
+
+  String _roleName(dynamic role) {
+    switch ('$role') {
+      case 'host':
+        return 'Host';
+      case 'agency':
+        return 'Agency';
+      case 'bd':
+        return 'BD';
+      case 'super_admin':
+        return 'Super Admin';
+      default:
+        return 'User';
+    }
+  }
+
+  Widget _detail(String label, dynamic value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.black54, fontSize: 13),
+            ),
+          ),
+          Text(
+            '${value ?? 0}',
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _memberCard(Map<String, dynamic> member) {
+    final name = member['display_name']?.toString().trim();
+    final code = member['user_code']?.toString() ?? '';
+    final role = _roleName(member['role']);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: const Color(0xFFECE5FA),
+          child: Icon(
+            role == 'Host' ? Icons.home_work : Icons.person,
+            color: const Color(0xFF7041B5),
+          ),
+        ),
+        title: Text(
+          name == null || name.isEmpty ? role : name,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text('ID: $code  •  $role'),
+        trailing: Text(
+          '${_number(member['benefit'])}',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = (_number(_own['progress']) / 100)
+        .clamp(0.0, 1.0)
+        .toDouble();
+
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.title)),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.all(28),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            if (_error != null)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.red),
+                      const SizedBox(height: 8),
+                      Text(_error!),
+                      TextButton(
+                        onPressed: _load,
+                        child: const Text('Try again'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            if (!_loading && _error == null) ...[
+              Card(
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.title,
+                        style: const TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Role: ${_roleName(_own['role'] ?? widget.role)}',
+                        style: const TextStyle(color: Colors.black54),
+                      ),
+                      if (_month.isNotEmpty)
+                        Text(
+                          'Month: $_month',
+                          style: const TextStyle(color: Colors.black54),
+                        ),
+                      const Divider(height: 24),
+                      if (widget.role == 'user') ...[
+                        _detail('Pending invitations', _invites.length),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Host Center status',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const Text(
+                          'Your Host target and progress become available '
+                          'after your Host role is activated.',
+                          style: TextStyle(color: Colors.black54),
+                        ),
+                      ] else ...[
+                        _detail('Diamonds', _own['diamonds']),
+                        _detail('Income', _own['income']),
+                        _detail('Benefit', _own['benefit']),
+                        _detail('Completed target', _own['completed_target']),
+                        _detail('Next target', _own['next_target']),
+                        const SizedBox(height: 10),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Target progress',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            Text('${_own['progress'] ?? 0}%'),
+                          ],
+                        ),
+                        const SizedBox(height: 7),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 10,
+                            backgroundColor: Colors.black12,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        _detail('Direct members', _members.length),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              if (widget.role == 'user') ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'Pending Invitations',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                ),
+                if (_invites.isEmpty)
+                  const Card(
+                    child: ListTile(
+                      leading: Icon(Icons.mail_outline),
+                      title: Text('No pending invitations'),
+                    ),
+                  ),
+                ..._invites.map(
+                  (invite) => Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.mail),
+                      title: Text(
+                        '${_roleName(invite['invite_type'])} invitation',
+                      ),
+                      subtitle: Text(
+                        'Status: ${invite['status'] ?? 'pending'}',
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              if (widget.role != 'user') ...[
+                const SizedBox(height: 16),
+                Text(
+                  widget.role == 'agency'
+                      ? 'Your Hosts'
+                      : widget.role == 'bd'
+                      ? 'Your Agencies'
+                      : 'Your Members',
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (_members.isEmpty)
+                  const Card(
+                    child: ListTile(
+                      leading: Icon(Icons.groups_outlined),
+                      title: Text('No direct members yet'),
+                    ),
+                  ),
+                ..._members.map(_memberCard),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _SuperAdminCenterPage extends StatefulWidget {
   final _AgencyRequest request;
