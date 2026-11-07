@@ -5835,15 +5835,17 @@ class _ProfilePageState extends State<ProfilePage> {
                   mainAxisSpacing: 2,
                   crossAxisSpacing: 2,
                   children: [
-                    if ((agencyRole == 'user' || agencyRole == 'host') &&
-                        !isSuperAdmin)
+                    if (((agencyRole == 'user' || agencyRole == 'host') &&
+                            !isSuperAdmin) ||
+                        (isSuperAdmin && userCode == '1'))
                       _AnimatedRoleCenterButton(
                         label: 'Host Center',
                         icon: Icons.home_work_rounded,
                         color: const Color(0xFF168FE8),
                         onTap: () => _openRoleCenter('Host Center', agencyRole),
                       ),
-                    if (agencyRole == 'agency')
+                    if (agencyRole == 'agency' ||
+                        (isSuperAdmin && userCode == '1'))
                       _AnimatedRoleCenterButton(
                         label: 'Agency',
                         icon: Icons.apartment_rounded,
