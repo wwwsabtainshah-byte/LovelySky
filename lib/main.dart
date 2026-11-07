@@ -10034,11 +10034,36 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
 
     peerConnections[uid] = pc;
 
+    pc.onTrack = (event) {
+      debugPrint(
+        'VOICE REMOTE TRACK: peer=$uid '
+        'kind=${event.track.kind} '
+        'track=${event.track.id} '
+        'streams=${event.streams.length}',
+      );
+    };
+
+    pc.onConnectionState = (state) {
+      debugPrint('VOICE PEER STATE: peer=$uid state=$state');
+    };
+
+    pc.onIceConnectionState = (state) {
+      debugPrint('VOICE ICE STATE: peer=$uid state=$state');
+    };
+
     final stream = localAudioStream;
     if (stream != null) {
-      for (final track in stream.getAudioTracks()) {
+      final tracks = stream.getAudioTracks();
+      debugPrint('VOICE LOCAL TRACKS: peer=$uid count=${tracks.length}');
+      for (final track in tracks) {
+        debugPrint(
+          'VOICE ADD LOCAL TRACK: peer=$uid '
+          'kind=${track.kind} enabled=${track.enabled}',
+        );
         await pc.addTrack(track, stream);
       }
+    } else {
+      debugPrint('VOICE LOCAL STREAM MISSING: peer=$uid');
     }
 
     pc.onIceCandidate = (candidate) {
@@ -10207,6 +10232,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       final decoded = jsonDecode(event is String ? event : event.toString());
       if (decoded is! Map) return;
 
+      debugPrint('VOICE EVENT RECEIVED: $decoded');
       final data = Map<String, dynamic>.from(decoded);
       final type = data['type'];
 
@@ -10219,6 +10245,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       }
       if (type == 'gift_event') {
         final payload = data['payload'];
+        debugPrint('ROOM GIFT EVENT RECEIVED: $payload');
         if (payload is Map) {
           _showRoomGiftEvent(Map<String, dynamic>.from(payload));
         }
