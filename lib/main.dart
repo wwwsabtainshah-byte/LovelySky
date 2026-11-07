@@ -4699,7 +4699,12 @@ class _ProfilePageState extends State<ProfilePage> {
     if (!mounted || !isSuperAdmin) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => _SuperAdminCenterPage(request: _giftRequest),
+        builder: (_) => _SuperAdminCenterPage(
+          request: _giftRequest,
+          displayName: displayName,
+          userCode: userCode,
+          profilePhoto: profilePhoto,
+        ),
       ),
     );
   }
@@ -6806,8 +6811,16 @@ class _RoleCenterPageState extends State<_RoleCenterPage> {
 
 class _SuperAdminCenterPage extends StatefulWidget {
   final _AgencyRequest request;
+  final String displayName;
+  final String userCode;
+  final String profilePhoto;
 
-  const _SuperAdminCenterPage({required this.request});
+  const _SuperAdminCenterPage({
+    required this.request,
+    required this.displayName,
+    required this.userCode,
+    required this.profilePhoto,
+  });
 
   @override
   State<_SuperAdminCenterPage> createState() => _SuperAdminCenterPageState();
@@ -6825,6 +6838,7 @@ class _SuperAdminCenterPageState extends State<_SuperAdminCenterPage> {
   bool _loadingMembers = false;
   bool _sendingInvite = false;
   bool _searched = false;
+  bool _showInvitePage = false;
 
   @override
   void initState() {
@@ -7048,39 +7062,95 @@ class _SuperAdminCenterPageState extends State<_SuperAdminCenterPage> {
             ],
           ),
           const SizedBox(height: 5),
-          Container(
-            height: 6,
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: [
-                BoxShadow(
-                  color: colors.shadow.withValues(alpha: 0.18),
-                  blurRadius: 3,
-                  offset: const Offset(0, 2),
-                ),
-                BoxShadow(
-                  color: colors.onSurface.withValues(alpha: 0.08),
-                  blurRadius: 2,
-                  offset: const Offset(0, -1),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: FractionallySizedBox(
-                  widthFactor: progress,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [colors.primary, const Color(0xFF21D6A3)],
+          SizedBox(
+            height: 16,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final maxLeft = (constraints.maxWidth - 12)
+                    .clamp(0.0, double.infinity)
+                    .toDouble();
+                final dotLeft = (constraints.maxWidth * progress - 6)
+                    .clamp(0.0, maxLeft)
+                    .toDouble();
+
+                return Stack(
+                  alignment: Alignment.centerLeft,
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: colors.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: colors.shadow.withValues(alpha: 0.20),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ),
-              ),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: FractionallySizedBox(
+                          widthFactor: progress,
+                          child: Container(
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Color(0xFF4776FF),
+                                  Color(0xFF16D9C3),
+                                  Color(0xFFB4F36B),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 900),
+                      curve: Curves.easeInOutCubic,
+                      left: dotLeft,
+                      top: 2,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color(0xFFFFFFFF),
+                              Color(0xFF20E0C0),
+                              Color(0xFF2584FF),
+                            ],
+                          ),
+                          border: Border.all(color: Colors.white, width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF20DDBD)
+                                  .withValues(alpha: 0.75),
+                              blurRadius: 7,
+                              spreadRadius: 1,
+                            ),
+                            const BoxShadow(
+                              color: Color(0x66000000),
+                              blurRadius: 3,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
           const SizedBox(height: 5),
@@ -7160,106 +7230,283 @@ class _SuperAdminCenterPageState extends State<_SuperAdminCenterPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Super Admin Center')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+  Widget _buildSuperAdminHeader() {
+    final photoUrl = widget.profilePhoto.trim();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF172B70), Color(0xFF6537A8), Color(0xFF087F91)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF4430A0).withValues(alpha: 0.30),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Row(
         children: [
-          _buildOwnTargetCard(),
-          const SizedBox(height: 18),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Search User',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _searchController,
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: (_) => _searchUsers(),
-                    decoration: const InputDecoration(
-                      labelText: 'Enter User ID or name',
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  ElevatedButton.icon(
-                    onPressed: _searching ? null : _searchUsers,
-                    icon: const Icon(Icons.search),
-                    label: const Text('Search'),
-                  ),
-                  if (_searching) const LinearProgressIndicator(),
-                  if (_searched && !_searching && _results.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(10),
-                      child: Text('No eligible users found.'),
-                    ),
-                  ..._results.map((user) {
-                    final code = user['user_code']?.toString() ?? '';
-                    final name = user['display_name']?.toString() ?? '';
-                    return Card(
-                      child: ListTile(
-                        leading: const CircleAvatar(child: Icon(Icons.person)),
-                        title: Text(name.isEmpty ? 'User $code' : name),
-                        subtitle: Text('User ID: $code'),
-                        trailing: TextButton(
-                          onPressed: _sendingInvite || code.isEmpty
-                              ? null
-                              : () => _inviteBd(code),
-                          child: const Text('BD Invite'),
-                        ),
-                      ),
-                    );
-                  }),
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [
+                  Color(0xFFFFD76A),
+                  Color(0xFFFF70C5),
+                  Color(0xFF54E8E0),
                 ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.25),
+                  blurRadius: 10,
+                ),
+              ],
+            ),
+            child: CircleAvatar(
+              radius: 29,
+              backgroundColor: const Color(0xFF263B76),
+              backgroundImage: photoUrl.startsWith('http')
+                  ? NetworkImage(photoUrl)
+                  : null,
+              child: photoUrl.startsWith('http')
+                  ? null
+                  : const Icon(Icons.person, color: Colors.white, size: 30),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.displayName.isEmpty
+                      ? 'Super Admin'
+                      : widget.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'ID: ${widget.userCode.isEmpty ? '—' : widget.userCode}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFFE0E8FF),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                const Text(
+                  '✦ PERMANENT SUPER ADMIN',
+                  style: TextStyle(
+                    color: Color(0xFFFFE18A),
+                    fontSize: 8,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 7),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(15),
+              onTap: () => setState(() => _showInvitePage = true),
+              child: Ink(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 11,
+                  vertical: 13,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(15),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFFFFD45C),
+                      Color(0xFFFF873D),
+                      Color(0xFFFF4F91),
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFF794A).withValues(alpha: 0.45),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.person_add_alt_1_rounded,
+                      color: Colors.white,
+                      size: 23,
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Invite BD',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'My Direct BDs (${_members.length})',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              IconButton(
-                onPressed: _loadingMembers ? null : _loadMembers,
-                icon: const Icon(Icons.refresh),
-              ),
-            ],
-          ),
-          if (_loadingMembers) const LinearProgressIndicator(),
-          if (!_loadingMembers && _members.isEmpty)
-            const Center(child: Text('No direct BDs found yet.')),
-          ..._members.map((member) {
-            final code = member['user_code']?.toString() ?? '';
-            final name = member['display_name']?.toString() ?? '';
-            final benefit = member['benefit'] ?? 0;
-            return Card(
-              child: ListTile(
-                leading: _photo(member['profile_photo']?.toString()),
-                title: Text(name.isEmpty ? 'BD $code' : name),
-                subtitle: Text('User ID: $code\nMonthly Benefit: $benefit'),
-                isThreeLine: true,
-                trailing: const Icon(Icons.verified_user, color: Colors.green),
-              ),
-            );
-          }),
         ],
       ),
+    );
+  }
+
+  Widget _buildInvitePage() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Invite a Business Developer',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                const Text('Search by User ID or name.'),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => _searchUsers(),
+                  decoration: const InputDecoration(
+                    labelText: 'Enter User ID or name',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ElevatedButton.icon(
+                  onPressed: _searching ? null : _searchUsers,
+                  icon: const Icon(Icons.search),
+                  label: const Text('Search Users'),
+                ),
+                if (_searching) const LinearProgressIndicator(),
+                if (_searched && !_searching && _results.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: Text('No eligible users found.'),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        ..._results.map((user) {
+          final code = user['user_code']?.toString() ?? '';
+          final name = user['display_name']?.toString() ?? '';
+          return Card(
+            child: ListTile(
+              leading: _photo(user['profile_photo']?.toString()),
+              title: Text(name.isEmpty ? 'User $code' : name),
+              subtitle: Text('User ID: $code'),
+              trailing: TextButton(
+                onPressed: _sendingInvite || code.isEmpty
+                    ? null
+                    : () => _inviteBd(code),
+                child: const Text('BD Invite'),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: !_showInvitePage,
+        leading: _showInvitePage
+            ? IconButton(
+                onPressed: () => setState(() => _showInvitePage = false),
+                icon: const Icon(Icons.arrow_back),
+              )
+            : null,
+        title: Text(_showInvitePage ? 'Invite BD' : 'Super Admin Center'),
+      ),
+      body: _showInvitePage
+          ? _buildInvitePage()
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                _buildSuperAdminHeader(),
+                const SizedBox(height: 18),
+                _buildOwnTargetCard(),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'My Direct BDs (${_members.length})',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _loadingMembers ? null : _loadMembers,
+                      icon: const Icon(Icons.refresh),
+                    ),
+                  ],
+                ),
+                if (_loadingMembers) const LinearProgressIndicator(),
+                if (!_loadingMembers && _members.isEmpty)
+                  const Center(child: Text('No direct BDs found yet.')),
+                ..._members.map((member) {
+                  final code = member['user_code']?.toString() ?? '';
+                  final name = member['display_name']?.toString() ?? '';
+                  final benefit = member['benefit'] ?? 0;
+                  return Card(
+                    child: ListTile(
+                      leading: _photo(member['profile_photo']?.toString()),
+                      title: Text(name.isEmpty ? 'BD $code' : name),
+                      subtitle: Text(
+                        'User ID: $code\nMonthly Benefit: $benefit',
+                      ),
+                      isThreeLine: true,
+                      trailing: const Icon(
+                        Icons.verified_user,
+                        color: Colors.green,
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
     );
   }
 }
