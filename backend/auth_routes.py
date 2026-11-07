@@ -1246,6 +1246,7 @@ def owner_database_diagnostic(
             uri=True,
             timeout=5,
         )
+        db.row_factory = sqlite3.Row
         tables = {
             row[0] for row in db.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
