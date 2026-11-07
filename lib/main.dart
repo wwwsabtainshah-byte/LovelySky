@@ -7194,6 +7194,814 @@ class _RoleCenterPageState extends State<_RoleCenterPage> {
     );
   }
 
+  Future<void> _inviteHost(String code) async {
+    if (_sendingInvite || code.trim().isEmpty) return;
+    setState(() => _sendingInvite = true);
+    try {
+      await widget.request(
+        'POST',
+        '/agency/invites',
+        body: {'user_code': code.trim(), 'invite_type': 'host'},
+      );
+      if (!mounted) return;
+      _agencyResults.removeWhere(
+        (item) => item['user_code']?.toString() == code.trim(),
+      );
+      _inviteController.clear();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Host invitation sent to $code')));
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Host invite failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _sendingInvite = false);
+    }
+  }
+
+  Future<void> _removeHost(Map<String, dynamic> host) async {
+    final uid = host['uid']?.toString() ?? '';
+    if (uid.isEmpty) return;
+    final name = host['display_name']?.toString().trim();
+    final label = (name == null || name.isEmpty)
+        ? 'Host ${host['user_code'] ?? ''}'
+        : name;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove Host?'),
+        content: Text('Remove $label from your Agency?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await widget.request(
+        'DELETE',
+        '/agency/hosts/${Uri.encodeComponent(uid)}',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('$label removed successfully')));
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Host removal failed: $e')));
+      }
+    }
+  }
+
+  Widget _buildAgencyHeader() {
+    final photoUrl = widget.profilePhoto.trim();
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF123D63), Color(0xFF176C83), Color(0xFF278B78)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF176C83).withValues(alpha: 0.24),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [Color(0xFFFFD76A), Color(0xFF52E5D0)],
+              ),
+            ),
+            child: CircleAvatar(
+              radius: 29,
+              backgroundColor: const Color(0xFF174A65),
+              backgroundImage: photoUrl.startsWith('http')
+                  ? NetworkImage(photoUrl)
+                  : null,
+              child: photoUrl.startsWith('http')
+                  ? null
+                  : const Icon(Icons.person, color: Colors.white, size: 30),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.displayName.isEmpty
+                      ? 'Agency Owner'
+                      : widget.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'ID: ${widget.userCode.isEmpty ? '—' : widget.userCode}',
+                  style: const TextStyle(
+                    color: Color(0xFFD9F4F5),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                const Text(
+                  '✦ AGENCY OWNER',
+                  style: TextStyle(
+                    color: Color(0xFFFFE18A),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(15),
+              onTap: () => setState(() {
+                _showInvitePage = true;
+                _agenciesSearched = false;
+                _agencyResults = [];
+                _inviteController.clear();
+              }),
+              child: Ink(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(15),
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFFFFD45C),
+                      Color(0xFFFF963F),
+                      Color(0xFFFF6381),
+                    ],
+                  ),
+                ),
+                child: const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.person_add_alt_1, color: Colors.white, size: 23),
+                    SizedBox(height: 4),
+                    Text(
+                      'Invite Host',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAgencyTargetCard() {
+    final income = _own['income'] ?? 0;
+    final target = _own['target'] ?? _own['next_target'] ?? 0;
+    final benefit = _own['benefit'] ?? 0;
+    final targetBenefit = _own['target_benefit'] ?? 0;
+    final progress = (_amount(_own['progress']) / 100)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final colors = Theme.of(context).colorScheme;
+
+    Widget metric(String label, String value, {bool right = false}) {
+      return Expanded(
+        child: Column(
+          crossAxisAlignment: right
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: colors.onSurface.withValues(alpha: 0.65),
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              value,
+              style: TextStyle(
+                color: colors.onSurface,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Card(
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.track_changes, color: Color(0xFF168B83)),
+                const SizedBox(width: 7),
+                const Expanded(
+                  child: Text(
+                    'Monthly Agency Target',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                  ),
+                ),
+                Text(
+                  '${_own['progress'] ?? 0}%',
+                  style: const TextStyle(
+                    color: Color(0xFF168B83),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                metric('CURRENT INCOME', _formatAmount(income)),
+                metric('TOTAL TARGET', _formatAmount(target), right: true),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: progress),
+                duration: const Duration(milliseconds: 900),
+                curve: Curves.easeOutCubic,
+                builder: (context, value, child) => LinearProgressIndicator(
+                  value: value,
+                  minHeight: 11,
+                  backgroundColor: colors.surfaceContainerHighest,
+                  valueColor: const AlwaysStoppedAnimation(Color(0xFF19B99A)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Current Benefit: ${_formatAmount(benefit)}',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Target Benefit: ${_formatAmount(targetBenefit)}',
+                    textAlign: TextAlign.end,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_month.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Month: $_month',
+                style: TextStyle(
+                  color: colors.onSurface.withValues(alpha: 0.6),
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAgencyHostCard(Map<String, dynamic> host) {
+    final code = host['user_code']?.toString() ?? '';
+    final name = host['display_name']?.toString() ?? '';
+    final benefit = host['benefit'] ?? 0;
+    return Card(
+      child: ListTile(
+        leading: _photo(host['profile_photo']?.toString()),
+        title: Text(name.isEmpty ? 'Host $code' : name),
+        subtitle: Text(
+          'User ID: $code\nMonthly Benefit: ${_formatAmount(benefit)}',
+        ),
+        isThreeLine: true,
+        trailing: IconButton(
+          tooltip: 'Remove Host',
+          onPressed: () => _removeHost(host),
+          icon: const Icon(Icons.person_remove_alt_1, color: Colors.redAccent),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAgencyInvitePage() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(15),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Invite a New Host',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 7),
+                const Text('Search eligible users by User ID or name.'),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _inviteController,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => _searchAgencies(),
+                  decoration: const InputDecoration(
+                    labelText: 'Enter Host User ID or name',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ElevatedButton.icon(
+                  onPressed: _searchingAgencies ? null : _searchAgencies,
+                  icon: const Icon(Icons.search),
+                  label: const Text('Search Users'),
+                ),
+                if (_searchingAgencies) const LinearProgressIndicator(),
+                if (_agenciesSearched &&
+                    !_searchingAgencies &&
+                    _agencyResults.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: Text('No eligible users found.'),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        ..._agencyResults.map((user) {
+          final code = user['user_code']?.toString() ?? '';
+          final name = user['display_name']?.toString() ?? '';
+          return Card(
+            child: ListTile(
+              leading: _photo(user['profile_photo']?.toString()),
+              title: Text(name.isEmpty ? 'User $code' : name),
+              subtitle: Text('User ID: $code'),
+              trailing: TextButton(
+                onPressed: _sendingInvite || code.isEmpty
+                    ? null
+                    : () => _inviteHost(code),
+                child: const Text('Invite Host'),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildAgencyCenter() {
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: !_showInvitePage,
+        leading: _showInvitePage
+            ? IconButton(
+                onPressed: () => setState(() => _showInvitePage = false),
+                icon: const Icon(Icons.arrow_back),
+              )
+            : null,
+        title: Text(_showInvitePage ? 'Invite Host' : widget.title),
+      ),
+      body: _showInvitePage
+          ? _buildAgencyInvitePage()
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _buildAgencyHeader(),
+                  const SizedBox(height: 16),
+                  if (_loading) const LinearProgressIndicator(),
+                  if (_error != null)
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          children: [
+                            const Icon(Icons.error_outline, color: Colors.red),
+                            const SizedBox(height: 8),
+                            Text(_error!),
+                            TextButton(
+                              onPressed: _load,
+                              child: const Text('Try again'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (!_loading && _error == null) ...[
+                    _buildAgencyTargetCard(),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'My Direct Hosts (${_members.length})',
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: _load,
+                          icon: const Icon(Icons.refresh_rounded),
+                        ),
+                      ],
+                    ),
+                    if (_members.isEmpty)
+                      const Card(
+                        child: ListTile(
+                          leading: Icon(Icons.groups_outlined),
+                          title: Text('No Hosts yet'),
+                          subtitle: Text('Invite a Host to build your Agency.'),
+                        ),
+                      ),
+                    ..._members.map(_buildAgencyHostCard),
+                  ],
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildHostHeader() {
+    final photoUrl = widget.profilePhoto.trim();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF172B70), Color(0xFF5140A8), Color(0xFF087F91)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF5140A8).withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  Color(0xFFFFD76A),
+                  Color(0xFFFF70C5),
+                  Color(0xFF54E8E0),
+                ],
+              ),
+            ),
+            child: CircleAvatar(
+              radius: 30,
+              backgroundColor: const Color(0xFF263B80),
+              backgroundImage: photoUrl.startsWith('http')
+                  ? NetworkImage(photoUrl)
+                  : null,
+              child: photoUrl.startsWith('http')
+                  ? null
+                  : const Icon(Icons.person, color: Colors.white, size: 31),
+            ),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.displayName.isEmpty
+                      ? 'Host Member'
+                      : widget.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'ID: ${widget.userCode.isEmpty ? '—' : widget.userCode}',
+                  style: const TextStyle(
+                    color: Color(0xFFDDE8FF),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFD76A).withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: const Color(0xFFFFD76A).withValues(alpha: 0.65),
+                    ),
+                  ),
+                  child: const Text(
+                    '✦ VERIFIED HOST',
+                    style: TextStyle(
+                      color: Color(0xFFFFE18A),
+                      fontSize: 9,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHostTargetCard() {
+    final diamonds = _own['diamonds'] ?? 0;
+    final income = _own['income'] ?? 0;
+    final target = _own['target'] ?? _own['next_target'] ?? 0;
+    final benefit = _own['benefit'] ?? 0;
+    final targetBenefit = _own['target_benefit'] ?? 0;
+    final progress = (_amount(_own['progress']) / 100)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final colors = Theme.of(context).colorScheme;
+
+    Widget metric(String label, String value, {bool right = false}) {
+      return Expanded(
+        child: Column(
+          crossAxisAlignment: right
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: colors.onSurface.withValues(alpha: 0.65),
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(
+                color: colors.onSurface,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Card(
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.workspace_premium, color: Color(0xFF6652C8)),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Monthly Host Target',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+                  ),
+                ),
+                Text(
+                  '${_own['progress'] ?? 0}%',
+                  style: const TextStyle(
+                    color: Color(0xFF6652C8),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                metric('TOTAL DIAMONDS', _formatAmount(diamonds)),
+                metric('MONTHLY INCOME', _formatAmount(income), right: true),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                metric('CURRENT BENEFIT', _formatAmount(benefit)),
+                metric(
+                  'TARGET BENEFIT',
+                  _formatAmount(targetBenefit),
+                  right: true,
+                ),
+              ],
+            ),
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Target Progress',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                Text(
+                  '${_own['progress'] ?? 0}%',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: progress),
+                duration: const Duration(milliseconds: 900),
+                curve: Curves.easeOutCubic,
+                builder: (context, value, child) => LinearProgressIndicator(
+                  value: value,
+                  minHeight: 11,
+                  backgroundColor: colors.surfaceContainerHighest,
+                  valueColor: const AlwaysStoppedAnimation(Color(0xFF6652C8)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Target: ${_formatAmount(target)}',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                ),
+                Text(
+                  'Completed: ${_formatAmount(_own['completed_target'] ?? 0)}',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            if (_month.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Month: $_month',
+                style: TextStyle(
+                  color: colors.onSurface.withValues(alpha: 0.6),
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHostCenter() {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Host Center'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _loading ? null : _load,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.all(28),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            if (_error != null)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.red),
+                      const SizedBox(height: 8),
+                      Text(_error!),
+                      TextButton(
+                        onPressed: _load,
+                        child: const Text('Try again'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            if (!_loading && _error == null) ...[
+              _buildHostHeader(),
+              const SizedBox(height: 15),
+              _buildHostTargetCard(),
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFEDE9FF),
+                    child: Icon(Icons.insights, color: Color(0xFF6652C8)),
+                  ),
+                  title: const Text(
+                    'Your Host Performance',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  subtitle: const Text(
+                    'Your monthly diamonds, income and target progress are updated from your account activity.',
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildBdCenter() {
     return Scaffold(
       appBar: AppBar(
@@ -7294,6 +8102,8 @@ class _RoleCenterPageState extends State<_RoleCenterPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.role == 'agency') return _buildAgencyCenter();
+    if (widget.role == 'host') return _buildHostCenter();
     if (widget.role == 'bd') return _buildBdCenter();
 
     final progress = (_number(_own['progress']) / 100)
