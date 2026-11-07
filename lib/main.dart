@@ -6313,9 +6313,9 @@ class _SuperAdminCenterPageState extends State<_SuperAdminCenterPage> {
 
   Future<void> _searchUsers() async {
     final q = _searchController.text.trim();
-    if (q.length < 2) {
+    if (q.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter at least 2 characters.')),
+        const SnackBar(content: Text('Enter at least 1 character.')),
       );
       return;
     }

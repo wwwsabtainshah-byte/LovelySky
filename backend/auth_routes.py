@@ -3557,8 +3557,8 @@ def agency_search(
 ):
     user = _agency_user(authorization)
     q = q.strip()
-    if len(q) < 2:
-        raise HTTPException(400, "Enter at least 2 characters")
+    if len(q) < 1:
+        raise HTTPException(400, "Enter at least 1 character")
 
     db = get_connection()
     try:
