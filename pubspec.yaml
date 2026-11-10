@@ -67,6 +67,9 @@ flutter:
   uses-material-design: true
   assets:
     - assets/audio/lucky_chun.wav
+    - assets/lovely_sky_frames/
+    - assets/vip_animated_lit/
+    - assets/vip_animated_combined10/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
