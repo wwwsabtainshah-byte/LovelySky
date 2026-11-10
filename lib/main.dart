@@ -15,6 +15,8 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import 'auth_screen.dart';
+import 'mall/mall_page.dart';
+import 'widgets/vip_wing_frame.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -3988,6 +3990,13 @@ class _ProfilePageState extends State<ProfilePage> {
   String displayName = 'Lovely User 💙';
   String userCode = '';
   String profilePhoto = '';
+  int assignedVipSet = 0;
+  int assignedVipLevel = 0;
+  String gender = '';
+  String bio = '';
+  int friendCount = 0;
+  int fansCount = 0;
+  int followingCount = 0;
   bool profileLoading = true;
   bool databaseChecking = false;
   String agencyRole = 'user';
@@ -4031,21 +4040,327 @@ class _ProfilePageState extends State<ProfilePage> {
 
               if (name.isNotEmpty) displayName = name;
               if (code.isNotEmpty) userCode = code;
+              if (code.isNotEmpty) {
+                final rawAssignments =
+                    prefs.getString('manual_vip_frame_assignments_v1');
+                if (rawAssignments != null && rawAssignments.isNotEmpty) {
+                  try {
+                    final assignments =
+                        Map<String, dynamic>.from(jsonDecode(rawAssignments) as Map);
+                    final assignment = assignments[code];
+                    if (assignment is Map) {
+                      assignedVipSet =
+                          int.tryParse('${assignment['set'] ?? 0}') ?? 0;
+                      assignedVipLevel =
+                          int.tryParse('${assignment['level'] ?? 0}') ?? 0;
+                    } else {
+                      assignedVipSet = 0;
+                      assignedVipLevel = 0;
+                    }
+                  } catch (_) {
+                    assignedVipSet = 0;
+                    assignedVipLevel = 0;
+                  }
+                }
+              }
               if (photo.startsWith('https://') || photo.startsWith('http://')) {
                 profilePhoto = photo;
               }
+
+              gender = decoded['gender']?.toString() ?? '';
+              bio = decoded['bio']?.toString() ?? '';
               profileLoading = false;
             });
           }
-          await _loadAgencyStatus();
+
+          await Future.wait<void>([_loadProfileStats(), _loadAgencyStatus()]);
           return;
         }
       }
     } catch (_) {
-      // Agar network temporary band ho to screen crash na ho.
+      // Network error par profile screen crash nahi hogi.
     }
 
     if (mounted) setState(() => profileLoading = false);
+  }
+
+  Future<void> _loadProfileStats() async {
+    try {
+      final data = await _giftRequest('GET', '/profile/stats');
+      if (!mounted) return;
+
+      setState(() {
+        friendCount = int.tryParse('${data['friends'] ?? 0}') ?? 0;
+        fansCount = int.tryParse('${data['fans'] ?? 0}') ?? 0;
+        followingCount = int.tryParse('${data['following'] ?? 0}') ?? 0;
+      });
+    } catch (_) {
+      // Stats unavailable hon to default zero display hoga.
+    }
+  }
+
+  Future<void> _manageManualVipFrame() async {
+    final idController = TextEditingController(text: userCode);
+    int selectedSet = assignedVipSet == 0 ? 1 : assignedVipSet;
+    int selectedLevel = assignedVipLevel == 0 ? 1 : assignedVipLevel;
+    bool removeFrame = false;
+
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: const Text('Manual VIP Frame Assignment'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: idController,
+                    keyboardType: TextInputType.text,
+                    decoration: const InputDecoration(
+                      labelText: 'User ID / User Code',
+                      hintText: 'Enter exact user ID',
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text('Choose design set'),
+                  const SizedBox(height: 6),
+                  SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(value: 1, label: Text('Set 1')),
+                      ButtonSegment(value: 2, label: Text('Set 2')),
+                    ],
+                    selected: {selectedSet},
+                    onSelectionChanged: (values) =>
+                        setDialogState(() => selectedSet = values.first),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text('VIP Level'),
+                  DropdownButtonFormField<int>(
+                    initialValue: selectedLevel,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                    ),
+                    items: List.generate(
+                      12,
+                      (index) => DropdownMenuItem(
+                        value: index + 1,
+                        child: Text('VIP ${index + 1}'),
+                      ),
+                    ),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() => selectedLevel = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: removeFrame,
+                    title: const Text('Remove frame for this ID'),
+                    onChanged: (value) =>
+                        setDialogState(() => removeFrame = value ?? false),
+                  ),
+                  const Text(
+                    'Assignment is saved on this device only.',
+                    style: TextStyle(fontSize: 11, color: Colors.black54),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  final targetId = idController.text.trim();
+                  if (targetId.isEmpty) return;
+                  final prefs = await SharedPreferences.getInstance();
+                  final raw =
+                      prefs.getString('manual_vip_frame_assignments_v1');
+                  final assignments = <String, dynamic>{};
+                  if (raw != null && raw.isNotEmpty) {
+                    try {
+                      assignments.addAll(
+                        Map<String, dynamic>.from(jsonDecode(raw) as Map),
+                      );
+                    } catch (_) {}
+                  }
+                  if (removeFrame) {
+                    assignments.remove(targetId);
+                  } else {
+                    assignments[targetId] = {
+                      'set': selectedSet,
+                      'level': selectedLevel,
+                    };
+                  }
+                  await prefs.setString(
+                    'manual_vip_frame_assignments_v1',
+                    jsonEncode(assignments),
+                  );
+                  if (targetId == userCode && mounted) {
+                    setState(() {
+                      assignedVipSet = removeFrame ? 0 : selectedSet;
+                      assignedVipLevel = removeFrame ? 0 : selectedLevel;
+                    });
+                  }
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          removeFrame
+                              ? 'VIP frame removed for $targetId'
+                              : 'Set $selectedSet · VIP $selectedLevel assigned to $targetId',
+                        ),
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Save Assignment'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } finally {
+      idController.dispose();
+    }
+  }
+
+  Future<void> _editProfile() async {
+    final nameController = TextEditingController(text: displayName);
+    final bioController = TextEditingController(text: bio);
+    String selectedGender = gender;
+
+    try {
+      final result = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (dialogContext, setDialogState) {
+              return AlertDialog(
+                title: const Text('Edit Profile'),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: nameController,
+                        maxLength: 40,
+                        decoration: const InputDecoration(
+                          labelText: 'Display name',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedGender,
+                        decoration: const InputDecoration(
+                          labelText: 'Gender',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: '', child: Text('Not set')),
+                          DropdownMenuItem(value: 'male', child: Text('Male')),
+                          DropdownMenuItem(
+                            value: 'female',
+                            child: Text('Female'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'other',
+                            child: Text('Other'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setDialogState(() {
+                            selectedGender = value ?? '';
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: bioController,
+                        maxLength: 160,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Bio',
+                          hintText: 'Tell something about yourself',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      final name = nameController.text.trim();
+                      if (name.isEmpty) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          const SnackBar(content: Text('Name cannot be empty')),
+                        );
+                        return;
+                      }
+
+                      Navigator.pop(dialogContext, {
+                        'display_name': name,
+                        'gender': selectedGender,
+                        'bio': bioController.text.trim(),
+                      });
+                    },
+                    child: const Text('Save'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (result == null || !mounted) return;
+
+      final updatedName = result['display_name'].toString();
+      final updatedGender = result['gender'].toString();
+      final updatedBio = result['bio'].toString();
+
+      await _giftRequest(
+        'PATCH',
+        '/profile',
+        body: {
+          'display_name': updatedName,
+          'gender': updatedGender,
+          'bio': updatedBio,
+        },
+      );
+
+      if (!mounted) return;
+      setState(() {
+        displayName = updatedName;
+        gender = updatedGender;
+        bio = updatedBio;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile updated successfully')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Profile update failed: $e')));
+    } finally {
+      nameController.dispose();
+      bioController.dispose();
+    }
   }
 
   Future<Map<String, dynamic>> _giftRequest(
@@ -4064,9 +4379,22 @@ class _ProfilePageState extends State<ProfilePage> {
       'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',
     };
-    final response = method == 'POST'
-        ? await http.post(uri, headers: headers, body: jsonEncode(body ?? {}))
-        : await http.get(uri, headers: headers);
+    late http.Response response;
+    if (method == 'POST') {
+      response = await http.post(
+        uri,
+        headers: headers,
+        body: jsonEncode(body ?? {}),
+      );
+    } else if (method == 'PATCH') {
+      response = await http.patch(
+        uri,
+        headers: headers,
+        body: jsonEncode(body ?? {}),
+      );
+    } else {
+      response = await http.get(uri, headers: headers);
+    }
 
     final decoded = jsonDecode(response.body);
     if (decoded is! Map<String, dynamic>) {
@@ -5611,30 +5939,49 @@ class _ProfilePageState extends State<ProfilePage> {
                 children: [
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(3),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: const Color(0xFFFFD77A),
-                            width: 2.5,
-                          ),
-                        ),
-                        child: CircleAvatar(
-                          radius: 43,
-                          backgroundColor: Colors.white,
-                          backgroundImage: profilePhoto.isNotEmpty
-                              ? NetworkImage(profilePhoto)
-                              : null,
-                          child: profilePhoto.isEmpty
-                              ? const Icon(
-                                  Icons.person,
-                                  size: 45,
-                                  color: Color(0xFF7435A9),
-                                )
-                              : null,
-                        ),
-                      ),
+                      assignedVipSet >= 1 && assignedVipLevel >= 1
+                          ? VipWingFrame(
+                              setNumber: assignedVipSet,
+                              level: assignedVipLevel,
+                              size: 116,
+                              child: CircleAvatar(
+                                backgroundColor: Colors.white,
+                                backgroundImage: profilePhoto.isNotEmpty
+                                    ? NetworkImage(profilePhoto)
+                                    : null,
+                                child: profilePhoto.isEmpty
+                                    ? const Icon(
+                                        Icons.person,
+                                        size: 35,
+                                        color: Color(0xFF7435A9),
+                                      )
+                                    : null,
+                              ),
+                            )
+                          : Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: const Color(0xFFFFD77A),
+                                  width: 2.5,
+                                ),
+                              ),
+                              child: CircleAvatar(
+                                radius: 43,
+                                backgroundColor: Colors.white,
+                                backgroundImage: profilePhoto.isNotEmpty
+                                    ? NetworkImage(profilePhoto)
+                                    : null,
+                                child: profilePhoto.isEmpty
+                                    ? const Icon(
+                                        Icons.person,
+                                        size: 45,
+                                        color: Color(0xFF7435A9),
+                                      )
+                                    : null,
+                              ),
+                            ),
                       const SizedBox(width: 14),
                       Expanded(
                         child: Column(
@@ -5651,21 +5998,39 @@ class _ProfilePageState extends State<ProfilePage> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            const Row(
+                            Row(
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.diamond,
                                   color: Color(0xFF7DE5FF),
                                   size: 28,
                                 ),
-                                SizedBox(width: 13),
+                                const SizedBox(width: 13),
                                 Icon(
-                                  Icons.female,
-                                  color: Color(0xFFFF8ACB),
+                                  gender == 'male'
+                                      ? Icons.male
+                                      : gender == 'female'
+                                      ? Icons.female
+                                      : Icons.person_outline,
+                                  color: gender == 'female'
+                                      ? const Color(0xFFFF8ACB)
+                                      : Colors.white,
                                   size: 25,
                                 ),
                               ],
                             ),
+                            if (bio.trim().isNotEmpty) ...[
+                              const SizedBox(height: 5),
+                              Text(
+                                bio,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 7),
                             GestureDetector(
                               onTap: () {
@@ -5705,20 +6070,34 @@ class _ProfilePageState extends State<ProfilePage> {
                           ],
                         ),
                       ),
-                      const Icon(
-                        Icons.chevron_right,
-                        color: Colors.white,
-                        size: 30,
+                      if (userCode == '1')
+                        IconButton(
+                          tooltip: 'Manual VIP Assignment',
+                          onPressed: _manageManualVipFrame,
+                          icon: const Icon(
+                            Icons.workspace_premium_rounded,
+                            color: Color(0xFFFFD779),
+                            size: 25,
+                          ),
+                        ),
+                      IconButton(
+                        tooltip: 'Edit Profile',
+                        onPressed: _editProfile,
+                        icon: const Icon(
+                          Icons.edit_rounded,
+                          color: Colors.white,
+                          size: 25,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 25),
-                  const Row(
+                  Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      StatItem(value: '0', label: 'Friend'),
-                      StatItem(value: '0', label: 'Fans'),
-                      StatItem(value: '0', label: 'Follow'),
+                      StatItem(value: '$friendCount', label: 'Friend'),
+                      StatItem(value: '$fansCount', label: 'Fans'),
+                      StatItem(value: '$followingCount', label: 'Follow'),
                     ],
                   ),
                 ],
@@ -5894,7 +6273,10 @@ class _ProfilePageState extends State<ProfilePage> {
                     icon: Icons.shopping_bag,
                     label: 'Mall',
                     color: const Color(0xFF268CF4),
-                    onTap: () => comingSoon('Mall'),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const MallPage()),
+                    ),
                   ),
                   actionButton(
                     icon: Icons.favorite,
@@ -10616,6 +10998,42 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     return false;
   }
 
+  Future<void> _toggleRoomMemberFollow(
+    String targetUid,
+    bool currentlyFollowing,
+  ) async {
+    final headers = await _roomHeaders();
+    if (headers == null) {
+      showMessage('Please log in first.');
+      return;
+    }
+
+    try {
+      final uri = Uri.parse(
+        '$lovelyApi/voice/follow/${Uri.encodeComponent(targetUid)}',
+      );
+      final response = currentlyFollowing
+          ? await http.delete(uri, headers: headers)
+          : await http.post(
+              Uri.parse('$lovelyApi/voice/follow'),
+              headers: {...headers, 'Content-Type': 'application/json'},
+              body: jsonEncode({'user_uid': targetUid}),
+            );
+
+      if (!mounted) return;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        showMessage(
+          currentlyFollowing ? 'Unfollow successful.' : 'Follow successful.',
+        );
+        await _loadSeats();
+      } else {
+        showMessage('Follow action failed (${response.statusCode}).');
+      }
+    } catch (_) {
+      if (mounted) showMessage('Follow action connection error.');
+    }
+  }
+
   Future<void> _inviteRoomMember(int seatNumber) async {
     final headers = await _roomHeaders();
     if (headers == null) return;
@@ -10730,6 +11148,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     final code = (member['user_code'] ?? '').toString();
     final photo = (member['profile_photo'] ?? '').toString();
     final isMine = member['is_mine'] == true;
+    final targetUid = (member['user_uid'] ?? '').toString();
+    final isFollowing = member['is_following'] == true;
     final canManage = roomRole == 'owner' || roomRole == 'admin';
 
     Widget avatar() {
@@ -10922,6 +11342,29 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   ),
                 ],
               ),
+              if (!isMine && targetUid.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _toggleRoomMemberFollow(targetUid, isFollowing);
+                    },
+                    icon: Icon(
+                      isFollowing
+                          ? Icons.person_remove_alt_1
+                          : Icons.person_add_alt_1,
+                    ),
+                    label: Text(isFollowing ? 'Unfollow' : 'Follow'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Color(0xFFFF83C7)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
               if (canManage && !isMine) ...[
                 const SizedBox(height: 10),
                 SizedBox(
@@ -11834,8 +12277,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 ),
                 const SizedBox(height: 8),
                 Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(8, 3, 8, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (occupiedSeats.isNotEmpty)
                         SizedBox(
@@ -11930,52 +12373,62 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                         ],
                       ),
                       const SizedBox(height: 5),
-                      if (messages.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 14),
-                          child: Center(
-                            child: Text(
-                              'Welcome to Lovely Sky!',
-                              style: TextStyle(
-                                color: Color(0xFF6D91A8),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        )
-                      else
-                        ...messages.map(
-                          (message) => Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(
-                                  Icons.account_circle_rounded,
-                                  color: Color(0xFF8DDCFF),
-                                  size: 25,
-                                ),
-                                const SizedBox(width: 7),
-                                Expanded(
+                      Expanded(
+                        child: ListView(
+                          padding: EdgeInsets.zero,
+                          children: [
+                            if (messages.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 14),
+                                child: Center(
                                   child: Text(
-                                    message['text'].toString(),
-                                    style: const TextStyle(
-                                      color: Color(0xFF123B5A),
+                                    'Welcome to Lovely Sky!',
+                                    style: TextStyle(
+                                      color: Color(0xFF6D91A8),
                                       fontSize: 12,
                                     ),
                                   ),
                                 ),
-                                Text(
-                                  message['time'].toString(),
-                                  style: const TextStyle(
-                                    color: Color(0xFF8AA9BC),
-                                    fontSize: 9,
+                              )
+                            else
+                              ...messages.map(
+                                (message) => Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Icon(
+                                        Icons.account_circle_rounded,
+                                        color: Color(0xFF8DDCFF),
+                                        size: 25,
+                                      ),
+                                      const SizedBox(width: 7),
+                                      Expanded(
+                                        child: Text(
+                                          message['text'].toString(),
+                                          style: const TextStyle(
+                                            color: Color(0xFF123B5A),
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        message['time'].toString(),
+                                        style: const TextStyle(
+                                          color: Color(0xFF8AA9BC),
+                                          fontSize: 9,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
+                              ),
+                          ],
                         ),
+                      ),
                     ],
                   ),
                 ),
