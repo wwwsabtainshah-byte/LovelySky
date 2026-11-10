@@ -1874,6 +1874,7 @@ class VideoRoomPage extends StatefulWidget {
 
 class _VideoRoomPageState extends State<VideoRoomPage> {
   final TextEditingController messageController = TextEditingController();
+  final ScrollController videoChatScrollController = ScrollController();
   List<Map<String, dynamic>> messages = [];
   Timer? refreshTimer;
   bool joined = false;
@@ -2144,6 +2145,17 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
     }
   }
 
+  void _scrollVideoChatToLatest() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !videoChatScrollController.hasClients) return;
+      videoChatScrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
   Future<void> _loadMessages() async {
     if (!joined || _loadingMessages || !mounted) return;
     _loadingMessages = true;
@@ -2155,7 +2167,13 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
 
-      if (mounted && joined) setState(() => messages = items);
+      if (mounted && joined) {
+        final oldId = messages.isEmpty ? null : messages.last['id'];
+        final newId = items.isEmpty ? null : items.last['id'];
+        final hasNew = messages.isEmpty ? items.isNotEmpty : oldId != newId;
+        setState(() => messages = items);
+        if (hasNew) _scrollVideoChatToLatest();
+      }
     } catch (_) {
     } finally {
       _loadingMessages = false;
@@ -2205,6 +2223,7 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
     refreshTimer?.cancel();
     unawaited(_disconnectLiveKit());
     messageController.dispose();
+    videoChatScrollController.dispose();
     if (joined && !isHost) {
       _request(
         'POST',
@@ -2476,9 +2495,10 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
                   alignment: Alignment.centerLeft,
                   child: Container(
                     width: MediaQuery.of(context).size.width * 0.77,
-                    constraints: const BoxConstraints(maxHeight: 205),
+                    height: 205,
                     margin: const EdgeInsets.only(left: 12, bottom: 8),
                     child: ListView.builder(
+                      controller: videoChatScrollController,
                       reverse: true,
                       shrinkWrap: true,
                       itemCount: messages.length > 6 ? 6 : messages.length,
@@ -10280,6 +10300,7 @@ class _RoomGiftVectorPainter extends CustomPainter {
 
 class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   final TextEditingController messageController = TextEditingController();
+  final ScrollController roomChatScrollController = ScrollController();
   final List<Map<String, dynamic>> messages = [];
 
   bool micOn = true;
@@ -11800,6 +11821,17 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
+  void _scrollRoomChatToLatest() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !roomChatScrollController.hasClients) return;
+      roomChatScrollController.animateTo(
+        roomChatScrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
   Future<void> _loadMessages() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -11822,11 +11854,16 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         };
       }).toList();
       if (!mounted) return;
+      final oldId = messages.isEmpty ? null : messages.last['id'];
+      final newId = rows.isEmpty ? null : rows.last['id'];
+      final hasNewMessage =
+          messages.isEmpty ? rows.isNotEmpty : oldId != newId;
       setState(() {
         messages
           ..clear()
           ..addAll(rows);
       });
+      if (hasNewMessage) _scrollRoomChatToLatest();
     } catch (_) {}
   }
 
@@ -11976,6 +12013,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     }
     unawaited(_stopVoice());
     messageController.dispose();
+    roomChatScrollController.dispose();
     super.dispose();
   }
 
@@ -12373,8 +12411,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                         ],
                       ),
                       const SizedBox(height: 5),
-                      Expanded(
+                      SizedBox(
+                        height: 205,
                         child: ListView(
+                          controller: roomChatScrollController,
                           padding: EdgeInsets.zero,
                           children: [
                             if (messages.isEmpty)
