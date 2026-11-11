@@ -40,7 +40,6 @@ class _VipWingFrameState extends State<VipWingFrame>
   );
 
   ui.Rect? _opening;
-  bool _openingLoaded = false;
 
   @override
   void initState() {
@@ -61,7 +60,6 @@ class _VipWingFrameState extends State<VipWingFrame>
 
     if (oldWidget.asset != widget.asset) {
       _opening = null;
-      _openingLoaded = false;
       _loadOpening();
     }
   }
@@ -173,7 +171,6 @@ class _VipWingFrameState extends State<VipWingFrame>
 
     setState(() {
       _opening = result;
-      _openingLoaded = true;
     });
   }
 
@@ -188,34 +185,29 @@ class _VipWingFrameState extends State<VipWingFrame>
     const gifWidth = 384.0;
     const gifHeight = 341.0;
 
-    final targetAvatarSize = widget.size * widget.avatarScale;
-
     final opening = _opening;
+
+    // Keep the complete GIF inside the seat's available frame size.
+    final scale = widget.size / gifWidth;
+    final frameWidth = gifWidth * scale;
+    final frameHeight = gifHeight * scale;
+
     final openingWidth = opening?.width ?? 135.0;
     final openingHeight = opening?.height ?? 122.0;
     final openingDiameter = openingWidth < openingHeight
         ? openingWidth
         : openingHeight;
 
-    // Scale the complete GIF until its transparent opening fits the DP.
-    final scale = _openingLoaded && opening != null
-        ? targetAvatarSize / openingDiameter
-        : widget.size / gifWidth;
+    // Fit the avatar to the detected transparent opening.
+    final avatarSize = openingDiameter * scale * 0.96;
 
-    final frameWidth = gifWidth * scale;
-    final frameHeight = gifHeight * scale;
-
-    final avatarSize = _openingLoaded && opening != null
-        ? openingDiameter * scale * 0.96
-        : targetAvatarSize;
-
-    final centerX = _openingLoaded && opening != null
+    final centerX = opening != null
         ? (opening.left + opening.right) / 2 * scale
-        : frameWidth / 2;
+        : gifWidth / 2;
 
-    final centerY = _openingLoaded && opening != null
+    final centerY = opening != null
         ? (opening.top + opening.bottom) / 2 * scale
-        : frameHeight / 2;
+        : gifHeight / 2;
 
     return SizedBox.square(
       dimension: widget.size,
