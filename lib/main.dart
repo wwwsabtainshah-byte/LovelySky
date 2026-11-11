@@ -6120,31 +6120,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 children: [
                   Row(
                     children: [
-                      (backpackVipSet >= 1 && backpackVipLevel >= 1) ||
-                              (assignedVipSet >= 1 && assignedVipLevel >= 1)
-                          ? VipWingFrame(
-                              setNumber: backpackVipSet >= 1
-                                  ? backpackVipSet
-                                  : assignedVipSet,
-                              level: backpackVipSet >= 1
-                                  ? backpackVipLevel
-                                  : assignedVipLevel,
-                              size: 116,
-                              child: CircleAvatar(
-                                backgroundColor: Colors.white,
-                                backgroundImage: profilePhoto.isNotEmpty
-                                    ? NetworkImage(profilePhoto)
-                                    : null,
-                                child: profilePhoto.isEmpty
-                                    ? const Icon(
-                                        Icons.person,
-                                        size: 35,
-                                        color: Color(0xFF7435A9),
-                                      )
-                                    : null,
-                              ),
-                            )
-                          : Container(
+                      Container(
                               padding: const EdgeInsets.all(3),
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
@@ -11826,6 +11802,13 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     final occupied = seat['is_occupied'] == true;
     final mine = seat['is_mine'] == true;
     final locked = seat['is_locked'] == true;
+    final vipFrameSet = int.tryParse('${seat['vip_frame_set'] ?? 0}') ?? 0;
+    final vipFrameLevel = int.tryParse('${seat['vip_frame_level'] ?? 0}') ?? 0;
+    final hasVipFrame =
+        occupied &&
+        (vipFrameSet == 1 || vipFrameSet == 2) &&
+        vipFrameLevel >= 1 &&
+        vipFrameLevel <= 12;
     final photo = (seat['profile_photo'] ?? '').toString();
     final code = (seat['user_code'] ?? '').toString();
     final remoteMic = remoteMicStatus[code] ?? true;
@@ -11889,28 +11872,36 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                       ),
                     ],
                   ),
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Color(0xFF173B5C),
-                    ),
-                    padding: const EdgeInsets.all(2),
-                    child: ClipOval(
-                      child: occupied
-                          ? avatar
-                          : locked
-                          ? const Icon(
-                              Icons.lock_rounded,
-                              color: Colors.white70,
-                              size: 21,
-                            )
-                          : Icon(
-                              Icons.person_add_alt_1_rounded,
-                              color: Colors.white.withValues(alpha: 0.65),
-                              size: large ? 27 : 22,
-                            ),
-                    ),
-                  ),
+                  child: occupied && hasVipFrame
+                      ? VipWingFrame(
+                          setNumber: vipFrameSet,
+                          level: vipFrameLevel,
+                          size: size - 6,
+                          avatarScale: 0.72,
+                          child: avatar,
+                        )
+                      : Container(
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Color(0xFF173B5C),
+                          ),
+                          padding: const EdgeInsets.all(2),
+                          child: ClipOval(
+                            child: occupied
+                                ? avatar
+                                : locked
+                                    ? const Icon(
+                                        Icons.lock_rounded,
+                                        color: Colors.white70,
+                                        size: 21,
+                                      )
+                                    : Icon(
+                                        Icons.person_add_alt_1_rounded,
+                                        color: Colors.white.withValues(alpha: 0.65),
+                                        size: large ? 27 : 22,
+                                      ),
+                          ),
+                        ),
                 ),
                 if (occupied && activeGiftReceiverCodes.contains(code))
                   Positioned.fill(

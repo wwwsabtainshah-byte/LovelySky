@@ -8,6 +8,7 @@ class VipWingFrame extends StatefulWidget {
     required this.level,
     this.size = 116,
     this.animate = true,
+    this.avatarScale = 0.43,
   }) : assert(setNumber == 1 || setNumber == 2),
        assert(level >= 1 && level <= 12);
 
@@ -16,6 +17,7 @@ class VipWingFrame extends StatefulWidget {
   final int level;
   final double size;
   final bool animate;
+  final double avatarScale;
 
   String get asset =>
       'assets/vip_animated_combined10/set${setNumber}_vip${level.toString().padLeft(2, '0')}.gif';
@@ -55,7 +57,7 @@ class _VipWingFrameState extends State<VipWingFrame>
 
   @override
   Widget build(BuildContext context) {
-    final avatarSize = widget.size * 0.43;
+    final avatarSize = widget.size * widget.avatarScale;
 
     return SizedBox.square(
       dimension: widget.size,

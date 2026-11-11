@@ -699,6 +699,8 @@ def get_voice_room_seats(
             """
             SELECT p.seat_number, p.user_uid, p.user_code, p.is_muted,
                    u.display_name, u.profile_photo,
+                   COALESCE(vfo.set_number, 0) AS vip_frame_set,
+                   COALESCE(vfo.level, 0) AS vip_frame_level,
                    COALESCE(gd.diamonds, 0) AS gift_diamonds,
                    EXISTS (
                        SELECT 1 FROM user_follows AS uf
@@ -707,6 +709,14 @@ def get_voice_room_seats(
                    ) AS is_following
             FROM voice_room_participants AS p
             LEFT JOIN users AS u ON u.google_uid = p.user_uid
+            LEFT JOIN user_profile_equipment AS upe
+              ON upe.user_id = u.id
+            LEFT JOIN vip_frame_ownership AS vfo
+              ON vfo.user_id = u.id
+             AND vfo.set_number = upe.vip_set_number
+             AND vfo.level = upe.vip_level
+             AND vfo.active = 1
+             AND vfo.expires_at > CURRENT_TIMESTAMP
             LEFT JOIN voice_room_gift_diamonds AS gd
               ON gd.room_id = p.room_id AND gd.user_uid = p.user_uid
             WHERE p.room_id = ? AND p.seat_number BETWEEN 1 AND 18
@@ -732,6 +742,8 @@ def get_voice_room_seats(
                     "is_muted": bool(by_seat[n]["is_muted"]) if n in by_seat else False,
                     "display_name": by_seat[n]["display_name"] if n in by_seat else None,
                     "profile_photo": by_seat[n]["profile_photo"] if n in by_seat else None,
+                    "vip_frame_set": int(by_seat[n]["vip_frame_set"] or 0) if n in by_seat else 0,
+                    "vip_frame_level": int(by_seat[n]["vip_frame_level"] or 0) if n in by_seat else 0,
                     "gift_diamonds": int(by_seat[n]["gift_diamonds"] or 0) if n in by_seat else 0,
                     "is_following": bool(by_seat[n]["is_following"]) if n in by_seat else False,
                     "is_occupied": n in by_seat,
