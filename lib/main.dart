@@ -4012,6 +4012,8 @@ class _ProfilePageState extends State<ProfilePage> {
   String profilePhoto = '';
   int assignedVipSet = 0;
   int assignedVipLevel = 0;
+  int backpackVipSet = 0;
+  int backpackVipLevel = 0;
   String gender = '';
   String bio = '';
   int friendCount = 0;
@@ -4093,7 +4095,11 @@ class _ProfilePageState extends State<ProfilePage> {
             });
           }
 
-          await Future.wait<void>([_loadProfileStats(), _loadAgencyStatus()]);
+          await Future.wait<void>([
+            _loadProfileStats(),
+            _loadAgencyStatus(),
+            _loadBackpackEquippedFrame(),
+          ]);
           return;
         }
       }
@@ -4116,6 +4122,293 @@ class _ProfilePageState extends State<ProfilePage> {
       });
     } catch (_) {
       // Stats unavailable hon to default zero display hoga.
+    }
+  }
+
+  Future<void> _loadBackpackEquippedFrame() async {
+    try {
+      final data = await _giftRequest('GET', '/backpack');
+      final raw = data['equipped_frame'];
+      final frame = raw is Map ? raw : null;
+      if (!mounted) return;
+      setState(() {
+        backpackVipSet =
+            int.tryParse('${frame?['set_number'] ?? 0}') ?? 0;
+        backpackVipLevel =
+            int.tryParse('${frame?['level'] ?? 0}') ?? 0;
+      });
+    } catch (_) {
+      // Backpack unavailable ho to existing manual frame safe rahega.
+    }
+  }
+
+  Future<void> _openBackpack() async {
+    List<Map<String, dynamic>> items = [];
+    Map<String, dynamic>? equipped;
+    bool loading = true;
+    bool saving = false;
+
+    Future<void> refreshItems() async {
+      final data = await _giftRequest('GET', '/backpack');
+      final rawItems = data['items'];
+      items = rawItems is List
+          ? rawItems
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList()
+          : [];
+      final rawEquipped = data['equipped_frame'];
+      equipped = rawEquipped is Map
+          ? Map<String, dynamic>.from(rawEquipped)
+          : null;
+    }
+
+    try {
+      await refreshItems();
+      loading = false;
+      if (!mounted) return;
+
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (sheetContext, sheetSetState) {
+            final height = MediaQuery.of(sheetContext).size.height * 0.78;
+            return Container(
+              height: height,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF4FAFF),
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(26),
+                ),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.black26,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 12, 14),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.backpack,
+                            color: Color(0xFF168FFF), size: 28),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'My Backpack',
+                            style: TextStyle(
+                              fontSize: 21,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF16466D),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(sheetContext),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : items.isEmpty
+                            ? const Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.backpack_outlined,
+                                        size: 58, color: Color(0xFF91B9D8)),
+                                    SizedBox(height: 12),
+                                    Text(
+                                      'Your Backpack is empty',
+                                      style: TextStyle(
+                                        color: Color(0xFF54738D),
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    SizedBox(height: 5),
+                                    Text(
+                                      'Your acquired VIP frames will appear here.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Color(0xFF7892A8),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : GridView.builder(
+                                padding: const EdgeInsets.all(16),
+                                itemCount: items.length,
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                  childAspectRatio: 0.83,
+                                ),
+                                itemBuilder: (context, index) {
+                                  final item = items[index];
+                                  final setNo = int.tryParse(
+                                          '${item['set_number'] ?? 0}') ??
+                                      0;
+                                  final level = int.tryParse(
+                                          '${item['level'] ?? 0}') ??
+                                      0;
+                                  final isEquipped = equipped != null &&
+                                      int.tryParse(
+                                              '${equipped!['set_number']}') ==
+                                          setNo &&
+                                      int.tryParse(
+                                              '${equipped!['level']}') ==
+                                          level;
+                                  final expiry =
+                                      item['expires_at']?.toString() ?? '';
+
+                                  return Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(18),
+                                      border: Border.all(
+                                        color: isEquipped
+                                            ? const Color(0xFF168FFF)
+                                            : const Color(0xFFD9EAF7),
+                                        width: isEquipped ? 2 : 1,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceEvenly,
+                                      children: [
+                                        VipWingFrame(
+                                          setNumber: setNo,
+                                          level: level,
+                                          size: 76,
+                                          child: const CircleAvatar(
+                                            backgroundColor: Color(0xFFE6F5FF),
+                                            child: Icon(
+                                              Icons.person,
+                                              color: Color(0xFF168FFF),
+                                              size: 30,
+                                            ),
+                                          ),
+                                        ),
+                                        Text(
+                                          'VIP Set $setNo · Level $level',
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF16466D),
+                                          ),
+                                        ),
+                                        Text(
+                                          expiry.isEmpty
+                                              ? 'VIP Frame'
+                                              : 'Expires: $expiry',
+                                          textAlign: TextAlign.center,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            color: Color(0xFF7892A8),
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: double.infinity,
+                                          child: FilledButton(
+                                            onPressed: saving
+                                                ? null
+                                                : () async {
+                                                    sheetSetState(
+                                                        () => saving = true);
+                                                    try {
+                                                      await _giftRequest(
+                                                        'POST',
+                                                        '/backpack/equip',
+                                                        body: isEquipped
+                                                            ? {
+                                                                'set_number': 0,
+                                                                'level': 0,
+                                                              }
+                                                            : {
+                                                                'set_number':
+                                                                    setNo,
+                                                                'level': level,
+                                                              },
+                                                      );
+                                                      await refreshItems();
+                                                      await _loadBackpackEquippedFrame();
+                                                      if (!mounted) return;
+                                                      sheetSetState(() {});
+                                                      ScaffoldMessenger.of(
+                                                              this.context)
+                                                          .showSnackBar(
+                                                        SnackBar(
+                                                          content: Text(
+                                                            isEquipped
+                                                                ? 'Frame removed from profile. Still in Backpack.'
+                                                                : 'VIP frame equipped on your profile.',
+                                                          ),
+                                                        ),
+                                                      );
+                                                    } catch (e) {
+                                                      if (sheetContext.mounted) {
+                                                        ScaffoldMessenger.of(
+                                                                this.context)
+                                                            .showSnackBar(
+                                                          SnackBar(
+                                                            content:
+                                                                Text('Backpack error: $e'),
+                                                          ),
+                                                        );
+                                                      }
+                                                    } finally {
+                                                      if (sheetContext.mounted) {
+                                                        sheetSetState(
+                                                            () => saving = false);
+                                                      }
+                                                    }
+                                                  },
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: isEquipped
+                                                  ? const Color(0xFF7892A8)
+                                                  : const Color(0xFF168FFF),
+                                            ),
+                                            child: Text(
+                                              isEquipped ? 'Remove' : 'Equip',
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Backpack error: $e')),
+        );
+      }
     }
   }
 
@@ -4461,14 +4754,11 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) return;
 
       int coins = int.tryParse('${data['coins'] ?? 0}') ?? 0;
-      int diamonds = int.tryParse('${data['diamonds'] ?? 0}') ?? 0;
       List<Map<String, dynamic>> transactions =
           (data['transactions'] as List? ?? [])
               .map((item) => Map<String, dynamic>.from(item as Map))
               .toList();
 
-      final exchangeController = TextEditingController();
-      bool exchanging = false;
 
       await showModalBottomSheet<void>(
         context: context,
@@ -4502,144 +4792,16 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _walletBalanceCard(
-                            'Coins',
-                            coins,
-                            Icons.monetization_on_rounded,
-                            const Color(0xFFFFB938),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _walletBalanceCard(
-                            'Diamonds',
-                            diamonds,
-                            Icons.diamond_rounded,
-                            const Color(0xFF48B8E8),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 22),
-                    const Text(
-                      'Exchange Diamonds to Coins',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    const Text(
-                      '2 Diamonds = 1 Coin',
-                      style: TextStyle(color: Colors.black54),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: exchangeController,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        hintText: 'Enter Diamonds (e.g. 1000000)',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        suffixText: 'Diamonds',
-                      ),
-                    ),
-                    const SizedBox(height: 10),
                     SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: exchanging
-                            ? null
-                            : () async {
-                                final amount = int.tryParse(
-                                  exchangeController.text.trim(),
-                                );
-                                if (amount == null ||
-                                    amount < 2 ||
-                                    amount % 2 != 0) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Even Diamonds amount enter karein.',
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-                                if (amount > diamonds) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Not enough Diamonds.'),
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                setSheetState(() => exchanging = true);
-                                try {
-                                  final result = await _giftRequest(
-                                    'POST',
-                                    '/games/wallet/exchange',
-                                    body: {'diamonds': amount},
-                                  );
-                                  if (!mounted) return;
-
-                                  final updated = await _giftRequest(
-                                    'GET',
-                                    '/games/wallet',
-                                  );
-                                  if (!mounted || !sheetContext.mounted) return;
-                                  coins =
-                                      int.tryParse(
-                                        '${updated['coins'] ?? result['coins'] ?? 0}',
-                                      ) ??
-                                      0;
-                                  diamonds =
-                                      int.tryParse(
-                                        '${updated['diamonds'] ?? result['diamonds'] ?? 0}',
-                                      ) ??
-                                      0;
-                                  transactions =
-                                      (updated['transactions'] as List? ?? [])
-                                          .map(
-                                            (item) => Map<String, dynamic>.from(
-                                              item as Map,
-                                            ),
-                                          )
-                                          .toList();
-                                  exchangeController.clear();
-                                  setSheetState(() {});
-                                  ScaffoldMessenger.of(
-                                    sheetContext,
-                                  ).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        '${result['coins_received']} Coins added successfully!',
-                                      ),
-                                    ),
-                                  );
-                                } catch (e) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text(e.toString())),
-                                    );
-                                  }
-                                } finally {
-                                  if (sheetContext.mounted) {
-                                    setSheetState(() => exchanging = false);
-                                  }
-                                }
-                              },
-                        child: Text(
-                          exchanging ? 'Please wait...' : 'Exchange Now',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 22),
+              width: double.infinity,
+              child: _walletBalanceCard(
+                'Lovely Coins',
+                coins,
+                Icons.monetization_on_rounded,
+                const Color(0xFFFFB938),
+              ),
+            ),
+            const SizedBox(height: 22),
                     const Text(
                       'Transaction History',
                       style: TextStyle(
@@ -4654,7 +4816,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         child: Center(child: Text('No transactions yet.')),
                       )
                     else
-                      ...transactions.take(30).map((item) {
+                      ...transactions.where((item) => (item['currency']?.toString().toUpperCase() ?? '') == 'COINS').take(30).map((item) {
                         final currency =
                             item['currency']?.toString().toUpperCase() ?? '';
                         final amount = item['amount'] ?? 0;
@@ -4688,7 +4850,6 @@ class _ProfilePageState extends State<ProfilePage> {
           },
         ),
       );
-      exchangeController.dispose();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -5959,10 +6120,15 @@ class _ProfilePageState extends State<ProfilePage> {
                 children: [
                   Row(
                     children: [
-                      assignedVipSet >= 1 && assignedVipLevel >= 1
+                      (backpackVipSet >= 1 && backpackVipLevel >= 1) ||
+                              (assignedVipSet >= 1 && assignedVipLevel >= 1)
                           ? VipWingFrame(
-                              setNumber: assignedVipSet,
-                              level: assignedVipLevel,
+                              setNumber: backpackVipSet >= 1
+                                  ? backpackVipSet
+                                  : assignedVipSet,
+                              level: backpackVipSet >= 1
+                                  ? backpackVipLevel
+                                  : assignedVipLevel,
                               size: 116,
                               child: CircleAvatar(
                                 backgroundColor: Colors.white,
@@ -6369,7 +6535,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     icon: Icons.backpack,
                     label: 'Backpack',
                     color: const Color(0xFF22A6B9),
-                    onTap: () => comingSoon('Backpack'),
+                    onTap: _openBackpack,
                   ),
                 ],
               ),

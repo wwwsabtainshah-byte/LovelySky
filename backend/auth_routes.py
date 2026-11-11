@@ -4494,6 +4494,11 @@ class VipFrameRequest(BaseModel):
     level: int
 
 
+class BackpackEquipRequest(BaseModel):
+    set_number: int = 0
+    level: int = 0
+
+
 class OwnerVipFrameGrantRequest(BaseModel):
     user_code: str
     set_number: int
@@ -4537,6 +4542,113 @@ def _vip_grant_frame(db, user_id, set_number, level,
            WHERE user_id=? AND set_number=? AND level=?""",
         (user_id, set_number, level),
     ).fetchone()
+
+
+@router.get("/backpack")
+def get_backpack(authorization: str | None = Header(default=None)):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        rows = db.execute(
+            """SELECT set_number, level, granted_at, expires_at, grant_type
+               FROM vip_frame_ownership
+               WHERE user_id=? AND active=1
+                 AND expires_at > CURRENT_TIMESTAMP
+               ORDER BY set_number, level""",
+            (user["id"],),
+        ).fetchall()
+        items = [dict(row) for row in rows]
+
+        equipped = db.execute(
+            """SELECT vip_set_number, vip_level
+               FROM user_profile_equipment WHERE user_id=?""",
+            (user["id"],),
+        ).fetchone()
+
+        equipped_frame = None
+        if equipped and equipped["vip_set_number"] > 0 and equipped["vip_level"] > 0:
+            match = next(
+                (
+                    item for item in items
+                    if item["set_number"] == equipped["vip_set_number"]
+                    and item["level"] == equipped["vip_level"]
+                ),
+                None,
+            )
+            if match:
+                equipped_frame = {
+                    "set_number": match["set_number"],
+                    "level": match["level"],
+                }
+            else:
+                db.execute(
+                    """UPDATE user_profile_equipment
+                       SET vip_set_number=0, vip_level=0,
+                           updated_at=CURRENT_TIMESTAMP
+                       WHERE user_id=?""",
+                    (user["id"],),
+                )
+                db.commit()
+
+        return {
+            "success": True,
+            "items": items,
+            "equipped_frame": equipped_frame,
+        }
+    finally:
+        db.close()
+
+
+@router.post("/backpack/equip")
+def equip_backpack_frame(
+    payload: BackpackEquipRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    set_number = int(payload.set_number)
+    level = int(payload.level)
+
+    if (set_number, level) != (0, 0):
+        if set_number not in (1, 2) or level not in range(1, 13):
+            raise HTTPException(400, "Invalid VIP frame")
+
+    db = get_connection()
+    try:
+        if set_number == 0 and level == 0:
+            equipped_frame = None
+        else:
+            owned = db.execute(
+                """SELECT 1 FROM vip_frame_ownership
+                   WHERE user_id=? AND set_number=? AND level=?
+                     AND active=1 AND expires_at > CURRENT_TIMESTAMP""",
+                (user["id"], set_number, level),
+            ).fetchone()
+            if not owned:
+                raise HTTPException(403, "This frame is not in your Backpack")
+
+            equipped_frame = {
+                "set_number": set_number,
+                "level": level,
+            }
+
+        db.execute(
+            """INSERT INTO user_profile_equipment
+               (user_id, vip_set_number, vip_level, updated_at)
+               VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 vip_set_number=excluded.vip_set_number,
+                 vip_level=excluded.vip_level,
+                 updated_at=CURRENT_TIMESTAMP""",
+            (user["id"], set_number, level),
+        )
+        db.commit()
+
+        return {
+            "success": True,
+            "equipped_frame": equipped_frame,
+        }
+    finally:
+        db.close()
 
 
 @router.get("/vip/wings/progress")

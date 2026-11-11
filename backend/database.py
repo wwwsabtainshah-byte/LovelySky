@@ -443,6 +443,19 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
                 ON verified_coin_purchases(user_id, verification_status, purchased_at);
         """)
 
+
+    # Backpack equipment is separate from item ownership.
+    with get_connection() as db:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS user_profile_equipment (
+                user_id INTEGER PRIMARY KEY,
+                vip_set_number INTEGER NOT NULL DEFAULT 0,
+                vip_level INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+        """)
+
 if __name__ == "__main__":
     initialize_database()
     print("LovelySky database tables created:", DB_PATH)
