@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:material_ui/material_ui.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'vip_wing_detail_page.dart';
 
 const _bg = Color(0xFF100D25);
 const _blue = Color(0xFF67D4FF);
@@ -358,32 +359,19 @@ class _MallPageState extends State<MallPage> {
                         borderRadius: BorderRadius.circular(16),
                         onTap: () {
                           if (claiming) return;
-                          if (owned) {
-                            final expiry = _expiryLabel(data['expires_at']);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  expiry.isEmpty
-                                      ? 'VIP $level, Set $set is active.'
-                                      : 'VIP $level, Set $set — $expiry',
-                                ),
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => VipWingDetailPage(
+                                setNumber: set,
+                                level: level,
+                                frameData: data,
+                                weeklyCoins: _weeklyCoins,
                               ),
-                            );
-                          } else if (eligible) {
-                            _claimFrame(set, level);
-                          } else {
-                            final remaining = (required - _weeklyCoins).clamp(
-                              0,
-                              required,
-                            );
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  '${_formatCoins(remaining)} more verified Coins required for VIP $level, Set $set.',
-                                ),
-                              ),
-                            );
-                          }
+                            ),
+                          ).then((_) {
+                            if (mounted) _loadProgress();
+                          });
                         },
                         child: Container(
                           decoration: BoxDecoration(

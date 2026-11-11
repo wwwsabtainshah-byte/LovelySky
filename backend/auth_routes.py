@@ -4636,6 +4636,50 @@ def vip_wings_claim(
         db.close()
 
 
+@router.post("/owner/vip/wings/remove")
+def owner_remove_vip_wing(
+    payload: OwnerVipFrameGrantRequest,
+    authorization: str | None = Header(default=None),
+):
+    _require_coin_owner(authorization)
+    code = payload.user_code.strip()
+    if not code.isdigit():
+        raise HTTPException(400, "Invalid User ID")
+
+    _vip_requirement(payload.set_number, payload.level)
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        target = db.execute(
+            "SELECT id FROM users WHERE user_code=?", (code,)
+        ).fetchone()
+        if not target:
+            raise HTTPException(404, "User ID not found")
+
+        result = db.execute(
+            """UPDATE vip_frame_ownership
+               SET active=0
+               WHERE user_id=? AND set_number=? AND level=? AND active=1""",
+            (target["id"], payload.set_number, payload.level),
+        )
+        if result.rowcount == 0:
+            raise HTTPException(404, "Active VIP frame not found for this user")
+
+        db.commit()
+        return {
+            "success": True,
+            "user_code": code,
+            "set_number": payload.set_number,
+            "level": payload.level,
+            "message": "VIP frame removed by owner",
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 @router.post("/owner/vip/wings/grant")
 def owner_grant_vip_wing(
     payload: OwnerVipFrameGrantRequest,
