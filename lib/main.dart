@@ -12536,11 +12536,11 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           ],
                         ),
                         const SizedBox(height: 8),
-                        for (final first in [4, 9, 14]) ...[
+                        for (final first in [4, 8, 12, 16]) ...[
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              for (int i = 0; i < 5; i++) _buildSeat(first + i),
+                              for (int i = 0; i < 4; i++) _buildSeat(first + i),
                             ],
                           ),
                           const SizedBox(height: 7),
