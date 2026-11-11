@@ -456,6 +456,35 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
             )
         """)
 
+
+    # HARDWEAR frames: separate ownership and equipment from VIP.
+    with get_connection() as db:
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS hardwear_frame_ownership (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                frame_code TEXT NOT NULL,
+                granted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TEXT NOT NULL,
+                granted_by_user_id INTEGER,
+                active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+                UNIQUE(user_id, frame_code),
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(granted_by_user_id) REFERENCES users(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_hardwear_ownership_expiry
+                ON hardwear_frame_ownership(user_id, active, expires_at);
+        """)
+        equipment_columns = {
+            row["name"]
+            for row in db.execute("PRAGMA table_info(user_profile_equipment)")
+        }
+        if "hardwear_frame_id" not in equipment_columns:
+            db.execute(
+                "ALTER TABLE user_profile_equipment "
+                "ADD COLUMN hardwear_frame_id TEXT NOT NULL DEFAULT ''"
+            )
+
 if __name__ == "__main__":
     initialize_database()
     print("LovelySky database tables created:", DB_PATH)

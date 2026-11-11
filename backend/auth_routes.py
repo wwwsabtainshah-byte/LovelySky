@@ -4517,6 +4517,15 @@ class OwnerVipFrameGrantRequest(BaseModel):
     level: int
 
 
+class OwnerHardwearGrantRequest(BaseModel):
+    user_code: str
+    frame_code: str = "super_admin"
+
+
+class BackpackHardwearEquipRequest(BaseModel):
+    frame_code: str = ""
+
+
 _VIP_SET1_REQUIREMENTS = [
     12_500_000, 25_000_000, 50_000_000, 100_000_000,
     200_000_000, 400_000_000, 800_000_000, 1_600_000_000,
@@ -4602,10 +4611,50 @@ def get_backpack(authorization: str | None = Header(default=None)):
                 )
                 db.commit()
 
+        hardwear_rows = db.execute(
+            """SELECT frame_code, granted_at, expires_at
+               FROM hardwear_frame_ownership
+               WHERE user_id=? AND active=1
+                 AND expires_at > CURRENT_TIMESTAMP
+               ORDER BY granted_at DESC""",
+            (user["id"],),
+        ).fetchall()
+        hardwear_items = [dict(row) for row in hardwear_rows]
+
+        equipment = db.execute(
+            """SELECT hardwear_frame_id FROM user_profile_equipment
+               WHERE user_id=?""",
+            (user["id"],),
+        ).fetchone()
+        equipped_hardwear_frame = None
+        current_hardwear_code = (
+            str(equipment["hardwear_frame_id"] or "") if equipment else ""
+        )
+        if current_hardwear_code:
+            equipped_match = next(
+                (item for item in hardwear_items
+                 if item["frame_code"] == current_hardwear_code),
+                None,
+            )
+            if equipped_match:
+                equipped_hardwear_frame = {
+                    "frame_code": equipped_match["frame_code"]
+                }
+            else:
+                db.execute(
+                    """UPDATE user_profile_equipment
+                       SET hardwear_frame_id='', updated_at=CURRENT_TIMESTAMP
+                       WHERE user_id=?""",
+                    (user["id"],),
+                )
+                db.commit()
+
         return {
             "success": True,
             "items": items,
             "equipped_frame": equipped_frame,
+            "hardwear_items": hardwear_items,
+            "equipped_hardwear_frame": equipped_hardwear_frame,
         }
     finally:
         db.close()
@@ -4658,6 +4707,180 @@ def equip_backpack_frame(
         return {
             "success": True,
             "equipped_frame": equipped_frame,
+        }
+    finally:
+        db.close()
+
+
+
+_HARDWEAR_FRAME_CATALOG = [
+    {
+        "frame_code": "super_admin",
+        "name": "SUPER ADMIN",
+        "asset": "assets/hardwear/super_admin.gif",
+        "validity_days": 30,
+    }
+]
+
+
+@router.get("/hardwear/frames/catalog")
+def hardwear_frames_catalog(
+    authorization: str | None = Header(default=None),
+):
+    _require_coin_owner(authorization)
+    return {"success": True, "frames": _HARDWEAR_FRAME_CATALOG}
+
+
+@router.post("/owner/hardwear/frames/grant")
+def owner_grant_hardwear_frame(
+    payload: OwnerHardwearGrantRequest,
+    authorization: str | None = Header(default=None),
+):
+    owner = _require_coin_owner(authorization)
+    code = payload.user_code.strip()
+    frame_code = payload.frame_code.strip().lower()
+
+    if not code.isdigit():
+        raise HTTPException(400, "Invalid User ID")
+    if frame_code not in {item["frame_code"] for item in _HARDWEAR_FRAME_CATALOG}:
+        raise HTTPException(400, "Invalid HARDWEAR frame")
+
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        target = db.execute(
+            "SELECT id, user_code FROM users WHERE user_code=?",
+            (code,),
+        ).fetchone()
+        if not target:
+            raise HTTPException(404, "User ID not found")
+
+        db.execute(
+            """INSERT INTO hardwear_frame_ownership
+               (user_id, frame_code, granted_at, expires_at,
+                granted_by_user_id, active)
+               VALUES (?, ?, CURRENT_TIMESTAMP,
+                       datetime('now', '+30 days'), ?, 1)
+               ON CONFLICT(user_id, frame_code) DO UPDATE SET
+                   granted_at=CURRENT_TIMESTAMP,
+                   expires_at=datetime('now', '+30 days'),
+                   granted_by_user_id=excluded.granted_by_user_id,
+                   active=1""",
+            (target["id"], frame_code, owner["id"]),
+        )
+        frame = db.execute(
+            """SELECT frame_code, granted_at, expires_at, active
+               FROM hardwear_frame_ownership
+               WHERE user_id=? AND frame_code=?""",
+            (target["id"], frame_code),
+        ).fetchone()
+        db.commit()
+        return {
+            "success": True,
+            "user_code": code,
+            "frame": dict(frame),
+            "message": "HARDWEAR frame granted free for 30 days",
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.post("/owner/hardwear/frames/remove")
+def owner_remove_hardwear_frame(
+    payload: OwnerHardwearGrantRequest,
+    authorization: str | None = Header(default=None),
+):
+    _require_coin_owner(authorization)
+    code = payload.user_code.strip()
+    frame_code = payload.frame_code.strip().lower()
+
+    if not code.isdigit():
+        raise HTTPException(400, "Invalid User ID")
+    if frame_code not in {item["frame_code"] for item in _HARDWEAR_FRAME_CATALOG}:
+        raise HTTPException(400, "Invalid HARDWEAR frame")
+
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        target = db.execute(
+            "SELECT id FROM users WHERE user_code=?", (code,)
+        ).fetchone()
+        if not target:
+            raise HTTPException(404, "User ID not found")
+
+        result = db.execute(
+            """UPDATE hardwear_frame_ownership SET active=0
+               WHERE user_id=? AND frame_code=? AND active=1""",
+            (target["id"], frame_code),
+        )
+        if result.rowcount == 0:
+            raise HTTPException(404, "Active HARDWEAR frame not found")
+
+        db.execute(
+            """UPDATE user_profile_equipment
+               SET hardwear_frame_id='', updated_at=CURRENT_TIMESTAMP
+               WHERE user_id=? AND hardwear_frame_id=?""",
+            (target["id"], frame_code),
+        )
+        db.commit()
+        return {
+            "success": True,
+            "user_code": code,
+            "frame_code": frame_code,
+            "message": "HARDWEAR frame removed by owner",
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.post("/backpack/hardwear/equip")
+def equip_backpack_hardwear_frame(
+    payload: BackpackHardwearEquipRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    frame_code = payload.frame_code.strip().lower()
+
+    if frame_code and frame_code not in {
+        item["frame_code"] for item in _HARDWEAR_FRAME_CATALOG
+    }:
+        raise HTTPException(400, "Invalid HARDWEAR frame")
+
+    db = get_connection()
+    try:
+        if frame_code:
+            owned = db.execute(
+                """SELECT 1 FROM hardwear_frame_ownership
+                   WHERE user_id=? AND frame_code=? AND active=1
+                     AND expires_at > CURRENT_TIMESTAMP""",
+                (user["id"], frame_code),
+            ).fetchone()
+            if not owned:
+                raise HTTPException(
+                    403, "This HARDWEAR frame is not in your Backpack"
+                )
+
+        db.execute(
+            """INSERT INTO user_profile_equipment
+               (user_id, hardwear_frame_id, updated_at)
+               VALUES (?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(user_id) DO UPDATE SET
+                   hardwear_frame_id=excluded.hardwear_frame_id,
+                   updated_at=CURRENT_TIMESTAMP""",
+            (user["id"], frame_code),
+        )
+        db.commit()
+        return {
+            "success": True,
+            "equipped_hardwear_frame": (
+                {"frame_code": frame_code} if frame_code else None
+            ),
         }
     finally:
         db.close()
