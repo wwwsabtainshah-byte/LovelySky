@@ -12528,7 +12528,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                               padding: const EdgeInsets.only(top: 13),
                               child: _buildSeat(1),
                             ),
-                            _buildSeat(2, large: true),
+                            _buildSeat(2),
                             Padding(
                               padding: const EdgeInsets.only(top: 13),
                               child: _buildSeat(3),
