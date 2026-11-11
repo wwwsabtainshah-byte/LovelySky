@@ -13,6 +13,7 @@ class VipWingFrame extends StatefulWidget {
     this.size = 116,
     this.animate = true,
     this.avatarScale = 0.43,
+    this.innerSize,
   }) : assert(setNumber == 1 || setNumber == 2),
        assert(level >= 1 && level <= 12);
 
@@ -22,6 +23,7 @@ class VipWingFrame extends StatefulWidget {
   final double size;
   final bool animate;
   final double avatarScale;
+  final double? innerSize;
 
   String get asset =>
       'assets/vip_animated_combined10/set${setNumber}_vip${level.toString().padLeft(2, '0')}.gif';
@@ -199,7 +201,8 @@ class _VipWingFrameState extends State<VipWingFrame>
         : openingHeight;
 
     // Fit the avatar to the detected transparent opening.
-    final avatarSize = openingDiameter * scale * 0.96;
+    final avatarSize =
+        widget.innerSize ?? openingDiameter * scale * 0.96;
 
     final centerX = opening != null
         ? (opening.left + opening.right) / 2 * scale

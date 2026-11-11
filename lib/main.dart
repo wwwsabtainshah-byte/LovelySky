@@ -11877,6 +11877,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           setNumber: vipFrameSet,
                           level: vipFrameLevel,
                           size: 84,
+                          innerSize: 64,
                           avatarScale: avatarSize / (size - 6),
                           child: avatar,
                         )
