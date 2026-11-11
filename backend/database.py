@@ -385,6 +385,64 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
             ON agency_invites(invitee_uid, status);
         """)
 
+
+    # Safe profile-field migration: preserve all existing user rows.
+    with get_connection() as db:
+        user_columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(users)")
+        }
+        if "gender" not in user_columns:
+            db.execute(
+                "ALTER TABLE users ADD COLUMN gender TEXT NOT NULL DEFAULT ''"
+            )
+        if "bio" not in user_columns:
+            db.execute(
+                "ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT ''"
+            )
+
+
+    # VIP Wings and verified coin-purchase migration.
+    with get_connection() as db:
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS vip_frame_ownership (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                set_number INTEGER NOT NULL CHECK(set_number IN (1, 2)),
+                level INTEGER NOT NULL CHECK(level BETWEEN 1 AND 12),
+                granted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TEXT NOT NULL,
+                granted_by_user_id INTEGER,
+                grant_type TEXT NOT NULL DEFAULT 'qualified'
+                    CHECK(grant_type IN ('qualified', 'owner_grant')),
+                active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+                UNIQUE(user_id, set_number, level),
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(granted_by_user_id) REFERENCES users(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_vip_ownership_user_expiry
+                ON vip_frame_ownership(user_id, active, expires_at);
+
+            CREATE TABLE IF NOT EXISTS verified_coin_purchases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                provider TEXT NOT NULL,
+                provider_transaction_id TEXT NOT NULL,
+                coins INTEGER NOT NULL CHECK(coins > 0),
+                payment_amount INTEGER,
+                payment_currency TEXT,
+                verification_status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK(verification_status IN ('pending', 'verified', 'rejected')),
+                purchased_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                verified_at TEXT,
+                UNIQUE(provider, provider_transaction_id),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_verified_purchases_user_time
+                ON verified_coin_purchases(user_id, verification_status, purchased_at);
+        """)
+
 if __name__ == "__main__":
     initialize_database()
     print("LovelySky database tables created:", DB_PATH)

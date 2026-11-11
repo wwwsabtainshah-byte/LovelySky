@@ -35,11 +35,15 @@ class GoogleLoginRequest(BaseModel):
     id_token: str
     device_id: str | None = None
 
+class ProfileUpdateRequest(BaseModel):
+    display_name: str | None = None
+    gender: str | None = None
+    bio: str | None = None
+
 
 class OwnerCoinIssueRequest(BaseModel):
     user_code: str
     amount: int
-
 
 def get_firebase_app():
     try:
@@ -165,7 +169,7 @@ def save_google_user(claims):
             )
 
         saved = db.execute(
-            "SELECT id, google_uid, google_email, user_code, display_name, profile_photo "
+            "SELECT id, google_uid, google_email, user_code, display_name, profile_photo, gender, bio "
             "FROM users WHERE google_uid = ?",
             (uid,)
         ).fetchone()
@@ -695,14 +699,19 @@ def get_voice_room_seats(
             """
             SELECT p.seat_number, p.user_uid, p.user_code, p.is_muted,
                    u.display_name, u.profile_photo,
-                   COALESCE(gd.diamonds, 0) AS gift_diamonds
+                   COALESCE(gd.diamonds, 0) AS gift_diamonds,
+                   EXISTS (
+                       SELECT 1 FROM user_follows AS uf
+                       WHERE uf.follower_uid = ?
+                         AND uf.followed_uid = p.user_uid
+                   ) AS is_following
             FROM voice_room_participants AS p
             LEFT JOIN users AS u ON u.google_uid = p.user_uid
             LEFT JOIN voice_room_gift_diamonds AS gd
               ON gd.room_id = p.room_id AND gd.user_uid = p.user_uid
             WHERE p.room_id = ? AND p.seat_number BETWEEN 1 AND 18
             """,
-            (room_id,),
+            (user["google_uid"], room_id),
         ).fetchall()
         by_seat = {row["seat_number"]: row for row in occupied}
         locked_rows = db.execute(
@@ -724,6 +733,7 @@ def get_voice_room_seats(
                     "display_name": by_seat[n]["display_name"] if n in by_seat else None,
                     "profile_photo": by_seat[n]["profile_photo"] if n in by_seat else None,
                     "gift_diamonds": int(by_seat[n]["gift_diamonds"] or 0) if n in by_seat else 0,
+                    "is_following": bool(by_seat[n]["is_following"]) if n in by_seat else False,
                     "is_occupied": n in by_seat,
                     "is_mine": (
                         n in by_seat
@@ -1386,8 +1396,107 @@ def current_user(authorization: str | None = Header(default=None)):
         "user_code": user["user_code"],
         "display_name": user["display_name"],
         "profile_photo": user["profile_photo"],
+        "gender": user["gender"] or "",
+        "bio": user["bio"] or "",
         "role": "owner" if user["google_email"].lower() == OWNER_EMAIL else "user"
     }
+@router.patch("/profile")
+def update_profile(
+    payload: ProfileUpdateRequest,
+    authorization: str | None = Header(default=None),
+):
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Bearer token required")
+
+    claims = verify_token(authorization.split(" ", 1)[1].strip())
+    user = save_google_user(claims)
+    updates = {}
+
+    if payload.display_name is not None:
+        name = payload.display_name.strip()
+        if not name or len(name) > 40:
+            raise HTTPException(400, "Name must be 1 to 40 characters")
+        updates["display_name"] = name
+
+    if payload.gender is not None:
+        gender = payload.gender.strip().lower()
+        if gender not in ("", "male", "female", "other"):
+            raise HTTPException(400, "Invalid gender")
+        updates["gender"] = gender
+
+    if payload.bio is not None:
+        bio = payload.bio.strip()
+        if len(bio) > 160:
+            raise HTTPException(400, "Bio must be 160 characters or less")
+        updates["bio"] = bio
+
+    if updates:
+        ensure_database()
+        db = get_connection()
+        try:
+            assignments = ", ".join(f"{key} = ?" for key in updates)
+            db.execute(
+                f"UPDATE users SET {assignments} WHERE google_uid = ?",
+                list(updates.values()) + [user["google_uid"]],
+            )
+            db.commit()
+            row = db.execute(
+                "SELECT display_name, gender, bio FROM users WHERE google_uid = ?",
+                (user["google_uid"],),
+            ).fetchone()
+            user = dict(user)
+            user.update(dict(row))
+        finally:
+            db.close()
+
+    return {
+        "success": True,
+        "display_name": user["display_name"],
+        "gender": user["gender"] or "",
+        "bio": user["bio"] or "",
+    }
+
+
+@router.get("/profile/stats")
+def profile_stats(authorization: str | None = Header(default=None)):
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Bearer token required")
+
+    claims = verify_token(authorization.split(" ", 1)[1].strip())
+    user = save_google_user(claims)
+    ensure_database()
+
+    db = get_connection()
+    try:
+        uid = user["google_uid"]
+        fans = db.execute(
+            "SELECT COUNT(*) FROM user_follows WHERE followed_uid = ?", (uid,)
+        ).fetchone()[0]
+        following = db.execute(
+            "SELECT COUNT(*) FROM user_follows WHERE follower_uid = ?", (uid,)
+        ).fetchone()[0]
+        friends = db.execute(
+            """
+            SELECT COUNT(*)
+            FROM user_follows f
+            JOIN user_follows r
+              ON r.follower_uid = f.followed_uid
+             AND r.followed_uid = f.follower_uid
+            WHERE f.follower_uid = ?
+            """,
+            (uid,),
+        ).fetchone()[0]
+
+        return {
+            "success": True,
+            "friends": friends,
+            "fans": fans,
+            "following": following,
+        }
+    finally:
+        db.close()
+
+
 class VoiceRoomMessageRequest(BaseModel):
     message: str
 
@@ -4376,5 +4485,191 @@ def agency_target_salary(
             ),
         }
 
+    finally:
+        db.close()
+
+
+class VipFrameRequest(BaseModel):
+    set_number: int
+    level: int
+
+
+class OwnerVipFrameGrantRequest(BaseModel):
+    user_code: str
+    set_number: int
+    level: int
+
+
+_VIP_SET1_REQUIREMENTS = [
+    12_500_000, 25_000_000, 50_000_000, 100_000_000,
+    200_000_000, 400_000_000, 800_000_000, 1_600_000_000,
+    3_200_000_000, 6_400_000_000, 12_800_000_000,
+    25_600_000_000,
+]
+
+
+def _vip_requirement(set_number: int, level: int) -> int:
+    if set_number not in (1, 2) or level not in range(1, 13):
+        raise HTTPException(400, "Invalid VIP set or level")
+    base = _VIP_SET1_REQUIREMENTS[level - 1]
+    return base if set_number == 1 else base * 2
+
+
+def _vip_grant_frame(db, user_id, set_number, level,
+                     granted_by_user_id, grant_type):
+    db.execute(
+        """INSERT INTO vip_frame_ownership
+           (user_id, set_number, level, granted_at, expires_at,
+            granted_by_user_id, grant_type, active)
+           VALUES (?, ?, ?, CURRENT_TIMESTAMP,
+                   datetime('now', '+7 days'), ?, ?, 1)
+           ON CONFLICT(user_id, set_number, level) DO UPDATE SET
+             granted_at=CURRENT_TIMESTAMP,
+             expires_at=datetime('now', '+7 days'),
+             granted_by_user_id=excluded.granted_by_user_id,
+             grant_type=excluded.grant_type,
+             active=1""",
+        (user_id, set_number, level, granted_by_user_id, grant_type),
+    )
+    return db.execute(
+        """SELECT set_number, level, granted_at, expires_at, grant_type
+           FROM vip_frame_ownership
+           WHERE user_id=? AND set_number=? AND level=?""",
+        (user_id, set_number, level),
+    ).fetchone()
+
+
+@router.get("/vip/wings/progress")
+def vip_wings_progress(authorization: str | None = Header(default=None)):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        row = db.execute(
+            """SELECT COALESCE(SUM(coins), 0) AS coins
+               FROM verified_coin_purchases
+               WHERE user_id=? AND verification_status='verified'
+                 AND purchased_at >= datetime('now', '-7 days')""",
+            (user["id"],),
+        ).fetchone()
+        weekly_coins = int(row["coins"] or 0)
+
+        ownership = db.execute(
+            """SELECT set_number, level, granted_at, expires_at, grant_type
+               FROM vip_frame_ownership
+               WHERE user_id=? AND active=1
+                 AND expires_at > CURRENT_TIMESTAMP
+               ORDER BY set_number, level""",
+            (user["id"],),
+        ).fetchall()
+        owned = [dict(item) for item in ownership]
+
+        sets = {}
+        for set_number in (1, 2):
+            levels = []
+            for level in range(1, 13):
+                required = _vip_requirement(set_number, level)
+                frame = next(
+                    (item for item in owned
+                     if item["set_number"] == set_number
+                     and item["level"] == level),
+                    None,
+                )
+                levels.append({
+                    "level": level,
+                    "required_coins": required,
+                    "eligible": weekly_coins >= required,
+                    "owned": frame is not None,
+                    "expires_at": frame["expires_at"] if frame else None,
+                    "grant_type": frame["grant_type"] if frame else None,
+                })
+            sets[str(set_number)] = levels
+
+        return {
+            "success": True,
+            "user_code": user["user_code"],
+            "weekly_window_days": 7,
+            "weekly_verified_coins": weekly_coins,
+            "sets": sets,
+            "owned_frames": owned,
+        }
+    finally:
+        db.close()
+
+
+@router.post("/vip/wings/claim")
+def vip_wings_claim(
+    payload: VipFrameRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    required = _vip_requirement(payload.set_number, payload.level)
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            """SELECT COALESCE(SUM(coins), 0) AS coins
+               FROM verified_coin_purchases
+               WHERE user_id=? AND verification_status='verified'
+                 AND purchased_at >= datetime('now', '-7 days')""",
+            (user["id"],),
+        ).fetchone()
+        weekly_coins = int(row["coins"] or 0)
+
+        if weekly_coins < required:
+            raise HTTPException(403, "VIP purchase requirement not reached")
+
+        frame = _vip_grant_frame(
+            db, user["id"], payload.set_number, payload.level,
+            None, "qualified",
+        )
+        db.commit()
+        return {
+            "success": True,
+            "weekly_verified_coins": weekly_coins,
+            "required_coins": required,
+            "frame": dict(frame),
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.post("/owner/vip/wings/grant")
+def owner_grant_vip_wing(
+    payload: OwnerVipFrameGrantRequest,
+    authorization: str | None = Header(default=None),
+):
+    owner = _require_coin_owner(authorization)
+    code = payload.user_code.strip()
+    if not code.isdigit():
+        raise HTTPException(400, "Invalid User ID")
+
+    _vip_requirement(payload.set_number, payload.level)
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        target = db.execute(
+            "SELECT id, user_code FROM users WHERE user_code=?",
+            (code,),
+        ).fetchone()
+        if not target:
+            raise HTTPException(404, "User ID not found")
+
+        frame = _vip_grant_frame(
+            db, target["id"], payload.set_number, payload.level,
+            owner["id"], "owner_grant",
+        )
+        db.commit()
+        return {
+            "success": True,
+            "user_code": code,
+            "frame": dict(frame),
+            "message": "VIP frame granted free by owner",
+        }
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
