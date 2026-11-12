@@ -264,25 +264,12 @@ class _VipWingFrameState extends State<VipWingFrame>
                     child: ClipOval(child: widget.child),
                   ),
                   Positioned.fill(
-                    child: widget.setNumber == 1 && widget.level == 1
-                        ? ClipPath(
-                            clipper: _VipFrameOpeningClipper(
-                              center: ui.Offset(centerX, centerY),
-                              diameter: 60,
-                            ),
-                            child: Image.asset(
-                              widget.asset,
-                              fit: BoxFit.fill,
-                              gaplessPlayback: true,
-                              errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                            ),
-                          )
-                        : Image.asset(
-                            widget.asset,
-                            fit: BoxFit.fill,
-                            gaplessPlayback: true,
-                            errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                          ),
+                    child: Image.asset(
+                      widget.asset,
+                      fit: BoxFit.fill,
+                      gaplessPlayback: true,
+                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                    ),
                   ),
                 ],
               );
@@ -291,32 +278,5 @@ class _VipWingFrameState extends State<VipWingFrame>
         ),
       ),
     );
-  }
-}
-
-
-class _VipFrameOpeningClipper extends CustomClipper<ui.Path> {
-  const _VipFrameOpeningClipper({
-    required this.center,
-    required this.diameter,
-  });
-
-  final ui.Offset center;
-  final double diameter;
-
-  @override
-  ui.Path getClip(ui.Size size) {
-    return ui.Path()
-      ..fillType = ui.PathFillType.evenOdd
-      ..addRect(ui.Rect.fromLTWH(0, 0, size.width, size.height))
-      ..addOval(
-        ui.Rect.fromCircle(center: center, radius: diameter / 2),
-      );
-  }
-
-  @override
-  bool shouldReclip(covariant _VipFrameOpeningClipper oldClipper) {
-    return oldClipper.center != center ||
-        oldClipper.diameter != diameter;
   }
 }
