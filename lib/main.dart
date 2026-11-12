@@ -12523,12 +12523,12 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           ),
                         )
                       else ...[
-                        for (final first in [1, 4, 7, 10, 13]) ...[
+                        for (final first in [1, 6, 11]) ...[
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              for (int i = 0; i < 3; i++)
+                              for (int i = 0; i < 5; i++)
                                 _buildSeat(first + i),
                             ],
                           ),
