@@ -184,8 +184,9 @@ class _VipWingFrameState extends State<VipWingFrame>
 
   @override
   Widget build(BuildContext context) {
-    const gifWidth = 384.0;
-    const gifHeight = 341.0;
+    final isSuperAdminFrame = widget.setNumber == 1 && widget.level == 1;
+    final gifWidth = isSuperAdminFrame ? 1254.0 : 384.0;
+    final gifHeight = isSuperAdminFrame ? 1254.0 : 341.0;
 
     final opening = _opening;
 
