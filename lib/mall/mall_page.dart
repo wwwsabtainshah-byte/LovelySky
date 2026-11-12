@@ -438,7 +438,7 @@ class _MallPageState extends State<MallPage> {
                               children: [
                                 Expanded(
                                   child: Image.asset(
-                                    'assets/vip_animated_combined10/set${set}_vip$number.gif',
+                                    'assets/vip_new_preview/set${set}_vip$number.png',
                                     width: double.infinity,
                                     fit: BoxFit.contain,
                                     gaplessPlayback: true,

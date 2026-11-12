@@ -70,6 +70,7 @@ flutter:
     - assets/lovely_sky_frames/
     - assets/vip_animated_lit/
     - assets/vip_animated_combined10/
+    - assets/vip_new_preview/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
