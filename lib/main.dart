@@ -11813,8 +11813,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     final code = (seat['user_code'] ?? '').toString();
     final remoteMic = remoteMicStatus[code] ?? true;
     final activeMic = occupied && (mine ? micOn : remoteMic);
-    final size = large ? 76.0 : 60.0;
-    final avatarSize = large ? 58.0 : 45.0;
+    final size = large ? 76.0 : 78.0;
+    final avatarSize = large ? 58.0 : 72.0;
 
     Widget avatar = const Icon(Icons.person_rounded, color: Colors.white70);
     if (photo.startsWith('http://') || photo.startsWith('https://')) {
@@ -11843,7 +11843,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       onTap: () => _onSeatTap(number),
       borderRadius: BorderRadius.circular(50),
       child: SizedBox(
-        width: size + 8,
+        width: large ? size + 8 : 120,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -11876,10 +11876,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                       ? VipWingFrame(
                           setNumber: vipFrameSet,
                           level: vipFrameLevel,
-                          size: 84,
-                          innerSize: (vipFrameSet == 1 && vipFrameLevel == 1)
-                              ? 57
-                              : 60,
+                          size: 115,
+                          innerSize: 78,
                           avatarScale: avatarSize / (size - 6),
                           child: avatar,
                         )
@@ -12523,12 +12521,12 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           ),
                         )
                       else ...[
-                        for (final first in [1, 6, 11]) ...[
+                        for (final first in [1, 4, 7, 10, 13]) ...[
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              for (int i = 0; i < 5; i++)
+                              for (int i = 0; i < 3; i++)
                                 _buildSeat(first + i),
                             ],
                           ),
