@@ -203,7 +203,7 @@ class _VipWingFrameState extends State<VipWingFrame>
 
     // Fit the avatar to the detected transparent opening.
     final avatarSize =
-        widget.innerSize ?? openingDiameter * scale * 0.96;
+        widget.innerSize ?? openingDiameter * scale * 0.90;
 
     final centerX = opening != null
         ? (opening.left + opening.right) / 2 * scale
