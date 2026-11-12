@@ -17,6 +17,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'auth_screen.dart';
 import 'mall/mall_page.dart';
 import 'widgets/vip_wing_frame.dart';
+import 'widgets/vip_wing_frame_png70.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -11794,7 +11795,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     }
   }
 
-  Widget _buildSeat(int number, {bool large = false}) {
+  Widget _buildSeat(int number) {
     final seat = seats.firstWhere(
       (item) => item['seat_number'] == number,
       orElse: () => <String, dynamic>{},
@@ -11802,145 +11803,156 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     final occupied = seat['is_occupied'] == true;
     final mine = seat['is_mine'] == true;
     final locked = seat['is_locked'] == true;
-    final vipFrameSet = int.tryParse('${seat['vip_frame_set'] ?? 0}') ?? 0;
-    final vipFrameLevel = int.tryParse('${seat['vip_frame_level'] ?? 0}') ?? 0;
-    final hasVipFrame =
-        occupied &&
+    final vipFrameSet =
+        int.tryParse('${seat['vip_frame_set'] ?? 0}') ?? 0;
+    final vipFrameLevel =
+        int.tryParse('${seat['vip_frame_level'] ?? 0}') ?? 0;
+    final hasVipFrame = occupied &&
         (vipFrameSet == 1 || vipFrameSet == 2) &&
         vipFrameLevel >= 1 &&
         vipFrameLevel <= 12;
+
     final photo = (seat['profile_photo'] ?? '').toString();
     final code = (seat['user_code'] ?? '').toString();
     final remoteMic = remoteMicStatus[code] ?? true;
     final activeMic = occupied && (mine ? micOn : remoteMic);
-    final size = large ? 76.0 : 78.0;
-    final avatarSize = large ? 58.0 : 72.0;
 
-    Widget avatar = const Icon(Icons.person_rounded, color: Colors.white70);
+    Widget avatar = const ColoredBox(
+      color: Color(0xFF173B5C),
+      child: Center(
+        child: Icon(Icons.person_rounded, color: Colors.white70, size: 17),
+      ),
+    );
+
     if (photo.startsWith('http://') || photo.startsWith('https://')) {
       avatar = Image.network(
         photo,
-        width: avatarSize,
-        height: avatarSize,
         fit: BoxFit.cover,
-        errorBuilder: (_, _, _) =>
-            const Icon(Icons.person_rounded, color: Colors.white70),
+        errorBuilder: (_, _, _) => const ColoredBox(
+          color: Color(0xFF173B5C),
+          child: Center(
+            child: Icon(Icons.person_rounded, color: Colors.white70, size: 17),
+          ),
+        ),
       );
     } else if (photo.startsWith('data:image') && photo.contains(',')) {
       try {
         avatar = Image.memory(
           base64Decode(photo.substring(photo.indexOf(',') + 1)),
-          width: avatarSize,
-          height: avatarSize,
           fit: BoxFit.cover,
-          errorBuilder: (_, _, _) =>
-              const Icon(Icons.person_rounded, color: Colors.white70),
+          errorBuilder: (_, _, _) => const ColoredBox(
+            color: Color(0xFF173B5C),
+            child: Center(
+              child: Icon(Icons.person_rounded, color: Colors.white70, size: 17),
+            ),
+          ),
         );
       } catch (_) {}
     }
 
     return InkWell(
       onTap: () => _onSeatTap(number),
-      borderRadius: BorderRadius.circular(50),
+      borderRadius: BorderRadius.circular(12),
       child: SizedBox(
-        width: large ? size + 8 : 120,
+        width: 70,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.center,
-              children: [
-                Container(
-                  width: size,
-                  height: size,
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: activeMic
-                          ? const [Color(0xFF8DEBFF), Color(0xFF168DDB)]
-                          : const [Color(0xFFB7DDFB), Color(0xFF547FAE)],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: activeMic
-                            ? const Color(0xFF35CFFF).withValues(alpha: 0.55)
-                            : const Color(0xFF6CA8E8).withValues(alpha: 0.18),
-                        blurRadius: activeMic ? 17 : 7,
-                        spreadRadius: activeMic ? 3 : 1,
-                      ),
-                    ],
-                  ),
-                  child: occupied && hasVipFrame
-                      ? VipWingFrame(
-                          setNumber: vipFrameSet,
-                          level: vipFrameLevel,
-                          size: 115,
-                          innerSize: 78,
-                          avatarScale: avatarSize / (size - 6),
-                          child: avatar,
-                        )
-                      : Container(
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color(0xFF173B5C),
-                          ),
-                          padding: const EdgeInsets.all(2),
-                          child: ClipOval(
-                            child: occupied
-                                ? avatar
-                                : locked
-                                    ? const Icon(
-                                        Icons.lock_rounded,
-                                        color: Colors.white70,
-                                        size: 21,
-                                      )
-                                    : Icon(
-                                        Icons.person_add_alt_1_rounded,
-                                        color: Colors.white.withValues(alpha: 0.65),
-                                        size: large ? 27 : 22,
-                                      ),
-                          ),
-                        ),
-                ),
-                if (occupied && activeGiftReceiverCodes.contains(code))
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: TweenAnimationBuilder<double>(
-                        key: ValueKey(
-                          'gift-dp-$code-${lastGiftEventAt?.millisecondsSinceEpoch ?? 0}',
-                        ),
-                        tween: Tween<double>(begin: 1.28, end: 0.92),
-                        duration: const Duration(milliseconds: 750),
-                        builder: (context, scale, child) {
-                          return Transform.scale(
-                            scale: scale,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: const Color(0xFFFFD66B),
-                                  width: 3,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(0xFFFFC84A)
-                                        .withValues(alpha: 0.8),
-                                    blurRadius: 18,
-                                    spreadRadius: 3,
-                                  ),
+            SizedBox(
+              width: 70,
+              height: 62,
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  if (occupied && hasVipFrame)
+                    VipWingFramePng70(
+                      setNumber: vipFrameSet,
+                      level: vipFrameLevel,
+                      child: avatar,
+                    )
+                  else
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: activeMic
+                              ? const [
+                                  Color(0xFF8DEBFF),
+                                  Color(0xFF168DDB),
+                                ]
+                              : const [
+                                  Color(0xFFB7DDFB),
+                                  Color(0xFF547FAE),
                                 ],
-                              ),
-                            ),
-                          );
-                        },
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: activeMic
+                                ? const Color(0xFF35CFFF)
+                                    .withValues(alpha: 0.45)
+                                : const Color(0xFF6CA8E8)
+                                    .withValues(alpha: 0.15),
+                            blurRadius: activeMic ? 9 : 4,
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(3),
+                      child: ClipOval(
+                        child: occupied
+                            ? avatar
+                            : locked
+                                ? const Icon(
+                                    Icons.lock_rounded,
+                                    color: Colors.white70,
+                                    size: 19,
+                                  )
+                                : const Icon(
+                                    Icons.person_add_alt_1_rounded,
+                                    color: Colors.white70,
+                                    size: 19,
+                                  ),
                       ),
                     ),
-                  ),
-              ],
+                  if (occupied && activeGiftReceiverCodes.contains(code))
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: TweenAnimationBuilder<double>(
+                          key: ValueKey(
+                            'gift-dp-$code-${lastGiftEventAt?.millisecondsSinceEpoch ?? 0}',
+                          ),
+                          tween: Tween<double>(begin: 1.12, end: 0.96),
+                          duration: const Duration(milliseconds: 750),
+                          builder: (context, scale, child) {
+                            return Transform.scale(
+                              scale: scale,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: const Color(0xFFFFD66B),
+                                    width: 2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFFFFC84A)
+                                          .withValues(alpha: 0.7),
+                                      blurRadius: 10,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 1),
             Text(
               occupied ? (mine ? 'You' : code) : '$number',
               maxLines: 1,
@@ -11948,7 +11960,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: occupied ? Colors.white : Colors.white60,
-                fontSize: large ? 10 : 9,
+                fontSize: 9,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -11957,17 +11969,21 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 '💎 ${seat['gift_diamonds'] ?? 0}',
                 maxLines: 1,
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: const Color(0xFF83E8FF),
-                  fontSize: large ? 10 : 9,
+                style: const TextStyle(
+                  color: Color(0xFF83E8FF),
+                  fontSize: 8,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             if (occupied)
               Icon(
-                activeMic ? Icons.graphic_eq_rounded : Icons.mic_off_rounded,
-                color: activeMic ? const Color(0xFF70E5FF) : Colors.white54,
-                size: 13,
+                activeMic
+                    ? Icons.graphic_eq_rounded
+                    : Icons.mic_off_rounded,
+                color: activeMic
+                    ? const Color(0xFF70E5FF)
+                    : Colors.white54,
+                size: 11,
               ),
           ],
         ),
@@ -12521,16 +12537,16 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           ),
                         )
                       else ...[
-                        for (final first in [1, 4, 7, 10, 13]) ...[
+                        for (final first in [1, 6, 11, 16]) ...[
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              for (int i = 0; i < 3; i++)
+                              for (int i = 0; i < 5; i++)
                                 _buildSeat(first + i),
                             ],
                           ),
-                          const SizedBox(height: 7),
+                          const SizedBox(height: 2),
                         ],
                       ],
                       const Divider(color: Color(0x335E9AC5), height: 14),

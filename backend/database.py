@@ -184,7 +184,7 @@ FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
 
 CREATE TABLE IF NOT EXISTS voice_room_locked_seats (
     room_id INTEGER NOT NULL,
-    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 18),
+    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 20),
     locked_by_uid TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (room_id, seat_number),
@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS voice_room_locked_seats (
     room_id INTEGER NOT NULL,
     inviter_uid TEXT NOT NULL,
     invitee_uid TEXT NOT NULL,
-    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 18),
+    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 20),
     status TEXT NOT NULL DEFAULT 'pending',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
@@ -484,6 +484,63 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
                 "ALTER TABLE user_profile_equipment "
                 "ADD COLUMN hardwear_frame_id TEXT NOT NULL DEFAULT ''"
             )
+
+
+    # Expand voice rooms from 18 to 20 seats without losing existing locks/invites.
+    with get_connection() as db:
+        locked_sql = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='voice_room_locked_seats'"
+        ).fetchone()
+        if locked_sql and "BETWEEN 1 AND 18" in (locked_sql["sql"] or ""):
+            db.execute("""
+                CREATE TABLE voice_room_locked_seats_new (
+                    room_id INTEGER NOT NULL,
+                    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 20),
+                    locked_by_uid TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (room_id, seat_number),
+                    FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
+                )
+            """)
+            db.execute("""
+                INSERT INTO voice_room_locked_seats_new
+                    (room_id, seat_number, locked_by_uid, created_at)
+                SELECT room_id, seat_number, locked_by_uid, created_at
+                FROM voice_room_locked_seats
+            """)
+            db.execute("DROP TABLE voice_room_locked_seats")
+            db.execute("ALTER TABLE voice_room_locked_seats_new RENAME TO voice_room_locked_seats")
+            print("Migrated voice_room_locked_seats to 20 seats; existing rows preserved.")
+
+        invite_sql = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='voice_room_invites'"
+        ).fetchone()
+        if invite_sql and "BETWEEN 1 AND 18" in (invite_sql["sql"] or ""):
+            db.execute("""
+                CREATE TABLE voice_room_invites_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    room_id INTEGER NOT NULL,
+                    inviter_uid TEXT NOT NULL,
+                    invitee_uid TEXT NOT NULL,
+                    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 20),
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
+                )
+            """)
+            db.execute("""
+                INSERT INTO voice_room_invites_new
+                    (id, room_id, inviter_uid, invitee_uid, seat_number, status, created_at)
+                SELECT id, room_id, inviter_uid, invitee_uid, seat_number, status, created_at
+                FROM voice_room_invites
+            """)
+            db.execute("DROP TABLE voice_room_invites")
+            db.execute("ALTER TABLE voice_room_invites_new RENAME TO voice_room_invites")
+            db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_voice_invites_user
+                ON voice_room_invites(room_id, invitee_uid, status)
+            """)
+            print("Migrated voice_room_invites to 20 seats; existing rows preserved.")
 
 if __name__ == "__main__":
     initialize_database()

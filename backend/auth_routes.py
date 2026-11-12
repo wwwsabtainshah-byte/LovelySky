@@ -641,8 +641,8 @@ def lock_voice_room_seat(
     authorization: str | None = Header(default=None),
 ):
     user = _voice_authenticated_user(authorization)
-    if not 1 <= seat_number <= 18:
-        raise HTTPException(400, "Seat number must be between 1 and 18")
+    if not 1 <= seat_number <= 20:
+        raise HTTPException(400, "Seat number must be between 1 and 20")
     db = get_connection()
     try:
         _require_voice_room_manager(db, room_id, user["google_uid"])
@@ -664,8 +664,8 @@ def unlock_voice_room_seat(
     authorization: str | None = Header(default=None),
 ):
     user = _voice_authenticated_user(authorization)
-    if not 1 <= seat_number <= 18:
-        raise HTTPException(400, "Seat number must be between 1 and 18")
+    if not 1 <= seat_number <= 20:
+        raise HTTPException(400, "Seat number must be between 1 and 20")
     db = get_connection()
     try:
         _require_voice_room_manager(db, room_id, user["google_uid"])
@@ -719,7 +719,7 @@ def get_voice_room_seats(
              AND vfo.expires_at > CURRENT_TIMESTAMP
             LEFT JOIN voice_room_gift_diamonds AS gd
               ON gd.room_id = p.room_id AND gd.user_uid = p.user_uid
-            WHERE p.room_id = ? AND p.seat_number BETWEEN 1 AND 18
+            WHERE p.room_id = ? AND p.seat_number BETWEEN 1 AND 20
             """,
             (user["google_uid"], room_id),
         ).fetchall()
@@ -753,7 +753,7 @@ def get_voice_room_seats(
                     ),
                     "is_locked": n in locked_seats,
                 }
-                for n in range(1, 19)
+                for n in range(1, 21)
             ],
         }
     finally:
@@ -767,8 +767,8 @@ def sit_voice_room_seat(
     authorization: str | None = Header(default=None),
 ):
     user = _voice_authenticated_user(authorization)
-    if seat_number < 1 or seat_number > 18:
-        raise HTTPException(400, "Seat number must be between 1 and 18")
+    if seat_number < 1 or seat_number > 20:
+        raise HTTPException(400, "Seat number must be between 1 and 20")
 
     db = get_connection()
     try:
@@ -835,8 +835,8 @@ def assign_voice_room_member_seat(
     target_uid = payload.user_uid.strip()
     if not target_uid:
         raise HTTPException(400, "Invalid member")
-    if not 1 <= seat_number <= 18:
-        raise HTTPException(400, "Seat number must be between 1 and 18")
+    if not 1 <= seat_number <= 20:
+        raise HTTPException(400, "Seat number must be between 1 and 20")
 
     db = get_connection()
     try:
@@ -945,7 +945,7 @@ def create_voice_room_seat_invite(
     target_uid = payload.user_uid.strip()
     if not target_uid or target_uid == user["google_uid"]:
         raise HTTPException(400, "Invalid invitation target")
-    if not 1 <= seat_number <= 18:
+    if not 1 <= seat_number <= 20:
         raise HTTPException(400, "Invalid seat number")
 
     db = get_connection()
