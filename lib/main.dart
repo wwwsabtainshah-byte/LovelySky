@@ -11877,7 +11877,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           setNumber: vipFrameSet,
                           level: vipFrameLevel,
                           size: 84,
-                          innerSize: 60,
+                          innerSize: (vipFrameSet == 1 && vipFrameLevel == 1)
+                              ? 57
+                              : 60,
                           avatarScale: avatarSize / (size - 6),
                           child: avatar,
                         )
@@ -12521,27 +12523,13 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           ),
                         )
                       else ...[
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(top: 13),
-                              child: _buildSeat(1),
-                            ),
-                            _buildSeat(2),
-                            Padding(
-                              padding: const EdgeInsets.only(top: 13),
-                              child: _buildSeat(3),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        for (final first in [4, 8, 12, 16]) ...[
+                        for (final first in [1, 4, 7, 10, 13]) ...[
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              for (int i = 0; i < 4; i++) _buildSeat(first + i),
+                              for (int i = 0; i < 3; i++)
+                                _buildSeat(first + i),
                             ],
                           ),
                           const SizedBox(height: 7),
