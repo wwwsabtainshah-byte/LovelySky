@@ -38,7 +38,7 @@ class _VipWingFrameState extends State<VipWingFrame>
 
   late final AnimationController _glow = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 900),
+    duration: const Duration(milliseconds: 550),
   );
 
   ui.Rect? _opening;
@@ -203,7 +203,7 @@ class _VipWingFrameState extends State<VipWingFrame>
 
     // Fit the avatar to the detected transparent opening.
     final avatarSize =
-        widget.innerSize ?? openingDiameter * scale * 0.90;
+        widget.innerSize ?? openingDiameter * scale * 0.78;
 
     final centerX = opening != null
         ? (opening.left + opening.right) / 2 * scale
@@ -243,15 +243,15 @@ class _VipWingFrameState extends State<VipWingFrame>
                         boxShadow: [
                           BoxShadow(
                             color: const Color(0xFFFFD27A)
-                                .withValues(alpha: 0.20 + pulse * 0.24),
-                            blurRadius: 12 + pulse * 10,
-                            spreadRadius: 2 + pulse * 2,
+                                .withValues(alpha: 0.35 + pulse * 0.45),
+                            blurRadius: 16 + pulse * 22,
+                            spreadRadius: 3 + pulse * 5,
                           ),
                           BoxShadow(
                             color: const Color(0xFFFFF2CC)
-                                .withValues(alpha: 0.10 + pulse * 0.12),
-                            blurRadius: 22,
-                            spreadRadius: 4,
+                                .withValues(alpha: 0.18 + pulse * 0.25),
+                            blurRadius: 28 + pulse * 12,
+                            spreadRadius: 5 + pulse * 3,
                           ),
                         ],
                       ),
