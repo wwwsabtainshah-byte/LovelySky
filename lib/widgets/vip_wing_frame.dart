@@ -268,7 +268,7 @@ class _VipWingFrameState extends State<VipWingFrame>
                         ? ClipPath(
                             clipper: _VipFrameOpeningClipper(
                               center: ui.Offset(centerX, centerY),
-                              diameter: 64,
+                              diameter: 60,
                             ),
                             child: Image.asset(
                               widget.asset,
