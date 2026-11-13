@@ -1,5 +1,8 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,11 +38,60 @@ class _HardwearFrameDetailPageState extends State<HardwearFrameDetailPage> {
   String _status = '';
   bool _loading = true;
   bool _working = false;
+  WebViewController? _videoController;
+  String? _videoError;
+
+  Future<void> _initTransparentVideo() async {
+    try {
+      final bytes = await rootBundle.load(
+        'assets/live_room_seat_frame_transparent.webm',
+      );
+      final videoData = base64Encode(
+        bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
+      );
+
+      final controller = WebViewController();
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await controller.setBackgroundColor(const Color(0x00000000));
+
+      await controller.loadHtmlString('''
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            html, body {
+              margin: 0; padding: 0; width: 100%; height: 100%;
+              overflow: hidden; background: transparent !important;
+            }
+            video {
+              width: 100%; height: 100%;
+              object-fit: contain; background: transparent;
+            }
+          </style>
+        </head>
+        <body>
+          <video autoplay muted loop playsinline>
+            <source src="data:video/webm;base64,$videoData"
+                    type="video/webm">
+          </video>
+        </body>
+        </html>
+      ''');
+
+      if (!mounted) return;
+      setState(() => _videoController = controller);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _videoError = e.toString());
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _loadIdentity();
+    _initTransparentVideo();
   }
 
   @override
@@ -244,15 +296,18 @@ class _HardwearFrameDetailPageState extends State<HardwearFrameDetailPage> {
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(color: _gold.withValues(alpha: .7)),
                   ),
-                  child: Image.asset(
-                    'assets/hardwear/super_admin.gif',
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) => const Icon(
-                      Icons.broken_image_outlined,
-                      color: _gold,
-                      size: 65,
-                    ),
-                  ),
+                  child: _videoController != null
+                      ? WebViewWidget(controller: _videoController!)
+                      : Center(
+                          child: _videoError != null
+                              ? Text(
+                                  'Video error: $_videoError',
+                                  style: const TextStyle(
+                                    color: Colors.redAccent,
+                                  ),
+                                )
+                              : const CircularProgressIndicator(color: _gold),
+                        ),
                 ),
                 const SizedBox(height: 16),
                 const Text(

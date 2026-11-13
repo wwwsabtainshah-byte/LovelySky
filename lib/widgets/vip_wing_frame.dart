@@ -185,8 +185,8 @@ class _VipWingFrameState extends State<VipWingFrame>
   @override
   Widget build(BuildContext context) {
     final isSuperAdminFrame = widget.setNumber == 1 && widget.level == 1;
-    final gifWidth = isSuperAdminFrame ? 1254.0 : 384.0;
-    final gifHeight = isSuperAdminFrame ? 1254.0 : 341.0;
+    final gifWidth = 384.0;
+    final gifHeight = isSuperAdminFrame ? 384.0 : 341.0;
 
     final opening = _opening;
 
@@ -195,15 +195,9 @@ class _VipWingFrameState extends State<VipWingFrame>
     final frameWidth = gifWidth * scale;
     final frameHeight = gifHeight * scale;
 
-    final openingWidth = opening?.width ?? 135.0;
-    final openingHeight = opening?.height ?? 122.0;
-    final openingDiameter = openingWidth < openingHeight
-        ? openingWidth
-        : openingHeight;
-
     // Fit the avatar to the detected transparent opening.
     final avatarSize =
-        widget.innerSize ?? openingDiameter * scale * 0.78;
+        widget.innerSize ?? widget.size * widget.avatarScale;
 
     final centerX = opening != null
         ? (opening.left + opening.right) / 2 * scale

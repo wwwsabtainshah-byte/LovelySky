@@ -23,7 +23,7 @@ mask = mask.filter(ImageFilter.GaussianBlur(max(2, w // 180)))
 
 for i in range(16):
     phase = i / 16 * 2 * math.pi
-    glow = 0.12 + 0.20 * (0.5 + 0.5 * math.sin(phase))
+    glow = 0.25 + 0.35 * (0.5 + 0.5 * math.sin(phase))
     frame = im.copy()
 
     # Gentle blue glow over existing blue details
@@ -33,7 +33,7 @@ for i in range(16):
 
     # Very subtle overall light pulse; alpha remains unchanged
     rgb = ImageEnhance.Brightness(frame.convert("RGB")).enhance(
-        1.0 + 0.025 * math.sin(phase)
+        1.0 + 0.055 * math.sin(phase)
     )
     rgb.putalpha(im.getchannel("A"))
     frames.append(rgb)
