@@ -4622,7 +4622,7 @@ def get_backpack(authorization: str | None = Header(default=None)):
         hardwear_items = [dict(row) for row in hardwear_rows]
 
         equipment = db.execute(
-            """SELECT hardwear_frame_id FROM user_profile_equipment
+            """SELECT hardwear_frame_id, hardwear_badge_id FROM user_profile_equipment
                WHERE user_id=?""",
             (user["id"],),
         ).fetchone()
@@ -4649,12 +4649,57 @@ def get_backpack(authorization: str | None = Header(default=None)):
                 )
                 db.commit()
 
+        badge_rows = db.execute(
+            """SELECT badge_code, granted_at, expires_at
+               FROM hardwear_badge_ownership
+               WHERE user_id=? AND active=1
+                 AND expires_at > CURRENT_TIMESTAMP
+               ORDER BY granted_at DESC""",
+            (user["id"],),
+        ).fetchall()
+
+        badge_catalog = {x["badge_code"]: x for x in _HARDWEAR_BADGE_CATALOG}
+        badge_items = []
+        for row in badge_rows:
+            item = dict(row)
+            item.update(badge_catalog.get(item["badge_code"], {}))
+            badge_items.append(item)
+
+        current_badge = str(
+            equipment["hardwear_badge_id"] or ""
+        ) if equipment else ""
+        equipped_hardwear_badge = None
+        if current_badge:
+            match = next(
+                (x for x in badge_items if x["badge_code"] == current_badge),
+                None,
+            )
+            if match:
+                equipped_hardwear_badge = {
+                    "badge_code": current_badge,
+                    "asset": match.get("asset", ""),
+                }
+            else:
+                db.execute(
+                    """UPDATE user_profile_equipment
+                       SET hardwear_badge_id='', updated_at=CURRENT_TIMESTAMP
+                       WHERE user_id=?""",
+                    (user["id"],),
+                )
+                db.commit()
+
+        frame_catalog = {x["frame_code"]: x for x in _HARDWEAR_FRAME_CATALOG}
+        for item in hardwear_items:
+            item.update(frame_catalog.get(item["frame_code"], {}))
+
         return {
             "success": True,
             "items": items,
             "equipped_frame": equipped_frame,
             "hardwear_items": hardwear_items,
             "equipped_hardwear_frame": equipped_hardwear_frame,
+            "badge_items": badge_items,
+            "equipped_hardwear_badge": equipped_hardwear_badge,
         }
     finally:
         db.close()
@@ -4714,13 +4759,165 @@ def equip_backpack_frame(
 
 
 _HARDWEAR_FRAME_CATALOG = [
-    {
-        "frame_code": "super_admin",
-        "name": "SUPER ADMIN",
-        "asset": "assets/hardwear/super_admin.gif",
-        "validity_days": 30,
-    }
+    {"frame_code": "admin", "name": "Admin Frame", "asset": "assets/hardwear/role_frames/role_admin.svga", "validity_days": 30},
+    {"frame_code": "agency", "name": "Agency Frame", "asset": "assets/hardwear/role_frames/role_agency.svga", "validity_days": 30},
+    {"frame_code": "bdadmin", "name": "BD Admin Frame", "asset": "assets/hardwear/role_frames/role_bdadmin.svga", "validity_days": 30},
+    {"frame_code": "coinseller", "name": "Coin Seller Frame", "asset": "assets/hardwear/role_frames/role_coinseller.svga", "validity_days": 30},
+    {"frame_code": "cs", "name": "CS Frame", "asset": "assets/hardwear/role_frames/role_cs.svga", "validity_days": 30},
+    {"frame_code": "host", "name": "Host Frame", "asset": "assets/hardwear/role_frames/role_host.svga", "validity_days": 30},
+    {"frame_code": "manager", "name": "Manager Frame", "asset": "assets/hardwear/role_frames/role_manager.svga", "validity_days": 30},
+    {"frame_code": "official", "name": "Official Frame", "asset": "assets/hardwear/role_frames/role_official.svga", "validity_days": 30},
+    {"frame_code": "superadmin", "name": "Super Admin Frame", "asset": "assets/hardwear/role_frames/role_superadmin.svga", "validity_days": 30},
+    {"frame_code": "superadmin_2", "name": "Super Admin Frame 2", "asset": "assets/hardwear/role_frames/role_superadmin_2.svga", "validity_days": 30},
 ]
+
+_HARDWEAR_BADGE_CATALOG = [
+    {"badge_code": "admin", "name": "Admin Badge", "asset": "assets/hardwear/role_badges/badge_admin.svga", "validity_days": 30},
+    {"badge_code": "agency", "name": "Agency Badge", "asset": "assets/hardwear/role_badges/badge_agency.svga", "validity_days": 30},
+    {"badge_code": "official", "name": "Official Badge", "asset": "assets/hardwear/role_badges/badge_official.svga", "validity_days": 30},
+    {"badge_code": "owner", "name": "Owner Badge", "asset": "assets/hardwear/role_badges/badge_owner.svga", "validity_days": 30},
+    {"badge_code": "superadmin", "name": "Super Admin Badge", "asset": "assets/hardwear/role_badges/badge_superadmin.svga", "validity_days": 30},
+    {"badge_code": "country_assistant", "name": "Country Assistant Badge", "asset": "assets/hardwear/role_badges/country_assistant_badge.svga", "validity_days": 30},
+    {"badge_code": "country_super_admin", "name": "Country Super Admin Badge", "asset": "assets/hardwear/role_badges/country_super_admin_badge.svga", "validity_days": 30},
+]
+
+
+
+@router.get("/hardwear/badges/catalog")
+def hardwear_badges_catalog(authorization: str | None = Header(default=None)):
+    _require_coin_owner(authorization)
+    return {"success": True, "badges": _HARDWEAR_BADGE_CATALOG}
+
+
+@router.post("/owner/hardwear/badges/grant")
+def owner_grant_hardwear_badge(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+):
+    owner = _require_coin_owner(authorization)
+    code = str(payload.get("user_code", "")).strip()
+    badge_code = str(payload.get("badge_code", "")).strip().lower()
+
+    if not code.isdigit():
+        raise HTTPException(400, "Invalid User ID")
+    badge = next((x for x in _HARDWEAR_BADGE_CATALOG
+                  if x["badge_code"] == badge_code), None)
+    if not badge:
+        raise HTTPException(400, "Invalid badge")
+
+    db = get_connection()
+    try:
+        target = db.execute(
+            "SELECT id FROM users WHERE user_code=?", (code,)
+        ).fetchone()
+        if not target:
+            raise HTTPException(404, "User ID not found")
+
+        days = int(badge.get("validity_days", 30))
+        db.execute(
+            """INSERT INTO hardwear_badge_ownership
+               (user_id, badge_code, granted_at, expires_at,
+                granted_by_user_id, active)
+               VALUES (?, ?, CURRENT_TIMESTAMP,
+                       datetime('now', ?), ?, 1)
+               ON CONFLICT(user_id, badge_code) DO UPDATE SET
+                 granted_at=CURRENT_TIMESTAMP,
+                 expires_at=datetime('now', ?),
+                 granted_by_user_id=excluded.granted_by_user_id,
+                 active=1""",
+            (target["id"], badge_code, f"+{days} days",
+             owner["id"], f"+{days} days"),
+        )
+        db.commit()
+        return {"success": True, "user_code": code, "badge_code": badge_code}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.post("/owner/hardwear/badges/remove")
+def owner_remove_hardwear_badge(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+):
+    _require_coin_owner(authorization)
+    code = str(payload.get("user_code", "")).strip()
+    badge_code = str(payload.get("badge_code", "")).strip().lower()
+
+    if not code.isdigit():
+        raise HTTPException(400, "Invalid User ID")
+
+    db = get_connection()
+    try:
+        target = db.execute(
+            "SELECT id FROM users WHERE user_code=?", (code,)
+        ).fetchone()
+        if not target:
+            raise HTTPException(404, "User ID not found")
+
+        result = db.execute(
+            """UPDATE hardwear_badge_ownership SET active=0
+               WHERE user_id=? AND badge_code=? AND active=1""",
+            (target["id"], badge_code),
+        )
+        if result.rowcount == 0:
+            raise HTTPException(404, "Active badge not found")
+
+        db.execute(
+            """UPDATE user_profile_equipment
+               SET hardwear_badge_id='', updated_at=CURRENT_TIMESTAMP
+               WHERE user_id=? AND hardwear_badge_id=?""",
+            (target["id"], badge_code),
+        )
+        db.commit()
+        return {"success": True, "badge_code": badge_code}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.post("/backpack/hardwear/badge/equip")
+def equip_backpack_hardwear_badge(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    badge_code = str(payload.get("badge_code", "")).strip().lower()
+
+    if badge_code and badge_code not in {
+        x["badge_code"] for x in _HARDWEAR_BADGE_CATALOG
+    }:
+        raise HTTPException(400, "Invalid badge")
+
+    db = get_connection()
+    try:
+        if badge_code:
+            owned = db.execute(
+                """SELECT 1 FROM hardwear_badge_ownership
+                   WHERE user_id=? AND badge_code=? AND active=1
+                     AND expires_at > CURRENT_TIMESTAMP""",
+                (user["id"], badge_code),
+            ).fetchone()
+            if not owned:
+                raise HTTPException(403, "Badge is not in your Backpack")
+
+        db.execute(
+            """INSERT INTO user_profile_equipment
+               (user_id, hardwear_badge_id, updated_at)
+               VALUES (?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 hardwear_badge_id=excluded.hardwear_badge_id,
+                 updated_at=CURRENT_TIMESTAMP""",
+            (user["id"], badge_code),
+        )
+        db.commit()
+        return {"success": True, "badge_code": badge_code}
+    finally:
+        db.close()
 
 
 @router.get("/hardwear/frames/catalog")

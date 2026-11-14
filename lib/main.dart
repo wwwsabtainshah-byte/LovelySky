@@ -1,3 +1,4 @@
+import 'package:flutter_svga/flutter_svga.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 
@@ -4149,38 +4150,39 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _openBackpack() async {
-    List<Map<String, dynamic>> items = [];
-    List<Map<String, dynamic>> hardwearItems = [];
-    Map<String, dynamic>? equipped;
-    Map<String, dynamic>? equippedHardwear;
+    List<Map<String, dynamic>> vipItems = [];
+    List<Map<String, dynamic>> frameItems = [];
+    List<Map<String, dynamic>> badgeItems = [];
+    Map<String, dynamic>? equippedVip;
+    Map<String, dynamic>? equippedFrame;
+    Map<String, dynamic>? equippedBadge;
     bool loading = true;
     bool saving = false;
 
     Future<void> refreshItems() async {
       final data = await _giftRequest('GET', '/backpack');
-      final rawItems = data['items'];
-      items = rawItems is List
-          ? rawItems
+
+      List<Map<String, dynamic>> parse(dynamic value) => value is List
+          ? value
                 .whereType<Map>()
-                .map((item) => Map<String, dynamic>.from(item))
+                .map((e) => Map<String, dynamic>.from(e))
                 .toList()
           : [];
-      final rawEquipped = data['equipped_frame'];
-      equipped = rawEquipped is Map
-          ? Map<String, dynamic>.from(rawEquipped)
+
+      vipItems = parse(data['items']);
+      frameItems = parse(data['hardwear_items'])
+          .where((e) => (e['frame_code'] ?? '') != 'super_admin')
+          .toList();
+      badgeItems = parse(data['badge_items']);
+
+      equippedVip = data['equipped_frame'] is Map
+          ? Map<String, dynamic>.from(data['equipped_frame'])
           : null;
-
-      final rawHardwearItems = data['hardwear_items'];
-      hardwearItems = rawHardwearItems is List
-          ? rawHardwearItems
-                .whereType<Map>()
-                .map((item) => Map<String, dynamic>.from(item))
-                .toList()
-          : [];
-
-      final rawEquippedHardwear = data['equipped_hardwear_frame'];
-      equippedHardwear = rawEquippedHardwear is Map
-          ? Map<String, dynamic>.from(rawEquippedHardwear)
+      equippedFrame = data['equipped_hardwear_frame'] is Map
+          ? Map<String, dynamic>.from(data['equipped_hardwear_frame'])
+          : null;
+      equippedBadge = data['equipped_hardwear_badge'] is Map
+          ? Map<String, dynamic>.from(data['equipped_hardwear_badge'])
           : null;
     }
 
@@ -4195,242 +4197,267 @@ class _ProfilePageState extends State<ProfilePage> {
         backgroundColor: Colors.transparent,
         builder: (sheetContext) => StatefulBuilder(
           builder: (sheetContext, sheetSetState) {
-            final height = MediaQuery.of(sheetContext).size.height * 0.78;
-            return Container(
-              height: height,
-              decoration: const BoxDecoration(
-                color: Color(0xFFF4FAFF),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+            final height = MediaQuery.of(sheetContext).size.height * 0.84;
+
+            Widget empty(String label, IconData icon) => Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 54, color: const Color(0xFF91B9D8)),
+                  const SizedBox(height: 12),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: Color(0xFF54738D),
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+            );
+
+            Widget card({
+              required String title,
+              required String asset,
+              required String expiry,
+              required bool isEquipped,
+              required VoidCallback onTap,
+            }) => Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(17),
+                border: Border.all(
+                  color: isEquipped
+                      ? const Color(0xFFFFD779)
+                      : const Color(0xFFD9EAF7),
+                  width: isEquipped ? 2 : 1,
+                ),
               ),
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  const SizedBox(height: 12),
-                  Container(
-                    width: 42,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.black26,
-                      borderRadius: BorderRadius.circular(8),
+                  SizedBox(
+                    height: 105,
+                    width: 115,
+                    child: asset.isEmpty
+                        ? const Icon(Icons.image_not_supported, size: 42)
+                        : SVGAEasyPlayer(assetsName: asset, loops: true),
+                  ),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF16466D),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 18, 12, 14),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.backpack,
-                          color: Color(0xFF168FFF),
-                          size: 28,
-                        ),
-                        const SizedBox(width: 10),
-                        const Expanded(
-                          child: Text(
-                            'My Backpack',
-                            style: TextStyle(
-                              fontSize: 21,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF16466D),
+                  Text(
+                    expiry.isEmpty ? 'TOTALLY PACK' : 'Expires: $expiry',
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Color(0xFF7892A8),
+                    ),
+                  ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: saving ? null : onTap,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: isEquipped
+                            ? const Color(0xFF7892A8)
+                            : const Color(0xFF168FFF),
+                      ),
+                      child: Text(isEquipped ? 'Remove' : 'Equip'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+
+            Widget grid(
+              List<Map<String, dynamic>> list,
+              Widget Function(Map<String, dynamic>) makeCard,
+              String emptyText,
+              IconData icon,
+            ) {
+              if (loading) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (list.isEmpty) return empty(emptyText, icon);
+              return GridView.builder(
+                padding: const EdgeInsets.all(14),
+                itemCount: list.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 0.78,
+                ),
+                itemBuilder: (_, i) => makeCard(list[i]),
+              );
+            }
+
+            Future<void> perform(
+              String endpoint,
+              Map<String, dynamic> body,
+            ) async {
+              sheetSetState(() => saving = true);
+              try {
+                await _giftRequest('POST', endpoint, body: body);
+                await refreshItems();
+                await _loadBackpackEquippedFrame();
+                if (sheetContext.mounted) sheetSetState(() {});
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Backpack updated successfully'),
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('Backpack error: $e')));
+                }
+              } finally {
+                if (sheetContext.mounted) sheetSetState(() => saving = false);
+              }
+            }
+
+            return DefaultTabController(
+              length: 3,
+              child: Container(
+                height: height,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF4FAFF),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+                ),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 12),
+                    Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.black26,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 12, 8, 8),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.backpack,
+                            color: Color(0xFF168FFF),
+                            size: 27,
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'My Collection',
+                              style: TextStyle(
+                                fontSize: 21,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF16466D),
+                              ),
                             ),
                           ),
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(sheetContext),
-                          icon: const Icon(Icons.close),
-                        ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(sheetContext),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const TabBar(
+                      labelColor: Color(0xFF168FFF),
+                      unselectedLabelColor: Color(0xFF7892A8),
+                      indicatorColor: Color(0xFF168FFF),
+                      tabs: [
+                        Tab(text: 'Frames'),
+                        Tab(text: 'Badges'),
+                        Tab(text: 'VIP Frames'),
                       ],
                     ),
-                  ),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: loading
-                        ? const Center(child: CircularProgressIndicator())
-                        : items.isEmpty && hardwearItems.isEmpty
-                        ? const Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.backpack_outlined,
-                                  size: 58,
-                                  color: Color(0xFF91B9D8),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          grid(
+                            frameItems,
+                            (item) {
+                              final code = item['frame_code']?.toString() ?? '';
+                              final active =
+                                  equippedFrame?['frame_code'] == code;
+                              return card(
+                                title: item['name']?.toString() ?? code,
+                                asset: item['asset']?.toString() ?? '',
+                                expiry: item['expires_at']?.toString() ?? '',
+                                isEquipped: active,
+                                onTap: () => perform(
+                                  '/backpack/hardwear/equip',
+                                  {'frame_code': active ? '' : code},
                                 ),
-                                SizedBox(height: 12),
-                                Text(
-                                  'Your Backpack is empty',
-                                  style: TextStyle(
-                                    color: Color(0xFF54738D),
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                SizedBox(height: 5),
-                                Text(
-                                  'Your acquired VIP frames will appear here.',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(color: Color(0xFF7892A8)),
-                                ),
-                              ],
-                            ),
-                          )
-                        : GridView.builder(
-                            padding: const EdgeInsets.all(16),
-                            itemCount: items.length + hardwearItems.length,
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                  childAspectRatio: 0.83,
-                                ),
-                            itemBuilder: (context, index) {
-                              if (index >= items.length) {
-                                final hw = hardwearItems[index - items.length];
-                                final frameCode =
-                                    hw['frame_code']?.toString() ?? '';
-                                final isEquipped =
-                                    equippedHardwear != null &&
-                                    equippedHardwear!['frame_code']
-                                            ?.toString() ==
-                                        frameCode;
-                                final expiry =
-                                    hw['expires_at']?.toString() ?? '';
+                              );
+                            },
+                            'No frames in your collection',
+                            Icons.crop_free,
+                          ),
 
-                                return Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(18),
-                                    border: Border.all(
-                                      color: isEquipped
-                                          ? const Color(0xFFFFD779)
-                                          : const Color(0xFFD9EAF7),
-                                      width: isEquipped ? 2 : 1,
-                                    ),
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceEvenly,
-                                    children: [
-                                      SizedBox(
-                                        width: 110,
-                                        height: 100,
-                                        child: ClipRect(
-                                          child: TransparentFrameVideo(),
-                                        ),
-                                      ),
-                                      const Text(
-                                        'Super Admin Frame',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF16466D),
-                                        ),
-                                      ),
-                                      Text(
-                                        expiry.isEmpty
-                                            ? 'HARDWEAR'
-                                            : 'Expires: $expiry',
-                                        textAlign: TextAlign.center,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          color: Color(0xFF7892A8),
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: FilledButton(
-                                          onPressed: saving
-                                              ? null
-                                              : () async {
-                                                  sheetSetState(
-                                                    () => saving = true,
-                                                  );
-                                                  try {
-                                                    await _giftRequest(
-                                                      'POST',
-                                                      '/backpack/hardwear/equip',
-                                                      body: {
-                                                        'frame_code': isEquipped
-                                                            ? ''
-                                                            : frameCode,
-                                                      },
-                                                    );
-                                                    await refreshItems();
-                                                    await _loadBackpackEquippedFrame();
-                                                    if (!mounted) return;
-                                                    sheetSetState(() {});
-                                                    ScaffoldMessenger.of(
-                                                      this.context,
-                                                    ).showSnackBar(
-                                                      SnackBar(
-                                                        content: Text(
-                                                          isEquipped
-                                                              ? 'Super Admin frame removed.'
-                                                              : 'Super Admin frame equipped!',
-                                                        ),
-                                                      ),
-                                                    );
-                                                  } catch (e) {
-                                                    if (sheetContext.mounted) {
-                                                      ScaffoldMessenger.of(
-                                                        this.context,
-                                                      ).showSnackBar(
-                                                        SnackBar(
-                                                          content: Text(
-                                                            'Backpack error: $e',
-                                                          ),
-                                                        ),
-                                                      );
-                                                    }
-                                                  } finally {
-                                                    if (sheetContext.mounted) {
-                                                      sheetSetState(
-                                                        () => saving = false,
-                                                      );
-                                                    }
-                                                  }
-                                                },
-                                          style: FilledButton.styleFrom(
-                                            backgroundColor: isEquipped
-                                                ? const Color(0xFF7892A8)
-                                                : const Color(0xFF168FFF),
-                                          ),
-                                          child: Text(
-                                            isEquipped ? 'Remove' : 'Equip',
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }
+                          grid(
+                            badgeItems,
+                            (item) {
+                              final code = item['badge_code']?.toString() ?? '';
+                              final active =
+                                  equippedBadge?['badge_code'] == code;
+                              return card(
+                                title: item['name']?.toString() ?? code,
+                                asset: item['asset']?.toString() ?? '',
+                                expiry: item['expires_at']?.toString() ?? '',
+                                isEquipped: active,
+                                onTap: () => perform(
+                                  '/backpack/hardwear/badge/equip',
+                                  {'badge_code': active ? '' : code},
+                                ),
+                              );
+                            },
+                            'No badges in your collection',
+                            Icons.workspace_premium,
+                          ),
 
-                              final item = items[index];
+                          grid(
+                            vipItems,
+                            (item) {
                               final setNo =
                                   int.tryParse('${item['set_number'] ?? 0}') ??
                                   0;
                               final level =
                                   int.tryParse('${item['level'] ?? 0}') ?? 0;
-                              final isEquipped =
-                                  equipped != null &&
-                                  int.tryParse('${equipped!['set_number']}') ==
+                              final active =
+                                  equippedVip != null &&
+                                  int.tryParse(
+                                        '${equippedVip!['set_number']}',
+                                      ) ==
                                       setNo &&
-                                  int.tryParse('${equipped!['level']}') ==
+                                  int.tryParse('${equippedVip!['level']}') ==
                                       level;
-                              final expiry =
-                                  item['expires_at']?.toString() ?? '';
-
                               return Container(
-                                padding: const EdgeInsets.all(12),
+                                padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  borderRadius: BorderRadius.circular(18),
+                                  borderRadius: BorderRadius.circular(17),
                                   border: Border.all(
-                                    color: isEquipped
+                                    color: active
                                         ? const Color(0xFF168FFF)
                                         : const Color(0xFFD9EAF7),
-                                    width: isEquipped ? 2 : 1,
+                                    width: active ? 2 : 1,
                                   ),
                                 ),
                                 child: Column(
@@ -4446,7 +4473,6 @@ class _ProfilePageState extends State<ProfilePage> {
                                         child: Icon(
                                           Icons.person,
                                           color: Color(0xFF168FFF),
-                                          size: 30,
                                         ),
                                       ),
                                     ),
@@ -4455,86 +4481,28 @@ class _ProfilePageState extends State<ProfilePage> {
                                       textAlign: TextAlign.center,
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
-                                        color: Color(0xFF16466D),
                                       ),
                                     ),
                                     Text(
-                                      expiry.isEmpty
-                                          ? 'VIP Frame'
-                                          : 'Expires: $expiry',
-                                      textAlign: TextAlign.center,
-                                      maxLines: 2,
+                                      item['expires_at']?.toString() ??
+                                          'VIP Frame',
+                                      maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: Color(0xFF7892A8),
-                                      ),
+                                      style: const TextStyle(fontSize: 10),
                                     ),
                                     SizedBox(
                                       width: double.infinity,
                                       child: FilledButton(
                                         onPressed: saving
                                             ? null
-                                            : () async {
-                                                sheetSetState(
-                                                  () => saving = true,
-                                                );
-                                                try {
-                                                  await _giftRequest(
-                                                    'POST',
-                                                    '/backpack/equip',
-                                                    body: isEquipped
-                                                        ? {
-                                                            'set_number': 0,
-                                                            'level': 0,
-                                                          }
-                                                        : {
-                                                            'set_number': setNo,
-                                                            'level': level,
-                                                          },
-                                                  );
-                                                  await refreshItems();
-                                                  await _loadBackpackEquippedFrame();
-                                                  if (!mounted) return;
-                                                  sheetSetState(() {});
-                                                  ScaffoldMessenger.of(
-                                                    this.context,
-                                                  ).showSnackBar(
-                                                    SnackBar(
-                                                      content: Text(
-                                                        isEquipped
-                                                            ? 'Frame removed from profile. Still in Backpack.'
-                                                            : 'VIP frame equipped on your profile.',
-                                                      ),
-                                                    ),
-                                                  );
-                                                } catch (e) {
-                                                  if (sheetContext.mounted) {
-                                                    ScaffoldMessenger.of(
-                                                      this.context,
-                                                    ).showSnackBar(
-                                                      SnackBar(
-                                                        content: Text(
-                                                          'Backpack error: $e',
-                                                        ),
-                                                      ),
-                                                    );
-                                                  }
-                                                } finally {
-                                                  if (sheetContext.mounted) {
-                                                    sheetSetState(
-                                                      () => saving = false,
-                                                    );
-                                                  }
-                                                }
-                                              },
-                                        style: FilledButton.styleFrom(
-                                          backgroundColor: isEquipped
-                                              ? const Color(0xFF7892A8)
-                                              : const Color(0xFF168FFF),
-                                        ),
+                                            : () => perform('/backpack/equip', {
+                                                'set_number': active
+                                                    ? 0
+                                                    : setNo,
+                                                'level': active ? 0 : level,
+                                              }),
                                         child: Text(
-                                          isEquipped ? 'Remove' : 'Equip',
+                                          active ? 'Remove' : 'Equip',
                                         ),
                                       ),
                                     ),
@@ -4542,15 +4510,21 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               );
                             },
+                            'No VIP frames in your collection',
+                            Icons.workspace_premium,
                           ),
-                  ),
-                ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           },
         ),
       );
     } catch (e) {
+      loading = false;
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Backpack error: $e')));

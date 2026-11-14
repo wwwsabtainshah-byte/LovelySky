@@ -485,6 +485,30 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
                 "ADD COLUMN hardwear_frame_id TEXT NOT NULL DEFAULT ''"
             )
 
+        if "hardwear_badge_id" not in equipment_columns:
+            db.execute(
+                "ALTER TABLE user_profile_equipment "
+                "ADD COLUMN hardwear_badge_id TEXT NOT NULL DEFAULT ''"
+            )
+
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS hardwear_badge_ownership (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                badge_code TEXT NOT NULL,
+                granted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TEXT NOT NULL,
+                granted_by_user_id INTEGER,
+                active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+                UNIQUE(user_id, badge_code),
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(granted_by_user_id) REFERENCES users(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_hardwear_badge_ownership_expiry
+                ON hardwear_badge_ownership(user_id, active, expires_at);
+        """)
+
 
     # Expand voice rooms from 18 to 20 seats without losing existing locks/invites.
     with get_connection() as db:
