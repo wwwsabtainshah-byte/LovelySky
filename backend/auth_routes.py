@@ -580,6 +580,19 @@ def _require_voice_room_manager(db, room_id: int, user_uid: str):
         raise HTTPException(403, "Only the room owner or appointed admin can manage this room")
     return role
 
+def _require_voice_room_seat_capacity(db, room_id: int, seat_number: int):
+    room = db.execute(
+        "SELECT seat_capacity FROM voice_rooms WHERE id = ? AND is_active = 1",
+        (room_id,),
+    ).fetchone()
+    if not room:
+        raise HTTPException(404, "Voice room not found")
+    capacity = int(room["seat_capacity"])
+    if seat_number < 1 or seat_number > capacity:
+        raise HTTPException(400, f"Seat number must be between 1 and {capacity}")
+    return capacity
+
+
 
 @router.post("/voice/rooms/{room_id}/admins")
 def appoint_voice_room_admin(
@@ -634,6 +647,85 @@ def remove_voice_room_admin(
         db.close()
 
 
+@router.post("/voice/rooms/{room_id}/seats/upgrade")
+def upgrade_voice_room_seats(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    cost = 1_000_000
+    try:
+        db.execute("BEGIN IMMEDIATE")
+
+        room = db.execute(
+            "SELECT owner_uid, seat_capacity FROM voice_rooms WHERE id = ? AND is_active = 1",
+            (room_id,),
+        ).fetchone()
+        if not room:
+            raise HTTPException(404, "Voice room not found")
+
+        if room["owner_uid"] != user["google_uid"]:
+            raise HTTPException(403, "Only the room owner can upgrade seats")
+
+        old_capacity = int(room["seat_capacity"])
+        if old_capacity >= 36:
+            raise HTTPException(400, "This room already has the maximum 36 seats")
+
+        if old_capacity not in {5, 10, 15, 20, 25, 30}:
+            raise HTTPException(409, "Invalid current room seat capacity")
+
+        new_capacity = 36 if old_capacity == 30 else old_capacity + 5
+        user_id = int(user["id"])
+
+        db.execute(
+            "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
+            (user_id,),
+        )
+        debit = db.execute(
+            """UPDATE wallets SET coins = coins - ?
+               WHERE user_id = ? AND coins >= ?""",
+            (cost, user_id, cost),
+        )
+        if debit.rowcount != 1:
+            raise HTTPException(400, "Not enough Lovely Coins")
+
+        db.execute(
+            "UPDATE voice_rooms SET seat_capacity = ? WHERE id = ?",
+            (new_capacity, room_id),
+        )
+        db.execute(
+            """INSERT INTO transactions
+               (user_id, transaction_type, amount, currency, description)
+               VALUES (?, 'voice_room_seat_upgrade', ?, 'coins', ?)""",
+            (
+                user_id,
+                cost,
+                f"Voice room {room_id}: seat capacity {old_capacity} to {new_capacity}",
+            ),
+        )
+
+        wallet = db.execute(
+            "SELECT coins FROM wallets WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+
+        db.commit()
+        return {
+            "success": True,
+            "room_id": room_id,
+            "old_capacity": old_capacity,
+            "seat_capacity": new_capacity,
+            "cost": cost,
+            "remaining_coins": int(wallet["coins"]),
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 @router.post("/voice/rooms/{room_id}/seats/{seat_number}/lock")
 def lock_voice_room_seat(
     room_id: int,
@@ -641,11 +733,12 @@ def lock_voice_room_seat(
     authorization: str | None = Header(default=None),
 ):
     user = _voice_authenticated_user(authorization)
-    if not 1 <= seat_number <= 20:
-        raise HTTPException(400, "Seat number must be between 1 and 20")
+    if not 1 <= seat_number <= 36:
+        raise HTTPException(400, "Seat number must be between 1 and 36")
     db = get_connection()
     try:
         _require_voice_room_manager(db, room_id, user["google_uid"])
+        _require_voice_room_seat_capacity(db, room_id, seat_number)
         db.execute(
             """INSERT OR IGNORE INTO voice_room_locked_seats
                (room_id, seat_number, locked_by_uid) VALUES (?, ?, ?)""",
@@ -664,11 +757,12 @@ def unlock_voice_room_seat(
     authorization: str | None = Header(default=None),
 ):
     user = _voice_authenticated_user(authorization)
-    if not 1 <= seat_number <= 20:
-        raise HTTPException(400, "Seat number must be between 1 and 20")
+    if not 1 <= seat_number <= 36:
+        raise HTTPException(400, "Seat number must be between 1 and 36")
     db = get_connection()
     try:
         _require_voice_room_manager(db, room_id, user["google_uid"])
+        _require_voice_room_seat_capacity(db, room_id, seat_number)
         db.execute(
             "DELETE FROM voice_room_locked_seats WHERE room_id = ? AND seat_number = ?",
             (room_id, seat_number),
@@ -688,7 +782,7 @@ def get_voice_room_seats(
     db = get_connection()
     try:
         room = db.execute(
-            "SELECT id FROM voice_rooms WHERE id = ? AND is_active = 1",
+            "SELECT id, seat_capacity FROM voice_rooms WHERE id = ? AND is_active = 1",
             (room_id,),
         ).fetchone()
         if not room:
@@ -719,14 +813,14 @@ def get_voice_room_seats(
              AND vfo.expires_at > CURRENT_TIMESTAMP
             LEFT JOIN voice_room_gift_diamonds AS gd
               ON gd.room_id = p.room_id AND gd.user_uid = p.user_uid
-            WHERE p.room_id = ? AND p.seat_number BETWEEN 1 AND 20
+            WHERE p.room_id = ? AND p.seat_number BETWEEN 1 AND ?
             """,
-            (user["google_uid"], room_id),
+            (user["google_uid"], room_id, int(room["seat_capacity"])),
         ).fetchall()
         by_seat = {row["seat_number"]: row for row in occupied}
         locked_rows = db.execute(
-            "SELECT seat_number FROM voice_room_locked_seats WHERE room_id = ?",
-            (room_id,),
+            "SELECT seat_number FROM voice_room_locked_seats WHERE room_id = ? AND seat_number <= ?",
+            (room_id, int(room["seat_capacity"])),
         ).fetchall()
         locked_seats = {row["seat_number"] for row in locked_rows}
 
@@ -734,6 +828,7 @@ def get_voice_room_seats(
             "success": True,
             "room_id": room_id,
             "room_role": role,
+            "seat_capacity": int(room["seat_capacity"]),
             "seats": [
                 {
                     "seat_number": n,
@@ -753,7 +848,7 @@ def get_voice_room_seats(
                     ),
                     "is_locked": n in locked_seats,
                 }
-                for n in range(1, 21)
+                for n in range(1, int(room["seat_capacity"]) + 1)
             ],
         }
     finally:
@@ -767,18 +862,19 @@ def sit_voice_room_seat(
     authorization: str | None = Header(default=None),
 ):
     user = _voice_authenticated_user(authorization)
-    if seat_number < 1 or seat_number > 20:
-        raise HTTPException(400, "Seat number must be between 1 and 20")
+    if seat_number < 1 or seat_number > 36:
+        raise HTTPException(400, "Seat number must be between 1 and 36")
 
     db = get_connection()
     try:
         db.execute("BEGIN IMMEDIATE")
         room = db.execute(
-            "SELECT id FROM voice_rooms WHERE id = ? AND is_active = 1",
+            "SELECT id, seat_capacity FROM voice_rooms WHERE id = ? AND is_active = 1",
             (room_id,),
         ).fetchone()
         if not room:
             raise HTTPException(404, "Voice room not found")
+        _require_voice_room_seat_capacity(db, room_id, seat_number)
 
         _voice_room_role(db, room_id, user["google_uid"])
 
@@ -835,13 +931,14 @@ def assign_voice_room_member_seat(
     target_uid = payload.user_uid.strip()
     if not target_uid:
         raise HTTPException(400, "Invalid member")
-    if not 1 <= seat_number <= 20:
-        raise HTTPException(400, "Seat number must be between 1 and 20")
+    if not 1 <= seat_number <= 36:
+        raise HTTPException(400, "Seat number must be between 1 and 36")
 
     db = get_connection()
     try:
         db.execute("BEGIN IMMEDIATE")
         _require_voice_room_manager(db, room_id, user["google_uid"])
+        _require_voice_room_seat_capacity(db, room_id, seat_number)
 
         locked = db.execute(
             "SELECT 1 FROM voice_room_locked_seats WHERE room_id = ? AND seat_number = ?",
@@ -945,12 +1042,13 @@ def create_voice_room_seat_invite(
     target_uid = payload.user_uid.strip()
     if not target_uid or target_uid == user["google_uid"]:
         raise HTTPException(400, "Invalid invitation target")
-    if not 1 <= seat_number <= 20:
+    if not 1 <= seat_number <= 36:
         raise HTTPException(400, "Invalid seat number")
 
     db = get_connection()
     try:
         _require_voice_room_manager(db, room_id, user["google_uid"])
+        _require_voice_room_seat_capacity(db, room_id, seat_number)
 
         target = db.execute(
             "SELECT 1 FROM voice_room_participants WHERE room_id = ? AND user_uid = ?",
@@ -1032,6 +1130,7 @@ def respond_voice_room_seat_invite(
             raise HTTPException(404, "Pending invitation not found")
 
         if payload.accepted:
+            _require_voice_room_seat_capacity(db, room_id, int(invite["seat_number"]))
             _voice_room_role(db, room_id, user["google_uid"])
 
             inviter_role = _voice_room_role(

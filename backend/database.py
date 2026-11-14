@@ -148,6 +148,9 @@ def initialize_database():
     if "is_official" not in columns:
         db.execute("ALTER TABLE voice_rooms ADD COLUMN is_official INTEGER NOT NULL DEFAULT 0")
 
+    if "seat_capacity" not in columns:
+        db.execute("ALTER TABLE voice_rooms ADD COLUMN seat_capacity INTEGER NOT NULL DEFAULT 5")
+
     db.executescript("""
         CREATE TABLE IF NOT EXISTS voice_room_messages (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -184,7 +187,7 @@ FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
 
 CREATE TABLE IF NOT EXISTS voice_room_locked_seats (
     room_id INTEGER NOT NULL,
-    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 20),
+    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 36),
     locked_by_uid TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (room_id, seat_number),
@@ -196,7 +199,7 @@ CREATE TABLE IF NOT EXISTS voice_room_locked_seats (
     room_id INTEGER NOT NULL,
     inviter_uid TEXT NOT NULL,
     invitee_uid TEXT NOT NULL,
-    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 20),
+    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 36),
     status TEXT NOT NULL DEFAULT 'pending',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
@@ -510,16 +513,19 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
         """)
 
 
-    # Expand voice rooms from 18 to 20 seats without losing existing locks/invites.
+
+    # Expand voice room locks and invites to 36 seats.
+    # Existing records are preserved.
     with get_connection() as db:
-        locked_sql = db.execute(
+        locked = db.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='voice_room_locked_seats'"
         ).fetchone()
-        if locked_sql and "BETWEEN 1 AND 18" in (locked_sql["sql"] or ""):
+
+        if locked and "BETWEEN 1 AND 36" not in (locked["sql"] or ""):
             db.execute("""
                 CREATE TABLE voice_room_locked_seats_new (
                     room_id INTEGER NOT NULL,
-                    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 20),
+                    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 36),
                     locked_by_uid TEXT NOT NULL,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (room_id, seat_number),
@@ -528,25 +534,25 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
             """)
             db.execute("""
                 INSERT INTO voice_room_locked_seats_new
-                    (room_id, seat_number, locked_by_uid, created_at)
+                (room_id, seat_number, locked_by_uid, created_at)
                 SELECT room_id, seat_number, locked_by_uid, created_at
                 FROM voice_room_locked_seats
             """)
             db.execute("DROP TABLE voice_room_locked_seats")
             db.execute("ALTER TABLE voice_room_locked_seats_new RENAME TO voice_room_locked_seats")
-            print("Migrated voice_room_locked_seats to 20 seats; existing rows preserved.")
 
-        invite_sql = db.execute(
+        invites = db.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='voice_room_invites'"
         ).fetchone()
-        if invite_sql and "BETWEEN 1 AND 18" in (invite_sql["sql"] or ""):
+
+        if invites and "BETWEEN 1 AND 36" not in (invites["sql"] or ""):
             db.execute("""
                 CREATE TABLE voice_room_invites_new (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     room_id INTEGER NOT NULL,
                     inviter_uid TEXT NOT NULL,
                     invitee_uid TEXT NOT NULL,
-                    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 20),
+                    seat_number INTEGER NOT NULL CHECK (seat_number BETWEEN 1 AND 36),
                     status TEXT NOT NULL DEFAULT 'pending',
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
@@ -554,7 +560,7 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
             """)
             db.execute("""
                 INSERT INTO voice_room_invites_new
-                    (id, room_id, inviter_uid, invitee_uid, seat_number, status, created_at)
+                (id, room_id, inviter_uid, invitee_uid, seat_number, status, created_at)
                 SELECT id, room_id, inviter_uid, invitee_uid, seat_number, status, created_at
                 FROM voice_room_invites
             """)
@@ -564,7 +570,6 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
                 CREATE INDEX IF NOT EXISTS idx_voice_invites_user
                 ON voice_room_invites(room_id, invitee_uid, status)
             """)
-            print("Migrated voice_room_invites to 20 seats; existing rows preserved.")
 
 if __name__ == "__main__":
     initialize_database()

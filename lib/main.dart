@@ -10601,6 +10601,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   int sendingReportTab = 0;
   bool showGiftTab = false;
   List<Map<String, dynamic>> seats = [];
+  int seatCapacity = 5;
   bool seatsLoading = true;
   bool seatRequestInProgress = false;
   Timer? seatRefreshTimer;
@@ -11155,6 +11156,42 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     }
   }
 
+  Future<void> _upgradeRoomSeats() async {
+    if (roomRole != 'owner') return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Upgrade Room Seats'),
+        content: Text(
+          'Upgrade from $seatCapacity to '
+          '${seatCapacity == 30 ? 36 : seatCapacity + 5} seats?\\n'
+          'Cost: 1,000,000 Lovely Coins',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Upgrade'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final ok = await _roomPost(
+      '/voice/rooms/${widget.room['id']}/seats/upgrade',
+    );
+    if (ok && mounted) {
+      showMessage('Room seats upgraded successfully!');
+      await _loadSeats();
+    }
+  }
+
   Future<void> _loadSeats() async {
     if (seatRequestInProgress) return;
     seatRequestInProgress = true;
@@ -11180,6 +11217,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         );
         setState(() {
           seats = loaded;
+      seatCapacity = (data['seat_capacity'] as num?)?.toInt() ?? loaded.length;
           roomRole = (data['room_role'] ?? 'member').toString();
           seatsLoading = false;
         });
@@ -12664,7 +12702,34 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           ),
                         ),
                       const SizedBox(height: 5),
-                      if (seatsLoading && seats.isEmpty)
+                      if (roomRole == 'owner')
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            Text(
+                              '$seatCapacity seats',
+                              style: const TextStyle(
+                                color: Color(0xFF286B9D),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Spacer(),
+                            if (seatCapacity < 36)
+                              ElevatedButton.icon(
+                                onPressed: _upgradeRoomSeats,
+                                icon: const Icon(Icons.add),
+                                label: const Text('Upgrade Seats'),
+                              )
+                            else
+                              const Text(
+                                'Maximum seats reached',
+                                style: TextStyle(color: Color(0xFF286B9D)),
+                              ),
+                          ],
+                        ),
+                      ),
+                    if (seatsLoading && seats.isEmpty)
                         const Padding(
                           padding: EdgeInsets.all(25),
                           child: Center(
@@ -12674,16 +12739,17 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           ),
                         )
                       else ...[
-                        for (final first in [1, 6, 11, 16]) ...[
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              for (int i = 0; i < 5; i++) _buildSeat(first + i),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
-                        ],
+                        for (int first = 1; first <= seatCapacity; first += 5) ...[
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                for (int i = first; i < first + 5 && i <= seatCapacity; i++)
+                                  _buildSeat(i),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                          ],
                       ],
                       const Divider(color: Color(0x335E9AC5), height: 14),
                       Row(
