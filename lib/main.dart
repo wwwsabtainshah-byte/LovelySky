@@ -11183,8 +11183,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
 
     if (confirmed != true || !mounted) return;
 
-    final ok = await _roomPost(
+    final nextCapacity = seatCapacity == 30 ? 36 : seatCapacity + 5;
+  final ok = await _roomPost(
       '/voice/rooms/${widget.room['id']}/seats/upgrade',
+      body: {'seat_capacity': nextCapacity},
     );
     if (ok && mounted) {
       showMessage('Room seats upgraded successfully!');
@@ -12936,6 +12938,18 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                           openLovelyCasinoGames(context);
                                         },
                                       ),
+              if (roomRole == 'owner' && seatCapacity < 36)
+                ListTile(
+                  leading: const Icon(Icons.add_circle_outline),
+                  title: const Text('Upgrade Room Seats'),
+                  subtitle: Text(
+                    'Next: ${seatCapacity == 30 ? 36 : seatCapacity + 5} seats',
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _upgradeRoomSeats();
+                  },
+                ),
                                       ListTile(
                                         leading: const Icon(Icons.info_outline),
                                         title: const Text('Room Information'),

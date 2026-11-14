@@ -647,62 +647,82 @@ def remove_voice_room_admin(
         db.close()
 
 
+
+class VoiceRoomSeatUpgradeRequest(BaseModel):
+    seat_capacity: int
+
+
 @router.post("/voice/rooms/{room_id}/seats/upgrade")
 def upgrade_voice_room_seats(
     room_id: int,
+    payload: VoiceRoomSeatUpgradeRequest,
     authorization: str | None = Header(default=None),
 ):
     user = _voice_authenticated_user(authorization)
     db = get_connection()
     cost = 1_000_000
+
     try:
         db.execute("BEGIN IMMEDIATE")
 
         room = db.execute(
-            "SELECT owner_uid, seat_capacity FROM voice_rooms WHERE id = ? AND is_active = 1",
+            "SELECT owner_uid, seat_capacity FROM voice_rooms "
+            "WHERE id = ? AND is_active = 1",
             (room_id,),
         ).fetchone()
+
         if not room:
             raise HTTPException(404, "Voice room not found")
 
         if room["owner_uid"] != user["google_uid"]:
-            raise HTTPException(403, "Only the room owner can upgrade seats")
+            raise HTTPException(403, "Only the room owner can change seats")
+
+        new_capacity = payload.seat_capacity
+
+        if new_capacity not in {5, 10, 15, 20, 25, 30, 36}:
+            raise HTTPException(400, "Invalid seat capacity")
 
         old_capacity = int(room["seat_capacity"])
-        if old_capacity >= 36:
-            raise HTTPException(400, "This room already has the maximum 36 seats")
 
-        if old_capacity not in {5, 10, 15, 20, 25, 30}:
-            raise HTTPException(409, "Invalid current room seat capacity")
+        if old_capacity == new_capacity:
+            db.commit()
+            return {
+                "success": True,
+                "seat_capacity": new_capacity,
+                "cost": 0,
+            }
 
-        new_capacity = 36 if old_capacity == 30 else old_capacity + 5
         user_id = int(user["id"])
 
-        db.execute(
-            "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
-            (user_id,),
-        )
-        debit = db.execute(
-            """UPDATE wallets SET coins = coins - ?
-               WHERE user_id = ? AND coins >= ?""",
-            (cost, user_id, cost),
-        )
-        if debit.rowcount != 1:
-            raise HTTPException(400, "Not enough Lovely Coins")
+        if new_capacity != 5:
+            db.execute(
+                "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
+                (user_id,),
+            )
+
+            debit = db.execute(
+                """UPDATE wallets SET coins = coins - ?
+                   WHERE user_id = ? AND coins >= ?""",
+                (cost, user_id, cost),
+            )
+
+            if debit.rowcount != 1:
+                raise HTTPException(400, "Not enough Lovely Coins")
+
+            db.execute(
+                """INSERT INTO transactions
+                   (user_id, transaction_type, amount, currency, description)
+                   VALUES (?, 'voice_room_seat_upgrade', ?, 'coins', ?)""",
+                (
+                    user_id,
+                    cost,
+                    f"Voice room {room_id}: {old_capacity} to {new_capacity} seats",
+                ),
+            )
 
         db.execute(
             "UPDATE voice_rooms SET seat_capacity = ? WHERE id = ?",
             (new_capacity, room_id),
-        )
-        db.execute(
-            """INSERT INTO transactions
-               (user_id, transaction_type, amount, currency, description)
-               VALUES (?, 'voice_room_seat_upgrade', ?, 'coins', ?)""",
-            (
-                user_id,
-                cost,
-                f"Voice room {room_id}: seat capacity {old_capacity} to {new_capacity}",
-            ),
         )
 
         wallet = db.execute(
@@ -711,14 +731,16 @@ def upgrade_voice_room_seats(
         ).fetchone()
 
         db.commit()
+
         return {
             "success": True,
             "room_id": room_id,
             "old_capacity": old_capacity,
             "seat_capacity": new_capacity,
-            "cost": cost,
-            "remaining_coins": int(wallet["coins"]),
+            "cost": 0 if new_capacity == 5 else cost,
+            "remaining_coins": int(wallet["coins"]) if wallet else 0,
         }
+
     except Exception:
         db.rollback()
         raise
