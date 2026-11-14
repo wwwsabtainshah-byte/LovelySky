@@ -4,8 +4,8 @@ import 'package:material_ui/material_ui.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'vip_wing_detail_page.dart';
 import 'hardwear_frame_detail_page.dart';
+import 'transparent_frame_video.dart';
 
 const _bg = Color(0xFF100D25);
 const _blue = Color(0xFF67D4FF);
@@ -21,9 +21,6 @@ class MallPage extends StatefulWidget {
 
 class _MallPageState extends State<MallPage> {
   Map<String, dynamic> _progress = {};
-  bool _loading = true;
-  String? _error;
-  final Set<String> _claiming = {};
   int _selectedTab = 0;
   bool get _isOwner => _progress['user_code']?.toString() == '1';
   bool get _showHardwear => _isOwner && _selectedTab == 1;
@@ -65,13 +62,6 @@ class _MallPageState extends State<MallPage> {
   }
 
   Future<void> _loadProgress() async {
-    if (mounted) {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
-    }
-
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('lovely_token');
@@ -104,115 +94,12 @@ class _MallPageState extends State<MallPage> {
       if (!mounted) return;
       setState(() {
         _progress = data;
-        _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
       });
     }
-  }
-
-  Future<void> _claimFrame(int setNumber, int level) async {
-    final key = '$setNumber-$level';
-    if (_claiming.contains(key)) return;
-
-    setState(() => _claiming.add(key));
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('lovely_token');
-
-      if (token == null || token.isEmpty) {
-        throw Exception('Login required.');
-      }
-
-      final response = await http.post(
-        Uri.parse('$_mallApi/vip/wings/claim'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({'set_number': setNumber, 'level': level}),
-      );
-
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map) {
-        throw Exception('Invalid server response.');
-      }
-
-      final data = Map<String, dynamic>.from(decoded);
-
-      if (response.statusCode != 200 || data['success'] != true) {
-        throw Exception(data['detail']?.toString() ?? 'VIP claim failed.');
-      }
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('VIP $level, Set $setNumber claimed!')),
-      );
-      await _loadProgress();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _claiming.remove(key));
-      }
-    }
-  }
-
-  int get _weeklyCoins =>
-      (_progress['weekly_verified_coins'] as num?)?.toInt() ?? 0;
-
-  Map<String, dynamic> _frameData(int setNumber, int level) {
-    final sets = _progress['sets'];
-    if (sets is! Map) return {};
-
-    final levels = sets['$setNumber'];
-    if (levels is! List) return {};
-
-    for (final item in levels) {
-      if (item is Map && item['level'] == level) {
-        return Map<String, dynamic>.from(item);
-      }
-    }
-    return {};
-  }
-
-  String _formatCoins(int value) {
-    if (value >= 1000000000) {
-      return '${(value / 1000000000).toStringAsFixed(1)}B';
-    }
-    if (value >= 1000000) {
-      return '${(value / 1000000).toStringAsFixed(1)}M';
-    }
-    if (value >= 1000) {
-      return '${(value / 1000).toStringAsFixed(1)}K';
-    }
-    return value.toString();
-  }
-
-  String _expiryLabel(dynamic value) {
-    if (value == null) return '';
-    final date = DateTime.tryParse(value.toString());
-    if (date == null) return '';
-
-    final remaining = date.difference(DateTime.now());
-    if (remaining.isNegative) return 'Expired';
-
-    if (remaining.inDays >= 1) {
-      return 'Expires in ${remaining.inDays}d';
-    }
-    if (remaining.inHours >= 1) {
-      return 'Expires in ${remaining.inHours}h';
-    }
-    return 'Expires soon';
   }
 
   @override
@@ -298,16 +185,7 @@ class _MallPageState extends State<MallPage> {
                         child: Column(
                           children: [
                             Expanded(
-                              child: Image.asset(
-                                'assets/hardwear/super_admin.gif',
-                                fit: BoxFit.contain,
-                                gaplessPlayback: true,
-                                errorBuilder: (_, _, _) => const Icon(
-                                  Icons.workspace_premium,
-                                  color: _gold,
-                                  size: 76,
-                                ),
-                              ),
+                              child: const TransparentFrameVideo(),
                             ),
                             const SizedBox(height: 8),
                             const Text(
