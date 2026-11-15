@@ -23,6 +23,17 @@ import 'widgets/vip_wing_frame_png70.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    print('========== LOVELY SKY FLUTTER ERROR ==========');
+    print(details.exceptionAsString());
+    print('Library: ${details.library}');
+    print('Context: ${details.context}');
+    if (details.stack != null) print(details.stack);
+    print('========== END FLUTTER ERROR ==========');
+  };
+
   await Firebase.initializeApp();
   runApp(const LovelySkyApp());
 }
