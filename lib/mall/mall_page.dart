@@ -1,4 +1,11 @@
+import 'dart:convert';
+
 import 'package:material_ui/material_ui.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../auth_screen.dart';
+
 import 'package:flutter_svga/flutter_svga.dart';
 
 const Color _bg = Color(0xFF071426);
@@ -172,65 +179,261 @@ class BadgesPage extends StatelessWidget {
       const _AnimatedAssetPage(title: 'Badges', items: _badges);
 }
 
-class _AnimatedAssetPage extends StatelessWidget {
+class _AnimatedAssetPage extends StatefulWidget {
   final String title;
   final List<Map<String, String>> items;
 
   const _AnimatedAssetPage({required this.title, required this.items});
 
   @override
+  State<_AnimatedAssetPage> createState() => _AnimatedAssetPageState();
+}
+
+class _AnimatedAssetPageState extends State<_AnimatedAssetPage> {
+  final TextEditingController _userController = TextEditingController();
+  int? _selectedIndex;
+  bool _sending = false;
+
+  String _code(String name) {
+    const codes = {
+      'ADMIN': 'admin',
+      'AGENCY': 'agency',
+      'BD ADMIN': 'bdadmin',
+      'COIN SELLER': 'coinseller',
+      'CS': 'cs',
+      'HOST': 'host',
+      'MANAGER': 'manager',
+      'OFFICIAL': 'official',
+      'SUPER ADMIN': 'superadmin',
+      'SUPER ADMIN 2': 'superadmin_2',
+      'OWNER': 'owner',
+      'COUNTRY ASSISTANT': 'country_assistant',
+      'COUNTRY SUPER ADMIN': 'country_super_admin',
+    };
+    return codes[name] ?? '';
+  }
+
+  Future<void> _send(bool remove) async {
+    final userCode = _userController.text.trim();
+    if (userCode.isEmpty || !RegExp(r'^\d+$').hasMatch(userCode)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Valid User ID enter karein')),
+      );
+      return;
+    }
+
+    if (_selectedIndex == null) return;
+    final item = widget.items[_selectedIndex!];
+    final code = _code(item['name'] ?? '');
+    if (code.isEmpty) return;
+
+    setState(() => _sending = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('lovely_token');
+      if (token == null || token.isEmpty) {
+        throw Exception('Please login again');
+      }
+
+      final isBadge = widget.title == 'Badges';
+      final endpoint = isBadge
+          ? (remove
+                ? '/owner/hardwear/badges/remove'
+                : '/owner/hardwear/badges/grant')
+          : (remove
+                ? '/owner/hardwear/frames/remove'
+                : '/owner/hardwear/frames/grant');
+
+      final body = <String, dynamic>{
+        'user_code': userCode,
+        if (isBadge) 'badge_code': code else 'frame_code': code,
+      };
+
+      final response = await http.post(
+        Uri.parse('$lovelyApi$endpoint'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          data is Map
+              ? (data['detail'] ?? 'Request failed').toString()
+              : 'Request failed',
+        );
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${item['name']} ${remove ? 'removed from' : 'sent to'} User $userCode',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _userController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
-        title: Text(title),
+        title: Text(widget.title),
         backgroundColor: _bg,
         foregroundColor: Colors.white,
       ),
-      body: GridView.builder(
-        padding: const EdgeInsets.all(14),
-        itemCount: items.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 0.82,
-        ),
-        itemBuilder: (context, index) {
-          final item = items[index];
-
-          return Container(
-            decoration: BoxDecoration(
-              color: _surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _blue.withValues(alpha: 0.55)),
-            ),
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              children: [
-                Expanded(
-                  child: Center(
-                    child: SVGAEasyPlayer(
-                      assetsName: item['asset']!,
-                      loops: true,
+      body: Column(
+        children: [
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.all(14),
+              itemCount: widget.items.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 0.82,
+              ),
+              itemBuilder: (context, index) {
+                final item = widget.items[index];
+                final selected = _selectedIndex == index;
+                return Material(
+                  color: _surface,
+                  borderRadius: BorderRadius.circular(16),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => setState(() {
+                      _selectedIndex = selected ? null : index;
+                    }),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: selected
+                              ? Colors.amber
+                              : _blue.withValues(alpha: 0.55),
+                          width: selected ? 2 : 1,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: Center(
+                              child: SVGAEasyPlayer(
+                                assetsName: item['asset']!,
+                                loops: true,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            item['name']!,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            selected ? 'SELECTED' : 'TAP TO SELECT',
+                            style: TextStyle(
+                              color: selected ? Colors.amber : _blue,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  item['name']!,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
+                );
+              },
             ),
-          );
-        },
+          ),
+          if (_selectedIndex != null)
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(
+                14,
+                12,
+                14,
+                12 + MediaQuery.of(context).viewInsets.bottom,
+              ),
+              decoration: const BoxDecoration(
+                color: _surface,
+                border: Border(top: BorderSide(color: _blue)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Selected: ${widget.items[_selectedIndex!]['name']}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _userController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Enter User ID',
+                      hintStyle: const TextStyle(color: Colors.white54),
+                      filled: true,
+                      fillColor: _bg,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _sending ? null : () => _send(false),
+                          child: Text(_sending ? 'Please wait...' : 'Send'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.red.shade700,
+                          ),
+                          onPressed: _sending ? null : () => _send(true),
+                          child: const Text('Remove'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
