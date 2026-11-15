@@ -17,48 +17,88 @@ class MallPage extends StatelessWidget {
         backgroundColor: _bg,
         foregroundColor: Colors.white,
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _tile(
-            context,
-            'VIP Frames',
-            Icons.auto_awesome,
-            const VipFramesPage(),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _mallButton(
+                context,
+                'VIP Frames',
+                Icons.auto_awesome,
+                const VipFramesPage(),
+              ),
+              _mallButton(
+                context,
+                'Hardware',
+                Icons.memory,
+                const HardwarePage(),
+              ),
+              _mallButton(
+                context,
+                'Badges',
+                Icons.workspace_premium,
+                const BadgesPage(),
+              ),
+              _mallButton(
+                context,
+                'Ride',
+                Icons.directions_car,
+                const RidePage(),
+              ),
+            ],
           ),
-          _tile(context, 'Hardware', Icons.memory, const HardwarePage()),
-          _tile(context, 'Badges', Icons.workspace_premium, const BadgesPage()),
-          _tile(context, 'Ride', Icons.directions_car, const RidePage()),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _tile(BuildContext context, String title, IconData icon, Widget page) {
-    return Card(
-      color: _surface,
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 18,
-          vertical: 10,
-        ),
-        leading: Icon(icon, color: _blue, size: 28),
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 17,
-            fontWeight: FontWeight.bold,
+  Widget _mallButton(
+    BuildContext context,
+    String title,
+    IconData icon,
+    Widget page,
+  ) {
+    return Container(
+      width: 112,
+      height: 54,
+      margin: const EdgeInsets.only(right: 8),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _blue.withValues(alpha: 0.65)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 5),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: _blue, size: 19),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        trailing: const Icon(
-          Icons.arrow_forward_ios,
-          color: Colors.white54,
-          size: 17,
-        ),
-        onTap: () =>
-            Navigator.push(context, MaterialPageRoute(builder: (_) => page)),
       ),
     );
   }
