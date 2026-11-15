@@ -360,8 +360,11 @@ def _voice_authenticated_user(authorization: str | None):
 
 def _require_coin_owner(authorization: str | None):
     user = _voice_authenticated_user(authorization)
-    if str(user.get("google_email", "")).lower() != OWNER_EMAIL.lower():
-        raise HTTPException(403, "Owner access required")
+    if (
+        str(user.get("google_email", "")).strip().lower() != OWNER_EMAIL.lower()
+        or str(user.get("user_code", "")).strip() != "1"
+    ):
+        raise HTTPException(403, "Owner ID 1 access required")
     return user
 
 
@@ -691,6 +694,9 @@ def upgrade_voice_room_seats(
                 "seat_capacity": new_capacity,
                 "cost": 0,
             }
+
+        if new_capacity < old_capacity:
+            raise HTTPException(400, "Seat capacity cannot be downgraded")
 
         user_id = int(user["id"])
 
@@ -4640,7 +4646,7 @@ class OwnerVipFrameGrantRequest(BaseModel):
 
 class OwnerHardwearGrantRequest(BaseModel):
     user_code: str
-    frame_code: str = "super_admin"
+    frame_code: str = "superadmin"
 
 
 class BackpackHardwearEquipRequest(BaseModel):

@@ -1,0 +1,37 @@
+Analyzing LovelySkyBlue_new...                                  
+
+   info • Unnecessary use of multiple underscores. Try using '_' • lib/main.dart:1683:41 • unnecessary_underscores
+   info • Unnecessary use of multiple underscores. Try using '_' • lib/main.dart:1683:45 • unnecessary_underscores
+   info • Unnecessary use of multiple underscores. Try using '_' • lib/main.dart:1790:49 • unnecessary_underscores
+   info • Unnecessary use of multiple underscores. Try using '_' • lib/main.dart:3385:47 • unnecessary_underscores
+   info • Unnecessary use of multiple underscores. Try using '_' • lib/main.dart:3482:69 • unnecessary_underscores
+   info • Unnecessary use of multiple underscores. Try using '_' • lib/main.dart:3482:73 • unnecessary_underscores
+   info • Statements in an if should be enclosed in a block. Try wrapping the statement in a block • lib/main.dart:3914:27 • curly_braces_in_flow_control_structures
+   info • Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check • lib/main.dart:4210:56 • use_build_context_synchronously
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss. Try replacing the use of the deprecated member with the replacement • lib/main.dart:4301:22 • deprecated_member_use
+   info • Unnecessary use of multiple underscores. Try using '_' • lib/main.dart:4367:45 • unnecessary_underscores
+   info • Statements in an if should be enclosed in a block. Try wrapping the statement in a block • lib/main.dart:4411:31 • curly_braces_in_flow_control_structures
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check. Guard a 'State.context' use with a 'mounted' check on the State, and other BuildContext use with a 'mounted' check on the BuildContext • lib/main.dart:4426:52 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check. Guard a 'State.context' use with a 'mounted' check on the State, and other BuildContext use with a 'mounted' check on the BuildContext • lib/main.dart:4436:52 • use_build_context_synchronously
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss. Try replacing the use of the deprecated member with the replacement • lib/main.dart:5007:47 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss. Try replacing the use of the deprecated member with the replacement • lib/main.dart:5014:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss. Try replacing the use of the deprecated member with the replacement • lib/main.dart:5150:52 • deprecated_member_use
+   info • Unnecessary 'const' keyword. Try removing the keyword • lib/main.dart:7889:42 • unnecessary_const
+   info • Unnecessary 'const' keyword. Try removing the keyword • lib/main.dart:7903:40 • unnecessary_const
+   info • Unnecessary 'const' keyword. Try removing the keyword • lib/main.dart:8167:50 • unnecessary_const
+   info • Unnecessary 'const' keyword. Try removing the keyword • lib/main.dart:8218:38 • unnecessary_const
+   info • Unnecessary 'const' keyword. Try removing the keyword • lib/main.dart:8227:38 • unnecessary_const
+   info • Unnecessary 'const' keyword. Try removing the keyword • lib/main.dart:8241:40 • unnecessary_const
+   info • Unnecessary 'const' keyword. Try removing the keyword • lib/main.dart:8264:46 • unnecessary_const
+   info • Unnecessary 'const' keyword. Try removing the keyword • lib/main.dart:8272:44 • unnecessary_const
+   info • 'package:flutter/material.dart' is deprecated and shouldn't be used. Use package:material_ui/material_ui.dart instead. This feature was deprecated after v3.47.0-0.0.pre. Try replacing the use of the deprecated member with the replacement • lib/widgets/animated_profile_frame.dart:3:1 • deprecated_member_use
+   info • Statements in an if should be enclosed in a block. Try wrapping the statement in a block • lib/widgets/animated_profile_frame.dart:112:7 • curly_braces_in_flow_control_structures
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss. Try replacing the use of the deprecated member with the replacement • lib/widgets/animated_profile_frame.dart:161:23 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss. Try replacing the use of the deprecated member with the replacement • lib/widgets/animated_profile_frame.dart:176:17 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss. Try replacing the use of the deprecated member with the replacement • lib/widgets/animated_profile_frame.dart:179:17 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss. Try replacing the use of the deprecated member with the replacement • lib/widgets/animated_profile_frame.dart:190:30 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss. Try replacing the use of the deprecated member with the replacement • lib/widgets/animated_profile_frame.dart:230:32 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss. Try replacing the use of the deprecated member with the replacement • lib/widgets/animated_profile_frame.dart:255:34 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss. Try replacing the use of the deprecated member with the replacement • lib/widgets/animated_profile_frame.dart:283:30 • deprecated_member_use
+
+33 issues found. (ran in 4.0s)

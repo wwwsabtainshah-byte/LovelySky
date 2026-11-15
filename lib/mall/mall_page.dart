@@ -1,222 +1,231 @@
-import 'dart:convert';
-
 import 'package:material_ui/material_ui.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_svga/flutter_svga.dart';
 
-import 'hardwear_frame_detail_page.dart';
-import 'transparent_frame_video.dart';
+const Color _bg = Color(0xFF071426);
+const Color _surface = Color(0xFF102944);
+const Color _blue = Color(0xFF268CF4);
 
-const _bg = Color(0xFF100D25);
-const _blue = Color(0xFF67D4FF);
-const _gold = Color(0xFFFFD779);
-const _mallApi = 'https://lovelysky.fastapicloud.dev';
-
-class MallPage extends StatefulWidget {
+class MallPage extends StatelessWidget {
   const MallPage({super.key});
-
-  @override
-  State<MallPage> createState() => _MallPageState();
-}
-
-class _MallPageState extends State<MallPage> {
-  Map<String, dynamic> _progress = {};
-  int _selectedTab = 0;
-  bool get _isOwner => _progress['user_code']?.toString() == '1';
-  bool get _showHardwear => _isOwner && _selectedTab == 1;
-
-  Widget _mallTab(String label, int index) {
-    final selected = _selectedTab == index;
-    final accent = index == 0 ? _blue : _gold;
-    return Expanded(
-      child: InkWell(
-        onTap: () => setState(() => _selectedTab = index),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: selected
-                ? accent.withValues(alpha: .18)
-                : const Color(0xFF201936),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: selected ? accent : Colors.white24),
-          ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: selected ? accent : Colors.white70,
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.2,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _loadProgress();
-  }
-
-  Future<void> _loadProgress() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('lovely_token');
-
-      if (token == null || token.isEmpty) {
-        throw Exception('Login required. Please sign in again.');
-      }
-
-      final response = await http.get(
-        Uri.parse('$_mallApi/vip/wings/progress'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
-        },
-      );
-
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map) {
-        throw Exception('Invalid server response.');
-      }
-
-      final data = Map<String, dynamic>.from(decoded);
-
-      if (response.statusCode != 200 || data['success'] != true) {
-        throw Exception(
-          data['detail']?.toString() ?? 'VIP progress could not be loaded.',
-        );
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _progress = data;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-      });
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bg,
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _loadProgress,
-          color: _blue,
-          backgroundColor: const Color(0xFF201936),
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              SliverToBoxAdapter(
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new,
-                        color: Colors.white,
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        _showHardwear ? 'HARDWEAR' : 'VIP WINGS',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: _loadProgress,
-                      icon: const Icon(Icons.refresh, color: _blue),
-                    ),
-                  ],
-                ),
-              ),
-              if (_isOwner)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
-                    child: Row(
-                      children: [
-                        _mallTab('VIP', 0),
-                        const SizedBox(width: 10),
-                        _mallTab('HARDWEAR', 1),
-                      ],
+      appBar: AppBar(
+        title: const Text('Mall'),
+        backgroundColor: _bg,
+        foregroundColor: Colors.white,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _tile(
+            context,
+            'VIP Frames',
+            Icons.auto_awesome,
+            const VipFramesPage(),
+          ),
+          _tile(context, 'Hardware', Icons.memory, const HardwarePage()),
+          _tile(context, 'Badges', Icons.workspace_premium, const BadgesPage()),
+          _tile(context, 'Ride', Icons.directions_car, const RidePage()),
+        ],
+      ),
+    );
+  }
+
+  Widget _tile(BuildContext context, String title, IconData icon, Widget page) {
+    return Card(
+      color: _surface,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 10,
+        ),
+        leading: Icon(icon, color: _blue, size: 28),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        trailing: const Icon(
+          Icons.arrow_forward_ios,
+          color: Colors.white54,
+          size: 17,
+        ),
+        onTap: () =>
+            Navigator.push(context, MaterialPageRoute(builder: (_) => page)),
+      ),
+    );
+  }
+}
+
+// 10 ORIGINAL ANIMATED ROLE FRAMES
+const List<Map<String, String>> _hardwareFrames = [
+  {'name': 'ADMIN', 'asset': 'assets/hardwear/role_frames/role_admin.svga'},
+  {'name': 'AGENCY', 'asset': 'assets/hardwear/role_frames/role_agency.svga'},
+  {
+    'name': 'BD ADMIN',
+    'asset': 'assets/hardwear/role_frames/role_bdadmin.svga',
+  },
+  {
+    'name': 'COIN SELLER',
+    'asset': 'assets/hardwear/role_frames/role_coinseller.svga',
+  },
+  {'name': 'CS', 'asset': 'assets/hardwear/role_frames/role_cs.svga'},
+  {'name': 'HOST', 'asset': 'assets/hardwear/role_frames/role_host.svga'},
+  {'name': 'MANAGER', 'asset': 'assets/hardwear/role_frames/role_manager.svga'},
+  {
+    'name': 'OFFICIAL',
+    'asset': 'assets/hardwear/role_frames/role_official.svga',
+  },
+  {
+    'name': 'SUPER ADMIN',
+    'asset': 'assets/hardwear/role_frames/role_superadmin.svga',
+  },
+  {
+    'name': 'SUPER ADMIN 2',
+    'asset': 'assets/hardwear/role_frames/role_superadmin_2.svga',
+  },
+];
+
+// 7 ORIGINAL ANIMATED BADGES
+const List<Map<String, String>> _badges = [
+  {'name': 'ADMIN', 'asset': 'assets/hardwear/role_badges/badge_admin.svga'},
+  {'name': 'AGENCY', 'asset': 'assets/hardwear/role_badges/badge_agency.svga'},
+  {
+    'name': 'OFFICIAL',
+    'asset': 'assets/hardwear/role_badges/badge_official.svga',
+  },
+  {'name': 'OWNER', 'asset': 'assets/hardwear/role_badges/badge_owner.svga'},
+  {
+    'name': 'SUPER ADMIN',
+    'asset': 'assets/hardwear/role_badges/badge_superadmin.svga',
+  },
+  {
+    'name': 'COUNTRY ASSISTANT',
+    'asset': 'assets/hardwear/role_badges/country_assistant_badge.svga',
+  },
+  {
+    'name': 'COUNTRY SUPER ADMIN',
+    'asset': 'assets/hardwear/role_badges/country_super_admin_badge.svga',
+  },
+];
+
+class HardwarePage extends StatelessWidget {
+  const HardwarePage({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const _AnimatedAssetPage(title: 'Hardware', items: _hardwareFrames);
+}
+
+class BadgesPage extends StatelessWidget {
+  const BadgesPage({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const _AnimatedAssetPage(title: 'Badges', items: _badges);
+}
+
+class _AnimatedAssetPage extends StatelessWidget {
+  final String title;
+  final List<Map<String, String>> items;
+
+  const _AnimatedAssetPage({required this.title, required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _bg,
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: _bg,
+        foregroundColor: Colors.white,
+      ),
+      body: GridView.builder(
+        padding: const EdgeInsets.all(14),
+        itemCount: items.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.82,
+        ),
+        itemBuilder: (context, index) {
+          final item = items[index];
+
+          return Container(
+            decoration: BoxDecoration(
+              color: _surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _blue.withValues(alpha: 0.55)),
+            ),
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              children: [
+                Expanded(
+                  child: Center(
+                    child: SVGAEasyPlayer(
+                      assetsName: item['asset']!,
+                      loops: true,
                     ),
                   ),
                 ),
-              if (!_showHardwear) ...[
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: 8),
-                ),
-              ] else ...[
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: InkWell(
-                      onTap: () =>
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const HardwearFrameDetailPage(),
-                            ),
-                          ).then((_) {
-                            if (mounted) _loadProgress();
-                          }),
-                      child: Container(
-                        height: 235,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF201936),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: _gold, width: 1.5),
-                        ),
-                        child: Column(
-                          children: [
-                            Expanded(
-                              child: const TransparentFrameVideo(),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'SUPER ADMIN',
-                              style: TextStyle(
-                                color: _gold,
-                                fontSize: 17,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.4,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'HARDWEAR FRAME  •  30 DAYS',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                const SizedBox(height: 8),
+                Text(
+                  item['name']!,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
                   ),
                 ),
               ],
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
+    );
+  }
+}
+
+class VipFramesPage extends StatelessWidget {
+  const VipFramesPage({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const _EmptyMallPage(title: 'VIP Frames');
+}
+
+class RidePage extends StatelessWidget {
+  const RidePage({super.key});
+
+  @override
+  Widget build(BuildContext context) => const _EmptyMallPage(title: 'Ride');
+}
+
+class _EmptyMallPage extends StatelessWidget {
+  final String title;
+
+  const _EmptyMallPage({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _bg,
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: _bg,
+        foregroundColor: Colors.white,
+      ),
+      body: const SizedBox.expand(),
     );
   }
 }

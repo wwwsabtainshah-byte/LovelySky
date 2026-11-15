@@ -11159,39 +11159,147 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   Future<void> _upgradeRoomSeats() async {
     if (roomRole != 'owner') return;
 
-    final confirmed = await showDialog<bool>(
+    const options = [5, 10, 15, 20, 25, 30, 36];
+
+    await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Upgrade Room Seats'),
-        content: Text(
-          'Upgrade from $seatCapacity to '
-          '${seatCapacity == 30 ? 36 : seatCapacity + 5} seats?\\n'
-          'Cost: 1,000,000 Lovely Coins',
+      builder: (dialogContext) => Dialog(
+        backgroundColor: const Color(0xFF102E49),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'ROOM SEAT OPTIONS',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 19,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Unlocked: $seatCapacity seats',
+                style: const TextStyle(color: Color(0xFF83D8FF)),
+              ),
+              const SizedBox(height: 15),
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: 1.65,
+                children: options.map((capacity) {
+                  final unlocked = capacity <= seatCapacity;
+                  final active = capacity == seatCapacity;
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: unlocked
+                        ? null
+                        : () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (c) => AlertDialog(
+                                title: const Text('Confirm Seat Upgrade'),
+                                content: Text(
+                                  'Unlock $capacity seats for 1,000,000 Lovely Coins?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(c, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () => Navigator.pop(c, true),
+                                    child: const Text('Buy Now'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirm != true || !mounted) return;
+                            final ok = await _roomPost(
+                              '/voice/rooms/${widget.room['id']}/seats/upgrade',
+                              body: {'seat_capacity': capacity},
+                            );
+                            if (!mounted) return;
+                            if (ok) {
+                              await _loadSeats();
+                              if (dialogContext.mounted) {
+                                Navigator.pop(dialogContext);
+                              }
+                              showMessage('$capacity seats unlocked!');
+                            }
+                          },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: unlocked
+                            ? const Color(0xFF14513F)
+                            : const Color(0xFF183D5D),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: unlocked
+                              ? const Color(0xFF39D98A)
+                              : const Color(0xFF65B8EA),
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            '$capacity SEATS',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          if (unlocked)
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.check_circle,
+                                  color: Color(0xFF39D98A),
+                                  size: 17,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  active ? 'ACTIVE' : 'UNLOCKED',
+                                  style: const TextStyle(
+                                    color: Color(0xFF39D98A),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            )
+                          else
+                            const Text(
+                              '1,000,000 Coins',
+                              style: TextStyle(
+                                color: Color(0xFFFFD166),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('CLOSE'),
+              ),
+            ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Upgrade'),
-          ),
-        ],
       ),
     );
-
-    if (confirmed != true || !mounted) return;
-
-    final nextCapacity = seatCapacity == 30 ? 36 : seatCapacity + 5;
-  final ok = await _roomPost(
-      '/voice/rooms/${widget.room['id']}/seats/upgrade',
-      body: {'seat_capacity': nextCapacity},
-    );
-    if (ok && mounted) {
-      showMessage('Room seats upgraded successfully!');
-      await _loadSeats();
-    }
   }
 
   Future<void> _loadSeats() async {
@@ -11219,7 +11327,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         );
         setState(() {
           seats = loaded;
-      seatCapacity = (data['seat_capacity'] as num?)?.toInt() ?? loaded.length;
+          seatCapacity =
+              (data['seat_capacity'] as num?)?.toInt() ?? loaded.length;
           roomRole = (data['room_role'] ?? 'member').toString();
           seatsLoading = false;
         });
@@ -12669,69 +12778,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (occupiedSeats.isNotEmpty)
-                        SizedBox(
-                          height: 48,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: occupiedSeats.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(width: 7),
-                            itemBuilder: (context, index) {
-                              final member = occupiedSeats[index];
-                              final photo = (member['profile_photo'] ?? '')
-                                  .toString();
-                              return GestureDetector(
-                                onTap: () => showMessage(
-                                  'Member ID: ${member['user_code'] ?? ''}',
-                                ),
-                                child: CircleAvatar(
-                                  radius: 19,
-                                  backgroundColor: const Color(0xFF286B9D),
-                                  backgroundImage: photo.startsWith('http')
-                                      ? NetworkImage(photo)
-                                      : null,
-                                  child: photo.startsWith('http')
-                                      ? null
-                                      : const Icon(
-                                          Icons.person,
-                                          color: Color(0xFF123B5A),
-                                          size: 19,
-                                        ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
                       const SizedBox(height: 5),
-                      if (roomRole == 'owner')
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            Text(
-                              '$seatCapacity seats',
-                              style: const TextStyle(
-                                color: Color(0xFF286B9D),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const Spacer(),
-                            if (seatCapacity < 36)
-                              ElevatedButton.icon(
-                                onPressed: _upgradeRoomSeats,
-                                icon: const Icon(Icons.add),
-                                label: const Text('Upgrade Seats'),
-                              )
-                            else
-                              const Text(
-                                'Maximum seats reached',
-                                style: TextStyle(color: Color(0xFF286B9D)),
-                              ),
-                          ],
-                        ),
-                      ),
-                    if (seatsLoading && seats.isEmpty)
+                      if (seatsLoading && seats.isEmpty)
                         const Padding(
                           padding: EdgeInsets.all(25),
                           child: Center(
@@ -12741,17 +12789,25 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           ),
                         )
                       else ...[
-                        for (int first = 1; first <= seatCapacity; first += 5) ...[
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                for (int i = first; i < first + 5 && i <= seatCapacity; i++)
-                                  _buildSeat(i),
-                              ],
-                            ),
-                            const SizedBox(height: 2),
-                          ],
+                        for (
+                          int first = 1;
+                          first <= seatCapacity;
+                          first += 5
+                        ) ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              for (
+                                int i = first;
+                                i < first + 5 && i <= seatCapacity;
+                                i++
+                              )
+                                _buildSeat(i),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                        ],
                       ],
                       const Divider(color: Color(0x335E9AC5), height: 14),
                       Row(
@@ -12938,18 +12994,21 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                           openLovelyCasinoGames(context);
                                         },
                                       ),
-              if (roomRole == 'owner' && seatCapacity < 36)
-                ListTile(
-                  leading: const Icon(Icons.add_circle_outline),
-                  title: const Text('Upgrade Room Seats'),
-                  subtitle: Text(
-                    'Next: ${seatCapacity == 30 ? 36 : seatCapacity + 5} seats',
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _upgradeRoomSeats();
-                  },
-                ),
+                                      if (roomRole == 'owner')
+                                        ListTile(
+                                          leading: const Icon(
+                                            Icons.event_seat_rounded,
+                                          ),
+                                          title: const Text('Seats'),
+                                          subtitle: Text(
+                                            '$seatCapacity seats unlocked',
+                                          ),
+                                          onTap: () {
+                                            Navigator.pop(ctx);
+                                            _upgradeRoomSeats();
+                                          },
+                                        ),
+
                                       ListTile(
                                         leading: const Icon(Icons.info_outline),
                                         title: const Text('Room Information'),

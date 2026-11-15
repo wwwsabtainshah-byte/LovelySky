@@ -1,0 +1,149 @@
+import 'package:material_ui/material_ui.dart';
+
+const Color _mallBackground = Color(0xFF071426);
+const Color _mallSurface = Color(0xFF102944);
+const Color _mallBlue = Color(0xFF268CF4);
+
+class MallPage extends StatelessWidget {
+  const MallPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _mallBackground,
+      appBar: AppBar(
+        title: const Text('Mall'),
+        backgroundColor: _mallBackground,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _MallCategoryTile(
+            title: 'VIP Frames',
+            icon: Icons.auto_awesome,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const VipFramesPage()),
+            ),
+          ),
+          _MallCategoryTile(
+            title: 'Hardware',
+            icon: Icons.memory,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const HardwarePage()),
+            ),
+          ),
+          _MallCategoryTile(
+            title: 'Badges',
+            icon: Icons.workspace_premium,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const BadgesPage()),
+            ),
+          ),
+          _MallCategoryTile(
+            title: 'Ride',
+            icon: Icons.directions_car,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const RidePage()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MallCategoryTile extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _MallCategoryTile({
+    required this.title,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: _mallSurface,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 10,
+        ),
+        leading: Icon(icon, color: _mallBlue, size: 28),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        trailing: const Icon(
+          Icons.arrow_forward_ios,
+          color: Colors.white54,
+          size: 17,
+        ),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+class VipFramesPage extends StatelessWidget {
+  const VipFramesPage({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const _EmptyMallPage(title: 'VIP Frames');
+}
+
+class HardwarePage extends StatelessWidget {
+  const HardwarePage({super.key});
+
+  @override
+  Widget build(BuildContext context) => const _EmptyMallPage(title: 'Hardware');
+}
+
+class BadgesPage extends StatelessWidget {
+  const BadgesPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => const _EmptyMallPage(title: 'Badges');
+}
+
+class RidePage extends StatelessWidget {
+  const RidePage({super.key});
+
+  @override
+  Widget build(BuildContext context) => const _EmptyMallPage(title: 'Ride');
+}
+
+class _EmptyMallPage extends StatelessWidget {
+  final String title;
+
+  const _EmptyMallPage({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _mallBackground,
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: _mallBackground,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: const SizedBox.expand(),
+    );
+  }
+}

@@ -1,0 +1,17 @@
+VIP FRAME INTEGRATION
+=====================
+
+- 24 transparent PNGs are stored in assets/vip_frames/:
+  set1_vip01.png ... set1_vip12.png
+  set2_vip01.png ... set2_vip12.png
+- Legacy assets/lovely_sky_frames/vip_1.png ... vip_12.png and
+  vip_01.png ... vip_12.png were replaced with Set 1 artwork so the
+  existing Mall VIP catalogue no longer shows the previous VIP artwork.
+- ProfilePage now supports an animated wing-frame overlay.
+- Manual assignment dialog is shown for owner ID "1" and lets the owner
+  assign a target User ID, Set 1 or Set 2, and VIP 1-12, or remove it.
+- Current manual assignment storage uses SharedPreferences on this device.
+  It is not synchronized to other users/devices because the supplied backend
+  has no VIP assignment field/API. A backend admin endpoint and database
+  migration are required for global assignments.
+- No Flutter dependencies were added.
