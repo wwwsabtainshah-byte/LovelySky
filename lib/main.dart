@@ -4276,6 +4276,11 @@ class _ProfilePageState extends State<ProfilePage> {
           .where((e) => (e['frame_code'] ?? '') != 'super_admin')
           .toList();
       badgeItems = parse(data['badge_items']);
+      debugPrint('BACKPACK keys: ${data.keys.toList()}');
+      debugPrint('BACKPACK hardware: ${frameItems.length}');
+      debugPrint('BACKPACK badges: ${badgeItems.length}');
+      debugPrint('BACKPACK raw hardware: ${data['hardwear_items']}');
+      debugPrint('BACKPACK raw badges: ${data['badge_items']}');
 
       equippedVip = data['equipped_frame'] is Map
           ? Map<String, dynamic>.from(data['equipped_frame'])
