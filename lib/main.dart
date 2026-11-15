@@ -1867,6 +1867,108 @@ class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
   }
 }
 
+class _RoomSeatsPage extends StatelessWidget {
+  final int seatCapacity;
+  final Future<bool> Function(int capacity) onUpgrade;
+
+  const _RoomSeatsPage({required this.seatCapacity, required this.onUpgrade});
+
+  @override
+  Widget build(BuildContext context) {
+    const options = [5, 10, 15, 20, 25, 30, 36];
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF102E49),
+      appBar: AppBar(
+        title: const Text('ROOM SEATS'),
+        backgroundColor: const Color(0xFF102E49),
+        foregroundColor: Colors.white,
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Unlocked: $seatCapacity seats',
+                style: const TextStyle(
+                  color: Color(0xFF83D8FF),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Expanded(
+                child: GridView.count(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 1.45,
+                  children: options.map((capacity) {
+                    final unlocked = capacity <= seatCapacity;
+                    final active = capacity == seatCapacity;
+
+                    return ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: unlocked
+                            ? const Color(0xFF14513F)
+                            : const Color(0xFF183D5D),
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: const Color(0xFF14513F),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          side: BorderSide(
+                            color: unlocked
+                                ? const Color(0xFF39D98A)
+                                : const Color(0xFF65B8EA),
+                          ),
+                        ),
+                      ),
+                      onPressed: unlocked
+                          ? null
+                          : () async {
+                              final ok = await onUpgrade(capacity);
+                              if (ok && context.mounted) {
+                                Navigator.pop(context);
+                              }
+                            },
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            '$capacity SEATS',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 17,
+                            ),
+                          ),
+                          const SizedBox(height: 7),
+                          Text(
+                            unlocked
+                                ? (active ? 'ACTIVE' : 'UNLOCKED')
+                                : '1,000,000 Coins',
+                            style: TextStyle(
+                              color: unlocked
+                                  ? const Color(0xFF39D98A)
+                                  : const Color(0xFFFFD166),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class VideoRoomPage extends StatefulWidget {
   final Map<String, dynamic> room;
   const VideoRoomPage({super.key, required this.room});
@@ -11156,150 +11258,42 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     }
   }
 
-  Future<void> _upgradeRoomSeats() async {
-    if (roomRole != 'owner') return;
+  Future<bool> _upgradeRoomSeats(int capacity) async {
+    if (roomRole != 'owner') return false;
+    if (capacity <= seatCapacity) return false;
 
-    const options = [5, 10, 15, 20, 25, 30, 36];
-
-    await showDialog<void>(
+    final confirm = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => Dialog(
-        backgroundColor: const Color(0xFF102E49),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'ROOM SEAT OPTIONS',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 19,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Unlocked: $seatCapacity seats',
-                style: const TextStyle(color: Color(0xFF83D8FF)),
-              ),
-              const SizedBox(height: 15),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                childAspectRatio: 1.65,
-                children: options.map((capacity) {
-                  final unlocked = capacity <= seatCapacity;
-                  final active = capacity == seatCapacity;
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: unlocked
-                        ? null
-                        : () async {
-                            final confirm = await showDialog<bool>(
-                              context: context,
-                              builder: (c) => AlertDialog(
-                                title: const Text('Confirm Seat Upgrade'),
-                                content: Text(
-                                  'Unlock $capacity seats for 1,000,000 Lovely Coins?',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(c, false),
-                                    child: const Text('Cancel'),
-                                  ),
-                                  ElevatedButton(
-                                    onPressed: () => Navigator.pop(c, true),
-                                    child: const Text('Buy Now'),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (confirm != true || !mounted) return;
-                            final ok = await _roomPost(
-                              '/voice/rooms/${widget.room['id']}/seats/upgrade',
-                              body: {'seat_capacity': capacity},
-                            );
-                            if (!mounted) return;
-                            if (ok) {
-                              await _loadSeats();
-                              if (dialogContext.mounted) {
-                                Navigator.pop(dialogContext);
-                              }
-                              showMessage('$capacity seats unlocked!');
-                            }
-                          },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: unlocked
-                            ? const Color(0xFF14513F)
-                            : const Color(0xFF183D5D),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: unlocked
-                              ? const Color(0xFF39D98A)
-                              : const Color(0xFF65B8EA),
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            '$capacity SEATS',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          if (unlocked)
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(
-                                  Icons.check_circle,
-                                  color: Color(0xFF39D98A),
-                                  size: 17,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  active ? 'ACTIVE' : 'UNLOCKED',
-                                  style: const TextStyle(
-                                    color: Color(0xFF39D98A),
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            )
-                          else
-                            const Text(
-                              '1,000,000 Coins',
-                              style: TextStyle(
-                                color: Color(0xFFFFD166),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('CLOSE'),
-              ),
-            ],
+      builder: (c) => AlertDialog(
+        title: const Text('Confirm Seat Upgrade'),
+        content: Text('Unlock $capacity seats for 1,000,000 Lovely Coins?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Cancel'),
           ),
-        ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Buy Now'),
+          ),
+        ],
       ),
     );
+
+    if (confirm != true || !mounted) return false;
+
+    final ok = await _roomPost(
+      '/voice/rooms/${widget.room['id']}/seats/upgrade',
+      body: {'seat_capacity': capacity},
+    );
+
+    if (!mounted || !ok) return false;
+
+    await _loadSeats();
+    if (!mounted) return false;
+
+    showMessage('$capacity seats unlocked!');
+    return true;
   }
 
   Future<void> _loadSeats() async {
@@ -13005,7 +12999,14 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                           ),
                                           onTap: () {
                                             Navigator.pop(ctx);
-                                            _upgradeRoomSeats();
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) => _RoomSeatsPage(
+                                                  seatCapacity: seatCapacity,
+                                                  onUpgrade: _upgradeRoomSeats,
+                                                ),
+                                              ),
+                                            );
                                           },
                                         ),
 
