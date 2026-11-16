@@ -150,6 +150,8 @@ def initialize_database():
 
     if "seat_capacity" not in columns:
         db.execute("ALTER TABLE voice_rooms ADD COLUMN seat_capacity INTEGER NOT NULL DEFAULT 5")
+    if "photo_url" not in columns:
+        db.execute("ALTER TABLE voice_rooms ADD COLUMN photo_url TEXT NOT NULL DEFAULT ''")
 
     db.executescript("""
         CREATE TABLE IF NOT EXISTS voice_room_messages (

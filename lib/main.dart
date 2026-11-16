@@ -1,4 +1,5 @@
 import 'package:flutter_svga/flutter_svga.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 
@@ -1980,15 +1981,15 @@ class _RoomSeatsPage extends StatelessWidget {
                             active
                                 ? 'ACTIVE'
                                 : downgrade
-                                    ? 'DOWNGRADE · FREE'
-                                    : '1,000,000 Coins',
+                                ? 'DOWNGRADE · FREE'
+                                : '1,000,000 Coins',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: active
                                   ? const Color(0xFF39D98A)
                                   : downgrade
-                                      ? const Color(0xFF83D8FF)
-                                      : const Color(0xFFFFD166),
+                                  ? const Color(0xFF83D8FF)
+                                  : const Color(0xFFFFD166),
                               fontSize: 12,
                             ),
                           ),
@@ -2920,6 +2921,297 @@ class VideoCard extends StatelessWidget {
   }
 }
 
+class RoomSettingsPage extends StatefulWidget {
+  final bool isCreate;
+  final String initialName;
+  final String initialDescription;
+  final String initialPhotoUrl;
+  final String? roomId;
+
+  const RoomSettingsPage({
+    super.key,
+    this.isCreate = false,
+    this.initialName = '',
+    this.initialDescription = '',
+    this.initialPhotoUrl = '',
+    this.roomId,
+  });
+
+  @override
+  State<RoomSettingsPage> createState() => _RoomSettingsPageState();
+}
+
+class _RoomSettingsPageState extends State<RoomSettingsPage> {
+  late final TextEditingController nameController;
+  late final TextEditingController bioController;
+  final ImagePicker picker = ImagePicker();
+
+  Uint8List? imageBytes;
+  String photoUrl = '';
+  bool pickingPhoto = false;
+  bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    nameController = TextEditingController(text: widget.initialName);
+    bioController = TextEditingController(text: widget.initialDescription);
+    photoUrl = widget.initialPhotoUrl;
+    if (photoUrl.startsWith('data:image') && photoUrl.contains(',')) {
+      try {
+        imageBytes = base64Decode(photoUrl.split(',').last);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _pickPhoto() async {
+    if (pickingPhoto) return;
+    setState(() => pickingPhoto = true);
+    try {
+      final file = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 70,
+        maxWidth: 720,
+        maxHeight: 720,
+      );
+      if (file == null) return;
+
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        imageBytes = bytes;
+        photoUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gallery se photo select nahi ho saki.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => pickingPhoto = false);
+    }
+  }
+
+  Future<void> _confirm() async {
+    if (saving) return;
+
+    final roomName = nameController.text.trim();
+    final bio = bioController.text.trim();
+
+    if (roomName.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Room name likhein.')));
+      return;
+    }
+    if (roomName.length > 60 || bio.length > 200) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Name ya bio ki length limit se zyada hai.'),
+        ),
+      );
+      return;
+    }
+
+    final details = <String, String>{
+      'name': roomName,
+      'description': bio,
+      'photo_url': photoUrl,
+    };
+
+    if (widget.isCreate || widget.roomId == null) {
+      Navigator.of(context).pop(details);
+      return;
+    }
+
+    setState(() => saving = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('lovely_token');
+      if (token == null || token.isEmpty) {
+        throw Exception('Login session nahi mili. Dobara login karein.');
+      }
+
+      final response = await http
+          .patch(
+            Uri.parse('$lovelyApi/voice/rooms/${widget.roomId}/settings'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(details),
+          )
+          .timeout(const Duration(seconds: 25));
+
+      if (response.statusCode != 200) {
+        String message = 'Room settings save nahi ho sakin.';
+        try {
+          final data = jsonDecode(response.body);
+          if (data is Map && data['detail'] != null) {
+            message = data['detail'].toString();
+          }
+        } catch (_) {}
+        throw Exception(message);
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final updatedRoom = Map<String, dynamic>.from(data['room'] as Map);
+
+      if (!mounted) return;
+      Navigator.of(context).pop(updatedRoom);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    bioController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const blue = Color(0xFF168FFF);
+    const paleBlue = Color(0xFF67D4FF);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF3F9FF),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF173B60),
+        elevation: 0,
+        title: const Text(
+          'Room Settings',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(22, 28, 22, 24),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              GestureDetector(
+                onTap: _pickPhoto,
+                child: Container(
+                  width: 132,
+                  height: 132,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFFE1F2FF),
+                    border: Border.all(color: paleBlue, width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: blue.withValues(alpha: 0.14),
+                        blurRadius: 18,
+                        offset: const Offset(0, 7),
+                      ),
+                    ],
+                  ),
+                  child: ClipOval(
+                    child: imageBytes != null
+                        ? Image.memory(imageBytes!, fit: BoxFit.cover)
+                        : photoUrl.isNotEmpty
+                        ? Image.network(
+                            photoUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.add_a_photo_rounded,
+                              size: 42,
+                              color: blue,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.add_a_photo_rounded,
+                            size: 42,
+                            color: blue,
+                          ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextButton.icon(
+                onPressed: pickingPhoto ? null : _pickPhoto,
+                icon: const Icon(Icons.photo_library_outlined),
+                label: Text(
+                  pickingPhoto ? 'Opening Gallery...' : 'Choose from Gallery',
+                ),
+                style: TextButton.styleFrom(foregroundColor: blue),
+              ),
+              const SizedBox(height: 28),
+              TextField(
+                controller: nameController,
+                maxLength: 60,
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  labelText: 'Room Name',
+                  hintText: 'Enter room name',
+                  prefixIcon: const Icon(Icons.meeting_room_outlined),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: bioController,
+                maxLength: 200,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  labelText: 'Room Bio',
+                  hintText: 'Write something about your room...',
+                  alignLabelWithHint: true,
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 22),
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: FilledButton(
+                  onPressed: _confirm,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: blue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                  ),
+                  child: Text(
+                    widget.isCreate ? 'Confirm & Create Room' : 'Confirm',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class VoicePage extends StatefulWidget {
   const VoicePage({super.key});
 
@@ -3013,58 +3305,10 @@ class _VoicePageState extends State<VoicePage> {
   }
 
   Future<void> _createRoom() async {
-    final name = TextEditingController();
-    final description = TextEditingController();
-
-    final details = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Create Voice Room'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: name,
-                maxLength: 60,
-                decoration: const InputDecoration(
-                  labelText: 'Room name',
-                  hintText: 'Lovely Friends',
-                  prefixIcon: Icon(Icons.mic_rounded),
-                ),
-              ),
-              TextField(
-                controller: description,
-                maxLength: 200,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Description (optional)',
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (name.text.trim().isEmpty) return;
-              Navigator.pop(ctx, {
-                'name': name.text.trim(),
-                'description': description.text.trim(),
-              });
-            },
-            child: const Text('Create'),
-          ),
-        ],
-      ),
+    final details = await Navigator.of(context).push<Map<String, String>>(
+      MaterialPageRoute(builder: (_) => const RoomSettingsPage(isCreate: true)),
     );
 
-    name.dispose();
-    description.dispose();
     if (details == null || !mounted) return;
 
     setState(() => creating = true);
@@ -3084,7 +3328,7 @@ class _VoicePageState extends State<VoicePage> {
             },
             body: jsonEncode(details),
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
@@ -3093,16 +3337,13 @@ class _VoicePageState extends State<VoicePage> {
         if (createdRoom is! Map) {
           setState(() => selectedTab = 'visit');
           await _loadRooms();
-          _message(
-            'Room ban gaya, lekin room details response mein nahi milin.',
-          );
+          _message('Room bana, lekin details response mein nahi milin.');
           return;
         }
 
         setState(() => selectedTab = 'visit');
         await _loadRooms();
         if (!mounted) return;
-
         await _joinRoom(Map<String, dynamic>.from(createdRoom));
       } else {
         var error = 'Room create nahi hua (${response.statusCode}).';
@@ -3114,8 +3355,8 @@ class _VoicePageState extends State<VoicePage> {
         } catch (_) {}
         _message(error);
       }
-    } catch (_) {
-      _message('Connection failed. Backend deployment check karein.');
+    } catch (e) {
+      _message('Room create karte waqt connection error aaya.');
     } finally {
       if (mounted) setState(() => creating = false);
     }
@@ -10731,6 +10972,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   bool micOn = true;
   bool moderationMuted = false;
   String roomRole = 'member';
+  bool isMainOwner = false;
   bool speakerOn = true;
   bool roomLiked = false;
   bool showSendingReport = false;
@@ -11299,9 +11541,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       context: context,
       builder: (c) => AlertDialog(
         title: Text(
-          isDowngrade
-              ? 'Confirm Seat Downgrade'
-              : 'Confirm Seat Upgrade',
+          isDowngrade ? 'Confirm Seat Downgrade' : 'Confirm Seat Upgrade',
         ),
         content: Text(
           isDowngrade
@@ -11369,6 +11609,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
           seatCapacity =
               (data['seat_capacity'] as num?)?.toInt() ?? loaded.length;
           roomRole = (data['room_role'] ?? 'member').toString();
+          isMainOwner = data['is_main_owner'] == true;
           seatsLoading = false;
         });
       } else {
@@ -11536,14 +11777,21 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                       runSpacing: 8,
                       children: numbers.map((number) {
                         final seat = seats.firstWhere(
-                          (item) => int.tryParse('${item['seat_number']}') == number,
+                          (item) =>
+                              int.tryParse('${item['seat_number']}') == number,
                           orElse: () => <String, dynamic>{},
                         );
                         final off = seat['is_locked'] == true;
                         final busy = seat['is_occupied'] == true;
 
                         return FilterChip(
-                          label: Text('$number · ${off ? 'OFF' : busy ? 'Busy' : 'ON'}'),
+                          label: Text(
+                            '$number · ${off
+                                ? 'OFF'
+                                : busy
+                                ? 'Busy'
+                                : 'ON'}',
+                          ),
                           selected: selected.contains(number),
                           onSelected: (v) => setSheetState(() {
                             if (v) {
@@ -12781,9 +13029,13 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   Widget build(BuildContext context) {
     final name = (widget.room['name'] ?? 'Voice Room').toString();
     final roomId = (widget.room['id'] ?? '').toString();
-    final ownerPhoto =
-        (widget.room['owner_photo'] ?? widget.room['profile_photo'] ?? '')
-            .toString();
+    final roomPhoto = (widget.room['photo_url'] ?? '').toString();
+    final ImageProvider? headerPhotoImage =
+        roomPhoto.startsWith('data:image') && roomPhoto.contains(',')
+        ? MemoryImage(base64Decode(roomPhoto.split(',').last))
+        : roomPhoto.startsWith('http')
+        ? NetworkImage(roomPhoto)
+        : null;
     final occupiedSeats = seats.where((e) => e['is_occupied'] == true).toList();
     final isOwner = roomRole == 'owner';
 
@@ -12819,10 +13071,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                         child: CircleAvatar(
                           radius: 23,
                           backgroundColor: const Color(0xFF287CB7),
-                          backgroundImage: ownerPhoto.startsWith('http')
-                              ? NetworkImage(ownerPhoto)
-                              : null,
-                          child: ownerPhoto.startsWith('http')
+                          backgroundImage: headerPhotoImage,
+                          child: headerPhotoImage != null
                               ? null
                               : const Icon(
                                   Icons.person,
@@ -12855,13 +13105,32 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           ],
                         ),
                       ),
-                      if (isOwner)
+                      if (isOwner || isMainOwner)
                         circleAction(
                           Icons.settings_rounded,
                           'Room settings',
-                          () => showMessage(
-                            'Room settings baad mein connect honge.',
-                          ),
+                          () async {
+                            final updated = await Navigator.of(context)
+                                .push<Map<String, dynamic>>(
+                                  MaterialPageRoute(
+                                    builder: (_) => RoomSettingsPage(
+                                      isCreate: false,
+                                      initialName: name,
+                                      initialDescription:
+                                          (widget.room['description'] ?? '')
+                                              .toString(),
+                                      initialPhotoUrl:
+                                          (widget.room['photo_url'] ?? '')
+                                              .toString(),
+                                      roomId: roomId,
+                                    ),
+                                  ),
+                                );
+                            if (updated != null && mounted) {
+                              setState(() => widget.room.addAll(updated));
+                            }
+                          },
+                          size: 19,
                         ),
                       circleAction(Icons.close_rounded, 'Room options', () {
                         showDialog(
@@ -13277,24 +13546,46 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                       ),
                                       if (roomRole == 'owner')
                                         Padding(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 6,
+                                          ),
                                           child: Row(
                                             children: [
                                               Expanded(
                                                 child: ListTile(
                                                   tileColor: Colors.white,
-                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                                  leading: const Icon(Icons.event_seat_rounded, color: Color(0xFF168FFF)),
-                                                  title: const Text('Seats', style: TextStyle(fontWeight: FontWeight.bold)),
-                                                  subtitle: Text('$seatCapacity seats unlocked'),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          12,
+                                                        ),
+                                                  ),
+                                                  leading: const Icon(
+                                                    Icons.event_seat_rounded,
+                                                    color: Color(0xFF168FFF),
+                                                  ),
+                                                  title: const Text(
+                                                    'Seats',
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  subtitle: Text(
+                                                    '$seatCapacity seats unlocked',
+                                                  ),
                                                   onTap: () {
                                                     Navigator.pop(ctx);
                                                     Navigator.of(context).push(
                                                       MaterialPageRoute(
-                                                        builder: (_) => _RoomSeatsPage(
-                                                          seatCapacity: seatCapacity,
-                                                          onUpgrade: _upgradeRoomSeats,
-                                                        ),
+                                                        builder: (_) =>
+                                                            _RoomSeatsPage(
+                                                              seatCapacity:
+                                                                  seatCapacity,
+                                                              onUpgrade:
+                                                                  _upgradeRoomSeats,
+                                                            ),
                                                       ),
                                                     );
                                                   },
@@ -13304,10 +13595,26 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                               Expanded(
                                                 child: ListTile(
                                                   tileColor: Colors.white,
-                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                                  leading: const Icon(Icons.toggle_on_rounded, color: Color(0xFF168FFF)),
-                                                  title: const Text('Seat ON/OFF', style: TextStyle(fontWeight: FontWeight.bold)),
-                                                  subtitle: const Text('Lock controls'),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          12,
+                                                        ),
+                                                  ),
+                                                  leading: const Icon(
+                                                    Icons.toggle_on_rounded,
+                                                    color: Color(0xFF168FFF),
+                                                  ),
+                                                  title: const Text(
+                                                    'Seat ON/OFF',
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  subtitle: const Text(
+                                                    'Lock controls',
+                                                  ),
                                                   onTap: () {
                                                     Navigator.pop(ctx);
                                                     _showRoomSeatTogglePanel();

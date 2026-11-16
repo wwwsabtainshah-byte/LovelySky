@@ -213,6 +213,13 @@ class CreateVoiceRoomRequest(BaseModel):
     description: str = ""
 
 
+    photo_url: str = ""
+class VoiceRoomSettingsRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    photo_url: str | None = None
+
+
 @router.post("/voice/rooms")
 def create_voice_room(
     payload: CreateVoiceRoomRequest,
@@ -224,6 +231,7 @@ def create_voice_room(
     name = payload.name.strip()
     description = payload.description.strip()
 
+    photo_url = payload.photo_url.strip()
     if not name:
         raise HTTPException(400, "Room name is required")
     if len(name) > 60:
@@ -231,17 +239,19 @@ def create_voice_room(
     if len(description) > 200:
         raise HTTPException(400, "Description must be 200 characters or fewer")
 
+    if len(photo_url) > 2500000:
+        raise HTTPException(400, "Room photo is too large")
     user = _voice_authenticated_user(authorization)
 
     db = get_connection()
     try:
         cursor = db.execute(
-            "INSERT INTO voice_rooms (owner_uid, owner_code, name, description) VALUES (?, ?, ?, ?)",
-            (user["google_uid"], str(user["user_code"]), name, description),
+            "INSERT INTO voice_rooms (owner_uid, owner_code, name, description, photo_url) VALUES (?, ?, ?, ?, ?)",
+            (user["google_uid"], str(user["user_code"]), name, description, photo_url),
         )
         room_id = cursor.lastrowid
         row = db.execute(
-            "SELECT id, owner_code, name, description, created_at, is_active "
+            "SELECT id, owner_code, name, description, photo_url, created_at, is_active "
             "FROM voice_rooms WHERE id = ?",
             (room_id,),
         ).fetchone()
@@ -265,7 +275,7 @@ def my_voice_rooms(authorization: str | None = Header(default=None)):
     db = get_connection()
     try:
         rows = db.execute(
-            "SELECT id, owner_code, name, description, created_at, is_active "
+            "SELECT id, owner_code, name, description, photo_url, created_at, is_active "
             "FROM voice_rooms WHERE owner_uid = ? ORDER BY id DESC",
             (user["google_uid"],),
         ).fetchall()
@@ -368,6 +378,74 @@ def _require_coin_owner(authorization: str | None):
     return user
 
 
+@router.patch("/voice/rooms/{room_id}/settings")
+def update_voice_room_settings(
+    room_id: int,
+    payload: VoiceRoomSettingsRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    updates = payload.dict(exclude_unset=True)
+
+    if not updates or not set(updates).issubset({"name", "description", "photo_url"}):
+        raise HTTPException(400, "Invalid or empty room settings")
+
+    if "name" in updates:
+        name = (updates["name"] or "").strip()
+        if not name or len(name) > 60:
+            raise HTTPException(400, "Room name must be 1-60 characters")
+        updates["name"] = name
+
+    if "description" in updates:
+        description = (updates["description"] or "").strip()
+        if len(description) > 200:
+            raise HTTPException(400, "Bio must be 200 characters or fewer")
+        updates["description"] = description
+
+    if "photo_url" in updates:
+        photo_url = updates["photo_url"] or ""
+        if len(photo_url) > 2500000:
+            raise HTTPException(413, "Room photo is too large")
+        updates["photo_url"] = photo_url
+
+    db = get_connection()
+    try:
+        room = db.execute(
+            "SELECT id, owner_uid FROM voice_rooms WHERE id = ? AND is_active = 1",
+            (room_id,),
+        ).fetchone()
+        if not room:
+            raise HTTPException(404, "Voice room not found")
+
+        is_main_owner = (
+            str(user.get("google_email", "")).strip().lower() == OWNER_EMAIL.lower()
+            and str(user.get("user_code", "")).strip() == "1"
+        )
+        is_room_owner = str(room["owner_uid"]) == str(user["google_uid"])
+
+        if not (is_main_owner or is_room_owner):
+            raise HTTPException(403, "Only main owner or this room's owner can edit settings")
+
+        assignments = ", ".join(f"{key} = ?" for key in updates)
+        db.execute(
+            f"UPDATE voice_rooms SET {assignments} WHERE id = ?",
+            list(updates.values()) + [room_id],
+        )
+        db.commit()
+
+        row = db.execute(
+            "SELECT id, owner_uid, owner_code, name, description, photo_url, "
+            "created_at, is_active FROM voice_rooms WHERE id = ?",
+            (room_id,),
+        ).fetchone()
+        return {"success": True, "room": dict(row)}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 @router.get("/voice/rooms")
 def list_voice_rooms(
     tab: str = "popular",
@@ -382,7 +460,7 @@ def list_voice_rooms(
     try:
         base = """
             SELECT r.id, r.owner_uid, r.owner_code, r.name, r.description,
-                   r.created_at, r.is_active,
+                   r.photo_url, r.created_at, r.is_active,
                    COUNT(DISTINCT p.user_uid) AS participant_count
             FROM voice_rooms r
             LEFT JOIN voice_room_participants p ON p.room_id = r.id
@@ -976,6 +1054,10 @@ def get_voice_room_seats(
             "success": True,
             "room_id": room_id,
             "room_role": role,
+            "is_main_owner": (
+                str(user.get("google_email", "")).strip().lower() == OWNER_EMAIL.lower()
+                and str(user.get("user_code", "")).strip() == "1"
+            ),
             "seat_capacity": int(room["seat_capacity"]),
             "seats": [
                 {
