@@ -529,6 +529,30 @@ def join_voice_room(
         if blocked:
             raise HTTPException(403, "You are blocked from this room")
 
+        uid = str(user["google_uid"])
+        existing_member = db.execute(
+            "SELECT 1 FROM voice_room_participants WHERE room_id = ? AND user_uid = ?",
+            (room_id, uid),
+        ).fetchone()
+
+        if not existing_member:
+            latest = db.execute(
+                "SELECT COALESCE(MAX(id), 0) AS last_id FROM voice_room_messages WHERE room_id = ?",
+                (room_id,),
+            ).fetchone()
+            visible_from_id = int(latest["last_id"]) + 1
+            db.execute(
+                """
+                INSERT INTO voice_room_chat_state
+                    (room_id, user_uid, visible_from_id, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(room_id, user_uid) DO UPDATE SET
+                    visible_from_id = excluded.visible_from_id,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (room_id, uid, visible_from_id),
+            )
+
         db.execute(
             """
             INSERT INTO voice_room_participants (room_id, user_uid, user_code)
@@ -649,6 +673,16 @@ def _voice_room_role(db, room_id: int, user_uid: str):
     ).fetchone()
     if not room:
         raise HTTPException(404, "Voice room not found")
+
+    main_owner = db.execute(
+        """SELECT 1 FROM users
+           WHERE google_uid = ?
+             AND lower(google_email) = lower(?)
+             AND CAST(user_code AS TEXT) = '1'""",
+        (str(user_uid), OWNER_EMAIL),
+    ).fetchone()
+    if main_owner:
+        return "owner"
 
     if int(room["is_official"] or 0) == 1:
         verified_owner = db.execute(
@@ -1851,6 +1885,16 @@ def _require_voice_room_member(db, room_id: int, user):
     if not room:
         raise HTTPException(404, "Voice room not found")
 
+    main_owner = db.execute(
+        """SELECT 1 FROM users
+           WHERE google_uid = ?
+             AND lower(google_email) = lower(?)
+             AND CAST(user_code AS TEXT) = '1'""",
+        (str(user["google_uid"]), OWNER_EMAIL),
+    ).fetchone()
+    if main_owner:
+        return
+
     # The room owner is allowed even if they have no participant row.
     if str(room["owner_uid"]) == str(user["google_uid"]):
         return
@@ -1875,8 +1919,15 @@ def get_voice_room_messages(
         rows = db.execute(
             """SELECT id, sender_uid, sender_code, message, created_at
                FROM voice_room_messages
-               WHERE room_id = ? ORDER BY id DESC LIMIT 100""",
-            (room_id,),
+               WHERE room_id = ?
+                 AND id >= COALESCE(
+                     (SELECT visible_from_id
+                      FROM voice_room_chat_state
+                      WHERE room_id = ? AND user_uid = ?),
+                     0
+                 )
+               ORDER BY id DESC LIMIT 100""",
+            (room_id, room_id, str(user["google_uid"])),
         ).fetchall()
         return {"success": True, "messages": [dict(row) for row in reversed(rows)]}
     finally:
@@ -1916,6 +1967,35 @@ def send_voice_room_message(
 
 
 
+@router.delete("/voice/rooms/{room_id}/messages")
+async def clear_voice_room_messages(
+    room_id: int,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        _require_voice_room_manager(db, room_id, str(user["google_uid"]))
+        db.execute(
+            "DELETE FROM voice_room_messages WHERE room_id = ?",
+            (room_id,),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    for peer_socket in list(VOICE_SIGNAL_CONNECTIONS.get(room_id, {}).values()):
+        try:
+            await peer_socket.send_json({
+                "type": "room_chat_cleared",
+                "payload": {"room_id": room_id},
+            })
+        except Exception:
+            pass
+
+    return {"success": True, "room_id": room_id}
+
+
 # Lovely Sky video streaming room APIs.
 class CreateVideoRoomRequest(BaseModel):
     title: str
@@ -1928,6 +2008,17 @@ class VideoRoomMessageRequest(BaseModel):
 
 def _video_room_user(authorization: str | None):
     return _voice_authenticated_user(authorization)
+
+
+def _is_main_owner(db, user):
+    row = db.execute(
+        """SELECT 1 FROM users
+           WHERE google_uid = ?
+             AND lower(google_email) = lower(?)
+             AND CAST(user_code AS TEXT) = '1'""",
+        (str(user["google_uid"]), OWNER_EMAIL),
+    ).fetchone()
+    return row is not None
 
 
 def _require_live_video_room(db, room_id: int):
@@ -2037,7 +2128,7 @@ def join_video_room(
     db = get_connection()
     try:
         room = _require_live_video_room(db, room_id)
-        if room["host_uid"] == uid:
+        if room["host_uid"] == uid or _is_main_owner(db, user):
             return {"success": True, "role": "host", "room_id": room_id}
 
         db.execute(
@@ -2092,8 +2183,8 @@ def end_video_room(
         ).fetchone()
         if not room:
             raise HTTPException(404, "Live video room not found")
-        if room["host_uid"] != user["google_uid"]:
-            raise HTTPException(403, "Only the host can end this live room")
+        if room["host_uid"] != user["google_uid"] and not _is_main_owner(db, user):
+            raise HTTPException(403, "Only the host or Main Owner can end this live room")
 
         db.execute(
             """UPDATE video_rooms SET is_live = 0,
@@ -2124,7 +2215,10 @@ def get_video_room_token(
     db = get_connection()
     try:
         room = _require_live_video_room(db, room_id)
-        is_host = room["host_uid"] == user["google_uid"]
+        is_host = (
+            room["host_uid"] == user["google_uid"]
+            or _is_main_owner(db, user)
+        )
 
         if not is_host:
             member = db.execute(
@@ -2178,7 +2272,7 @@ def get_video_room_messages(
     try:
         room = _require_live_video_room(db, room_id)
         uid = user["google_uid"]
-        is_host = room["host_uid"] == uid
+        is_host = room["host_uid"] == uid or _is_main_owner(db, user)
         is_viewer = db.execute(
             """SELECT 1 FROM video_room_viewers
                WHERE room_id = ? AND viewer_uid = ?""",
@@ -2215,7 +2309,7 @@ def send_video_room_message(
     try:
         room = _require_live_video_room(db, room_id)
         uid = user["google_uid"]
-        is_host = room["host_uid"] == uid
+        is_host = room["host_uid"] == uid or _is_main_owner(db, user)
         is_viewer = db.execute(
             """SELECT 1 FROM video_room_viewers
                WHERE room_id = ? AND viewer_uid = ?""",
@@ -2278,10 +2372,11 @@ async def voice_room_signal(websocket: WebSocket, room_id: int):
                 (room_id, user["google_uid"]),
 ).fetchone()
             saved_muted = bool(member["is_muted"]) if member else False
+            room_role = _voice_room_role(db, room_id, uid) if room else "member"
         finally:
             db.close()
 
-        if not room or not member:
+        if not room or (not member and room_role != "owner"):
             await websocket.close(code=4403, reason="Join this voice room first")
             return
 
@@ -2342,10 +2437,11 @@ async def voice_room_signal(websocket: WebSocket, room_id: int):
                     "WHERE room_id = ? AND user_uid = ?",
                     (room_id, uid),
                 ).fetchone()
+                access_role = _voice_room_role(db, room_id, uid) if access_room else "member"
             finally:
                 db.close()
 
-            if not access_room or not access_member or access_block:
+            if not access_room or (not access_member and access_role != "owner") or access_block:
                 await websocket.close(
                     code=4403,
                     reason="Room access revoked",

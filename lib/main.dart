@@ -11304,6 +11304,12 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       debugPrint('VOICE EVENT RECEIVED: $decoded');
       final data = Map<String, dynamic>.from(decoded);
       final type = data['type'];
+      if (type == 'room_chat_cleared') {
+        if (mounted) {
+          setState(() => messages.clear());
+        }
+        return;
+      }
 
       if (type == 'lucky_cashback_event') {
         final payload = data['payload'];
@@ -12841,6 +12847,59 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     });
   }
 
+  Future<void> _clearRoomMessages() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Clear Room Messages?'),
+        content: const Text(
+          'This will clear this room chat for everyone. Personal Inbox messages will not be deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text(
+              'Clear',
+              style: TextStyle(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('lovely_token');
+      if (token == null || token.isEmpty) {
+        showMessage('Please log in first.');
+        return;
+      }
+
+      final response = await http
+          .delete(
+            Uri.parse('$lovelyApi/voice/rooms/${widget.room['id']}/messages'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        setState(() => messages.clear());
+        showMessage('Room messages cleared for everyone.');
+      } else {
+        showMessage('Could not clear messages (${response.statusCode}).');
+      }
+    } catch (e) {
+      if (mounted) showMessage('Clear failed. Please try again.');
+      debugPrint('Clear room messages failed: $e');
+    }
+  }
+
   Future<void> _loadMessages() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -13544,7 +13603,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                           openLovelyCasinoGames(context);
                                         },
                                       ),
-                                      if (roomRole == 'owner')
+                                      if (roomRole == 'owner' || isMainOwner)
                                         Padding(
                                           padding: const EdgeInsets.symmetric(
                                             horizontal: 12,
@@ -13625,6 +13684,25 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                           ),
                                         ),
 
+                                      if (isMainOwner ||
+                                          roomRole == 'owner' ||
+                                          roomRole == 'admin')
+                                        ListTile(
+                                          leading: const Icon(
+                                            Icons.delete_sweep_rounded,
+                                            color: Colors.redAccent,
+                                          ),
+                                          title: const Text(
+                                            'Clear Room Messages',
+                                          ),
+                                          subtitle: const Text(
+                                            'Clear chat for everyone in this room',
+                                          ),
+                                          onTap: () {
+                                            Navigator.pop(ctx);
+                                            unawaited(_clearRoomMessages());
+                                          },
+                                        ),
                                       ListTile(
                                         leading: const Icon(Icons.info_outline),
                                         title: const Text('Room Information'),

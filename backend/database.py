@@ -228,6 +228,15 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
         CREATE INDEX IF NOT EXISTS idx_voice_visits_user
             ON voice_room_visits(user_uid, visited_at);
 
+        CREATE TABLE IF NOT EXISTS voice_room_chat_state (
+            room_id INTEGER NOT NULL,
+            user_uid TEXT NOT NULL,
+            visible_from_id INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (room_id, user_uid),
+            FOREIGN KEY (room_id) REFERENCES voice_rooms(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS user_follows (
             follower_uid TEXT NOT NULL,
             followed_uid TEXT NOT NULL,
