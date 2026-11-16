@@ -10814,10 +10814,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         (event) => unawaited(_handleVoiceSignal(event)),
         onError: (Object error) {
           debugPrint('Voice socket error: $error');
-          if (mounted) showMessage('Voice connection mein error aya.');
+          debugPrint('Voice connection error received.');
         },
         onDone: () {
-          if (mounted) showMessage('Voice connection band ho gaya.');
+          debugPrint('Voice connection closed.');
         },
         cancelOnError: false,
       );
@@ -10825,9 +10825,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       socket.add(jsonEncode({'token': token}));
       socket.add(jsonEncode({'type': 'mic_status', 'payload': micOn}));
 
-      if (mounted) {
-        showMessage('Microphone ready; room se connect ho raha hai.');
-      }
+      debugPrint('Microphone ready; connecting to room.');
     } catch (e) {
       debugPrint('Voice startup failed: $e');
       if (mounted) {
@@ -11224,7 +11222,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     if (socket != null && socket.readyState == WebSocket.open) {
       socket.add(jsonEncode({'type': 'mic_status', 'payload': micOn}));
     }
-    showMessage(micOn ? 'Mic On' : 'Mic Off');
+    debugPrint(micOn ? 'Mic On' : 'Mic Off');
   }
 
   Future<void> _moderateMemberMic(String targetUid, bool turnMicOn) async {
@@ -11256,7 +11254,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   void _toggleSpeaker() {
     setState(() => speakerOn = !speakerOn);
     unawaited(Helper.setSpeakerphoneOn(speakerOn));
-    showMessage(speakerOn ? 'Speaker On' : 'Speaker Off');
+    debugPrint(speakerOn ? 'Speaker On' : 'Speaker Off');
   }
 
   Future<void> _stopVoice() async {
@@ -12240,7 +12238,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
 
       if (!mounted) return;
       if (response.statusCode == 200) {
-        showMessage('Aap seat $number par baith gaye.');
+        debugPrint('Sat on seat $number.');
       } else if (response.statusCode == 409) {
         showMessage('Yeh seat available nahi hai.');
       } else {
@@ -12269,7 +12267,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
 
       if (!mounted) return;
       if (response.statusCode == 200) {
-        showMessage('Aap seat se uth gaye.');
+        debugPrint('Left seat.');
         await _loadSeats();
       } else {
         showMessage('Seat khali nahi hui.');
