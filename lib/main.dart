@@ -1937,15 +1937,17 @@ class _RoomSeatsPage extends StatelessWidget {
 
                     return ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: unlocked
+                        backgroundColor: active
                             ? const Color(0xFF14513F)
                             : const Color(0xFF183D5D),
                         foregroundColor: Colors.white,
-                        disabledBackgroundColor: const Color(0xFF14513F),
+                        disabledBackgroundColor: active
+                            ? const Color(0xFF14513F)
+                            : const Color(0xFF183D5D),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                           side: BorderSide(
-                            color: unlocked
+                            color: active
                                 ? const Color(0xFF39D98A)
                                 : const Color(0xFF65B8EA),
                           ),
@@ -1969,14 +1971,22 @@ class _RoomSeatsPage extends StatelessWidget {
                               fontSize: 17,
                             ),
                           ),
+                          if (active)
+                            const Icon(
+                              Icons.check_circle,
+                              color: Color(0xFF39D98A),
+                              size: 21,
+                            ),
                           const SizedBox(height: 7),
                           Text(
                             unlocked
                                 ? (active ? 'ACTIVE' : 'UNLOCKED')
                                 : '1,000,000 Coins',
                             style: TextStyle(
-                              color: unlocked
+                              color: active
                                   ? const Color(0xFF39D98A)
+                                  : unlocked
+                                  ? const Color(0xFF83D8FF)
                                   : const Color(0xFFFFD166),
                               fontSize: 12,
                             ),
@@ -6415,8 +6425,8 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                           ),
                         ),
-                        ),
-                        const SizedBox(width: 14),
+                      ),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -11623,8 +11633,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         .toString();
     final code = (member['user_code'] ?? '').toString();
     final photo = (member['profile_photo'] ?? '').toString();
-    final hardwearFrameCode =
-        (member['hardwear_frame_code'] ?? '').toString().trim();
+    final hardwearFrameCode = (member['hardwear_frame_code'] ?? '')
+        .toString()
+        .trim();
     final isMine = member['is_mine'] == true;
     final targetUid = (member['user_uid'] ?? '').toString();
     final isFollowing = member['is_following'] == true;
@@ -12113,7 +12124,96 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     }
   }
 
-  Widget _buildSeat(int number) {
+  List<int> _seatRowCounts() {
+    switch (seatCapacity) {
+      case 5:
+        return [2, 3];
+      case 10:
+        return [2, 4, 4];
+      case 15:
+        return [2, 4, 4, 5];
+      case 20:
+        return [4, 4, 4, 4, 4];
+      case 25:
+        return [5, 5, 5, 5, 5];
+      case 30:
+        return [5, 5, 5, 5, 5, 5];
+      case 36:
+        return [6, 6, 6, 6, 6, 6];
+      default:
+        final rows = <int>[];
+        var remaining = seatCapacity;
+        while (remaining > 0) {
+          final count = remaining > 6 ? 6 : remaining;
+          rows.add(count);
+          remaining -= count;
+        }
+        return rows;
+    }
+  }
+
+  List<Widget> _buildSeatRows() {
+    final rows = <Widget>[];
+    var firstSeat = 1;
+
+    final avatarBase = seatCapacity <= 15
+        ? 62.0
+        : seatCapacity <= 25
+        ? 52.0
+        : 38.0;
+
+    final frameBase = seatCapacity >= 30 ? 62.0 : avatarBase / 0.66;
+
+    for (final count in _seatRowCounts()) {
+      final rowStart = firstSeat;
+      firstSeat += count;
+
+      rows.add(
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final requiredWidth = count * frameBase;
+            final scale = constraints.maxWidth < requiredWidth
+                ? constraints.maxWidth / requiredWidth
+                : 1.0;
+
+            final avatarSize = avatarBase * scale;
+            final frameSize = frameBase * scale;
+            final cellWidth = constraints.maxWidth / count;
+
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                for (
+                  int i = rowStart;
+                  i < rowStart + count && i <= seatCapacity;
+                  i++
+                )
+                  _buildSeat(
+                    i,
+                    avatarSize: avatarSize,
+                    frameSize: frameSize,
+                    cellWidth: cellWidth,
+                    labelScale: scale,
+                  ),
+              ],
+            );
+          },
+        ),
+      );
+      rows.add(const SizedBox(height: 2));
+    }
+
+    return rows;
+  }
+
+  Widget _buildSeat(
+    int number, {
+    required double avatarSize,
+    required double frameSize,
+    required double cellWidth,
+    required double labelScale,
+  }) {
     final seat = seats.firstWhere(
       (item) => item['seat_number'] == number,
       orElse: () => <String, dynamic>{},
@@ -12129,8 +12229,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         vipFrameLevel >= 1 &&
         vipFrameLevel <= 12;
 
-    final hardwearFrameCode =
-        (seat['hardwear_frame_code'] ?? '').toString().trim();
+    final hardwearFrameCode = (seat['hardwear_frame_code'] ?? '')
+        .toString()
+        .trim();
 
     final photo = (seat['profile_photo'] ?? '').toString();
     final code = (seat['user_code'] ?? '').toString();
@@ -12178,13 +12279,13 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       onTap: () => _onSeatTap(number),
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
-        width: 70,
+        width: cellWidth,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              width: 70,
-              height: 62,
+              width: frameSize,
+              height: frameSize,
               child: Stack(
                 clipBehavior: Clip.none,
                 alignment: Alignment.center,
@@ -12192,10 +12293,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   if (occupied && hardwearFrameCode.isNotEmpty)
                     HardwearFrameOverlay(
                       frameCode: hardwearFrameCode,
-                      size: 62,
+                      size: frameSize,
                       child: Container(
-                        width: 38,
-                        height: 38,
+                        width: avatarSize,
+                        height: avatarSize,
                         padding: const EdgeInsets.all(3),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
@@ -12216,8 +12317,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                     )
                   else
                     Container(
-                      width: 38,
-                      height: 38,
+                      width: avatarSize,
+                      height: avatarSize,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: LinearGradient(
@@ -12297,7 +12398,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: occupied ? Colors.white : Colors.white60,
-                fontSize: 9,
+                fontSize: 9 * labelScale,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -12306,9 +12407,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 '💎 ${seat['gift_diamonds'] ?? 0}',
                 maxLines: 1,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF83E8FF),
-                  fontSize: 8,
+                style: TextStyle(
+                  color: const Color(0xFF83E8FF),
+                  fontSize: 8 * labelScale,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -12316,7 +12417,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
               Icon(
                 activeMic ? Icons.graphic_eq_rounded : Icons.mic_off_rounded,
                 color: activeMic ? const Color(0xFF70E5FF) : Colors.white54,
-                size: 11,
+                size: 11 * labelScale,
               ),
           ],
         ),
@@ -12835,25 +12936,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           ),
                         )
                       else ...[
-                        for (
-                          int first = 1;
-                          first <= seatCapacity;
-                          first += 5
-                        ) ...[
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              for (
-                                int i = first;
-                                i < first + 5 && i <= seatCapacity;
-                                i++
-                              )
-                                _buildSeat(i),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
-                        ],
+                        ..._buildSeatRows(),
                       ],
                       const Divider(color: Color(0x335E9AC5), height: 14),
                       Row(
@@ -12877,8 +12960,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                         ],
                       ),
                       const SizedBox(height: 5),
-                      SizedBox(
-                        height: 205,
+                      Expanded(
                         child: ListView(
                           controller: roomChatScrollController,
                           padding: EdgeInsets.zero,
@@ -13165,7 +13247,6 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     );
   }
 }
-
 
 class LovelySkyStartupError extends StatelessWidget {
   final String error;
