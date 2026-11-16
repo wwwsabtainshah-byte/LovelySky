@@ -489,15 +489,31 @@ def get_voice_room_members(
         rows = db.execute(
             """
             SELECT p.user_uid, p.user_code, u.display_name, u.profile_photo,
-                   p.seat_number, p.is_muted
+                   p.seat_number, p.is_muted,
+                   CASE WHEN hfo.frame_code IS NOT NULL
+                        THEN hfo.frame_code ELSE '' END AS hardwear_frame_code
             FROM voice_room_participants AS p
             LEFT JOIN users AS u ON u.google_uid = p.user_uid
+            LEFT JOIN user_profile_equipment AS upe ON upe.user_id = u.id
+            LEFT JOIN hardwear_frame_ownership AS hfo
+              ON hfo.user_id = u.id
+             AND hfo.frame_code = upe.hardwear_frame_id
+             AND hfo.active = 1
+             AND hfo.expires_at > CURRENT_TIMESTAMP
             WHERE p.room_id = ?
             UNION
             SELECT r.owner_uid, r.owner_code, u.display_name, u.profile_photo,
-                   NULL, 0
+                   NULL, 0,
+                   CASE WHEN hfo.frame_code IS NOT NULL
+                        THEN hfo.frame_code ELSE '' END AS hardwear_frame_code
             FROM voice_rooms AS r
             LEFT JOIN users AS u ON u.google_uid = r.owner_uid
+            LEFT JOIN user_profile_equipment AS upe ON upe.user_id = u.id
+            LEFT JOIN hardwear_frame_ownership AS hfo
+              ON hfo.user_id = u.id
+             AND hfo.frame_code = upe.hardwear_frame_id
+             AND hfo.active = 1
+             AND hfo.expires_at > CURRENT_TIMESTAMP
             WHERE r.id = ?
               AND NOT EXISTS (
                   SELECT 1 FROM voice_room_participants AS p
@@ -823,6 +839,8 @@ def get_voice_room_seats(
                    u.display_name, u.profile_photo,
                    COALESCE(vfo.set_number, 0) AS vip_frame_set,
                    COALESCE(vfo.level, 0) AS vip_frame_level,
+                   CASE WHEN hfo.frame_code IS NOT NULL
+                        THEN hfo.frame_code ELSE '' END AS hardwear_frame_code,
                    COALESCE(gd.diamonds, 0) AS gift_diamonds,
                    EXISTS (
                        SELECT 1 FROM user_follows AS uf
@@ -839,6 +857,11 @@ def get_voice_room_seats(
              AND vfo.level = upe.vip_level
              AND vfo.active = 1
              AND vfo.expires_at > CURRENT_TIMESTAMP
+            LEFT JOIN hardwear_frame_ownership AS hfo
+              ON hfo.user_id = u.id
+             AND hfo.frame_code = upe.hardwear_frame_id
+             AND hfo.active = 1
+             AND hfo.expires_at > CURRENT_TIMESTAMP
             LEFT JOIN voice_room_gift_diamonds AS gd
               ON gd.room_id = p.room_id AND gd.user_uid = p.user_uid
             WHERE p.room_id = ? AND p.seat_number BETWEEN 1 AND ?
@@ -867,6 +890,7 @@ def get_voice_room_seats(
                     "profile_photo": by_seat[n]["profile_photo"] if n in by_seat else None,
                     "vip_frame_set": int(by_seat[n]["vip_frame_set"] or 0) if n in by_seat else 0,
                     "vip_frame_level": int(by_seat[n]["vip_frame_level"] or 0) if n in by_seat else 0,
+                    "hardwear_frame_code": by_seat[n]["hardwear_frame_code"] or "" if n in by_seat else "",
                     "gift_diamonds": int(by_seat[n]["gift_diamonds"] or 0) if n in by_seat else 0,
                     "is_following": bool(by_seat[n]["is_following"]) if n in by_seat else False,
                     "is_occupied": n in by_seat,
@@ -4871,6 +4895,7 @@ def equip_backpack_frame(
                ON CONFLICT(user_id) DO UPDATE SET
                  vip_set_number=excluded.vip_set_number,
                  vip_level=excluded.vip_level,
+                 hardwear_frame_id='',
                  updated_at=CURRENT_TIMESTAMP""",
             (user["id"], set_number, level),
         )
@@ -4954,6 +4979,15 @@ def owner_grant_hardwear_badge(
                  active=1""",
             (target["id"], badge_code, f"+{days} days",
              owner["id"], f"+{days} days"),
+        )
+        db.execute(
+            """INSERT INTO user_profile_equipment
+               (user_id, hardwear_badge_id, updated_at)
+               VALUES (?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 hardwear_badge_id=excluded.hardwear_badge_id,
+                 updated_at=CURRENT_TIMESTAMP""",
+            (target["id"], badge_code),
         )
         db.commit()
         return {"success": True, "user_code": code, "badge_code": badge_code}
@@ -5092,6 +5126,17 @@ def owner_grant_hardwear_frame(
                    active=1""",
             (target["id"], frame_code, owner["id"]),
         )
+        db.execute(
+            """INSERT INTO user_profile_equipment
+               (user_id, hardwear_frame_id, updated_at)
+               VALUES (?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 hardwear_frame_id=excluded.hardwear_frame_id,
+                 vip_set_number=0,
+                 vip_level=0,
+                 updated_at=CURRENT_TIMESTAMP""",
+            (target["id"], frame_code),
+        )
         frame = db.execute(
             """SELECT frame_code, granted_at, expires_at, active
                FROM hardwear_frame_ownership
@@ -5196,6 +5241,8 @@ def equip_backpack_hardwear_frame(
                VALUES (?, ?, CURRENT_TIMESTAMP)
                ON CONFLICT(user_id) DO UPDATE SET
                    hardwear_frame_id=excluded.hardwear_frame_id,
+                   vip_set_number=0,
+                   vip_level=0,
                    updated_at=CURRENT_TIMESTAMP""",
             (user["id"], frame_code),
         )

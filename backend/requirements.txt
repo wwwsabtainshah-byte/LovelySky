@@ -3,3 +3,4 @@ uvicorn[standard]
 
 firebase-admin
 livekit-api>=1.2.2,<2
+python-dotenv

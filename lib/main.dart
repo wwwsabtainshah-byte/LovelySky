@@ -17,9 +17,9 @@ import 'package:firebase_core/firebase_core.dart';
 
 import 'auth_screen.dart';
 import 'mall/mall_page.dart';
-import 'mall/transparent_frame_video.dart';
 import 'widgets/vip_wing_frame.dart';
 import 'widgets/vip_wing_frame_png70.dart';
+import 'widgets/hardwear_frame_overlay.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,8 +34,23 @@ Future<void> main() async {
     print('========== END FLUTTER ERROR ==========');
   };
 
-  await Firebase.initializeApp();
-  runApp(const LovelySkyApp());
+  Object? firebaseStartupError;
+  try {
+    await Firebase.initializeApp();
+    print('LOVELY SKY: Firebase initialized successfully');
+  } catch (e, st) {
+    firebaseStartupError = e;
+    print('========== LOVELY SKY FIREBASE STARTUP ERROR ==========');
+    print(e);
+    print(st);
+    print('========== END FIREBASE STARTUP ERROR ==========');
+  }
+
+  runApp(
+    firebaseStartupError == null
+        ? const LovelySkyApp()
+        : LovelySkyStartupError(error: firebaseStartupError.toString()),
+  );
 }
 
 const blue = Color(0xFF168FFF);
@@ -6381,34 +6396,27 @@ class _ProfilePageState extends State<ProfilePage> {
                         child: SizedBox(
                           width: 92,
                           height: 92,
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              CircleAvatar(
-                                radius: 43,
-                                backgroundColor: Colors.white,
-                                backgroundImage: profilePhoto.isNotEmpty
-                                    ? NetworkImage(profilePhoto)
-                                    : null,
-                                child: profilePhoto.isEmpty
-                                    ? const Icon(
-                                        Icons.person,
-                                        size: 45,
-                                        color: Color(0xFF7435A9),
-                                      )
-                                    : null,
-                              ),
-                              if (backpackHardwearFrameCode == 'super_admin')
-                                const Positioned.fill(
-                                  child: ClipOval(
-                                    child: TransparentFrameVideo(),
-                                  ),
-                                ),
-                            ],
+                          child: HardwearFrameOverlay(
+                            frameCode: backpackHardwearFrameCode,
+                            size: 92,
+                            child: CircleAvatar(
+                              radius: 43,
+                              backgroundColor: Colors.white,
+                              backgroundImage: profilePhoto.isNotEmpty
+                                  ? NetworkImage(profilePhoto)
+                                  : null,
+                              child: profilePhoto.isEmpty
+                                  ? const Icon(
+                                      Icons.person,
+                                      size: 45,
+                                      color: Color(0xFF7435A9),
+                                    )
+                                  : null,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 14),
+                        ),
+                        const SizedBox(width: 14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -11615,6 +11623,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         .toString();
     final code = (member['user_code'] ?? '').toString();
     final photo = (member['profile_photo'] ?? '').toString();
+    final hardwearFrameCode =
+        (member['hardwear_frame_code'] ?? '').toString().trim();
     final isMine = member['is_mine'] == true;
     final targetUid = (member['user_uid'] ?? '').toString();
     final isFollowing = member['is_following'] == true;
@@ -11694,9 +11704,13 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                         colors: [Color(0xFFFF72C6), Color(0xFFFFD477)],
                       ),
                     ),
-                    child: CircleAvatar(
-                      backgroundColor: const Color(0xFF32145F),
-                      child: avatar(),
+                    child: HardwearFrameOverlay(
+                      frameCode: hardwearFrameCode,
+                      size: 88,
+                      child: CircleAvatar(
+                        backgroundColor: const Color(0xFF32145F),
+                        child: avatar(),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 15),
@@ -12115,6 +12129,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         vipFrameLevel >= 1 &&
         vipFrameLevel <= 12;
 
+    final hardwearFrameCode =
+        (seat['hardwear_frame_code'] ?? '').toString().trim();
+
     final photo = (seat['profile_photo'] ?? '').toString();
     final code = (seat['user_code'] ?? '').toString();
     final remoteMic = remoteMicStatus[code] ?? true;
@@ -12172,7 +12189,26 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 clipBehavior: Clip.none,
                 alignment: Alignment.center,
                 children: [
-                  if (occupied && hasVipFrame)
+                  if (occupied && hardwearFrameCode.isNotEmpty)
+                    HardwearFrameOverlay(
+                      frameCode: hardwearFrameCode,
+                      size: 62,
+                      child: Container(
+                        width: 38,
+                        height: 38,
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: activeMic
+                                ? const [Color(0xFF8DEBFF), Color(0xFF168DDB)]
+                                : const [Color(0xFFB7DDFB), Color(0xFF547FAE)],
+                          ),
+                        ),
+                        child: ClipOval(child: avatar),
+                      ),
+                    )
+                  else if (occupied && hasVipFrame)
                     VipWingFramePng70(
                       setNumber: vipFrameSet,
                       level: vipFrameLevel,
@@ -13124,6 +13160,33 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+
+class LovelySkyStartupError extends StatelessWidget {
+  final String error;
+  const LovelySkyStartupError({super.key, required this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        backgroundColor: const Color(0xFFF5FBFF),
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: SelectableText(
+                'Lovely Sky startup error\\n\\n$error',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red, fontSize: 15),
+              ),
+            ),
+          ),
         ),
       ),
     );

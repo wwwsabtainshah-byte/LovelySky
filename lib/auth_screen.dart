@@ -29,35 +29,36 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _checkSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('lovely_token');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('lovely_token');
 
-    if (token != null && token.isNotEmpty) {
-      try {
-        final response = await http.get(
-          Uri.parse('$lovelyApi/me'),
-          headers: {'Authorization': 'Bearer $token'},
-        ).timeout(const Duration(seconds: 15));
+      if (token != null && token.isNotEmpty) {
+        try {
+          final response = await http.get(
+            Uri.parse('$lovelyApi/me'),
+            headers: {'Authorization': 'Bearer $token'},
+          ).timeout(const Duration(seconds: 15));
 
-        if (response.statusCode == 200) {
-          if (!mounted) return;
-          setState(() {
+          if (response.statusCode == 200) {
             loggedIn = true;
-            loading = false;
-          });
-          return;
+          } else if (response.statusCode == 401 ||
+              response.statusCode == 403) {
+            await prefs.remove('lovely_token');
+          }
+        } catch (e, st) {
+          debugPrint('Lovely Sky session check failed: $e');
+          debugPrint('$st');
         }
-
-        if (response.statusCode == 401 || response.statusCode == 403) {
-          await prefs.remove('lovely_token');
-        }
-      } catch (_) {
-        // Network unavailable: do not delete a saved session.
+      }
+    } catch (e, st) {
+      debugPrint('Lovely Sky startup preferences failed: $e');
+      debugPrint('$st');
+    } finally {
+      if (mounted) {
+        setState(() => loading = false);
       }
     }
-
-    if (!mounted) return;
-    setState(() => loading = false);
   }
 
   @override

@@ -62,9 +62,9 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
 
-  # The following line ensures that the Material Icons font is
-  # included with your application, so that you can use the icons in
-  # the material Icons class.
+# The following line ensures that the Material Icons font is
+# included with your application, so that you can use the icons in
+# the material Icons class.
   uses-material-design: true
   assets:
     - assets/audio/lucky_chun.wav
@@ -73,6 +73,9 @@ flutter:
     - assets/vip_animated_combined10/
     - assets/vip_new_preview/
     - assets/hardwear/
+    - assets/hardwear/role_frames/
+    - assets/hardwear/role_badges/
+    - assets/gifts/
     - assets/live_room_seat_frame_transparent.webm
 
   # To add assets to your application, add an assets section, like this:
