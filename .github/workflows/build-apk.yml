@@ -2,7 +2,7 @@ name: Lovely Sky Blue APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, frames-hardwear-fix]
   workflow_dispatch:
 
 permissions:
