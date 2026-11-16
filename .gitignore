@@ -49,3 +49,5 @@ app.*.map.json
 
 # Local Firebase configuration
 android/app/google-services.json
+
+/backend/.env

@@ -34,8 +34,23 @@ Future<void> main() async {
     print('========== END FLUTTER ERROR ==========');
   };
 
-  await Firebase.initializeApp();
-  runApp(const LovelySkyApp());
+  Object? firebaseStartupError;
+  try {
+    await Firebase.initializeApp();
+    print('LOVELY SKY: Firebase initialized successfully');
+  } catch (e, st) {
+    firebaseStartupError = e;
+    print('========== LOVELY SKY FIREBASE STARTUP ERROR ==========');
+    print(e);
+    print(st);
+    print('========== END FIREBASE STARTUP ERROR ==========');
+  }
+
+  runApp(
+    firebaseStartupError == null
+        ? const LovelySkyApp()
+        : LovelySkyStartupError(error: firebaseStartupError.toString()),
+  );
 }
 
 const blue = Color(0xFF168FFF);
@@ -13145,6 +13160,33 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+
+class LovelySkyStartupError extends StatelessWidget {
+  final String error;
+  const LovelySkyStartupError({super.key, required this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        backgroundColor: const Color(0xFFF5FBFF),
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: SelectableText(
+                'Lovely Sky startup error\\n\\n$error',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red, fontSize: 15),
+              ),
+            ),
+          ),
         ),
       ),
     );
