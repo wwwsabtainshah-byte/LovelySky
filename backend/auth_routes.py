@@ -712,7 +712,34 @@ def upgrade_voice_room_seats(
             }
 
         if new_capacity < old_capacity:
-            raise HTTPException(400, "Seat capacity cannot be downgraded")
+            db.execute(
+                """UPDATE voice_room_participants
+                   SET seat_number = NULL
+                   WHERE room_id = ? AND seat_number > ?""",
+                (room_id, new_capacity),
+            )
+            db.execute(
+                """DELETE FROM voice_room_locked_seats
+                   WHERE room_id = ? AND seat_number > ?""",
+                (room_id, new_capacity),
+            )
+            db.execute(
+                "UPDATE voice_rooms SET seat_capacity = ? WHERE id = ?",
+                (new_capacity, room_id),
+            )
+            wallet = db.execute(
+                "SELECT coins FROM wallets WHERE user_id = ?",
+                (int(user["id"]),),
+            ).fetchone()
+            db.commit()
+            return {
+                "success": True,
+                "room_id": room_id,
+                "old_capacity": old_capacity,
+                "seat_capacity": new_capacity,
+                "cost": 0,
+                "remaining_coins": int(wallet["coins"]) if wallet else 0,
+            }
 
         user_id = int(user["id"])
 
@@ -770,6 +797,70 @@ def upgrade_voice_room_seats(
         db.close()
 
 
+class VoiceRoomSeatsToggleRequest(BaseModel):
+    seat_numbers: list[int]
+    locked: bool
+
+
+@router.post("/voice/rooms/{room_id}/seats/toggle")
+def toggle_voice_room_seats(
+    room_id: int,
+    payload: VoiceRoomSeatsToggleRequest,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        room = db.execute(
+            "SELECT owner_uid, seat_capacity FROM voice_rooms WHERE id = ? AND is_active = 1",
+            (room_id,),
+        ).fetchone()
+        if not room:
+            raise HTTPException(404, "Voice room not found")
+        if room["owner_uid"] != user["google_uid"]:
+            raise HTTPException(403, "Only the room owner can toggle seats")
+
+        numbers = sorted(set(payload.seat_numbers))
+        capacity = int(room["seat_capacity"])
+        if not numbers or any(n < 1 or n > capacity for n in numbers):
+            raise HTTPException(400, "Invalid seat selection")
+
+        for number in numbers:
+            if payload.locked:
+                db.execute(
+                    """INSERT OR IGNORE INTO voice_room_locked_seats
+                       (room_id, seat_number, locked_by_uid)
+                       VALUES (?, ?, ?)""",
+                    (room_id, number, user["google_uid"]),
+                )
+                db.execute(
+                    """UPDATE voice_room_participants
+                       SET seat_number = NULL
+                       WHERE room_id = ? AND seat_number = ?""",
+                    (room_id, number),
+                )
+            else:
+                db.execute(
+                    """DELETE FROM voice_room_locked_seats
+                       WHERE room_id = ? AND seat_number = ?""",
+                    (room_id, number),
+                )
+
+        db.commit()
+        return {
+            "success": True,
+            "room_id": room_id,
+            "locked": payload.locked,
+            "seat_numbers": numbers,
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 @router.post("/voice/rooms/{room_id}/seats/{seat_number}/lock")
 def lock_voice_room_seat(
     room_id: int,
@@ -783,10 +874,16 @@ def lock_voice_room_seat(
     try:
         _require_voice_room_manager(db, room_id, user["google_uid"])
         _require_voice_room_seat_capacity(db, room_id, seat_number)
+        db.execute("BEGIN IMMEDIATE")
         db.execute(
             """INSERT OR IGNORE INTO voice_room_locked_seats
                (room_id, seat_number, locked_by_uid) VALUES (?, ?, ?)""",
             (room_id, seat_number, user["google_uid"]),
+        )
+        db.execute(
+            """UPDATE voice_room_participants SET seat_number = NULL
+               WHERE room_id = ? AND seat_number = ?""",
+            (room_id, seat_number),
         )
         db.commit()
         return {"success": True, "room_id": room_id, "seat_number": seat_number, "locked": True}

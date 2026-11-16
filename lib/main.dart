@@ -1917,7 +1917,7 @@ class _RoomSeatsPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Unlocked: $seatCapacity seats',
+                'Active capacity: $seatCapacity seats',
                 style: const TextStyle(
                   color: Color(0xFF83D8FF),
                   fontSize: 16,
@@ -1932,8 +1932,8 @@ class _RoomSeatsPage extends StatelessWidget {
                   mainAxisSpacing: 12,
                   childAspectRatio: 1.45,
                   children: options.map((capacity) {
-                    final unlocked = capacity <= seatCapacity;
                     final active = capacity == seatCapacity;
+                    final downgrade = capacity < seatCapacity;
 
                     return ElevatedButton(
                       style: ElevatedButton.styleFrom(
@@ -1941,9 +1941,7 @@ class _RoomSeatsPage extends StatelessWidget {
                             ? const Color(0xFF14513F)
                             : const Color(0xFF183D5D),
                         foregroundColor: Colors.white,
-                        disabledBackgroundColor: active
-                            ? const Color(0xFF14513F)
-                            : const Color(0xFF183D5D),
+                        disabledBackgroundColor: const Color(0xFF14513F),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                           side: BorderSide(
@@ -1953,7 +1951,7 @@ class _RoomSeatsPage extends StatelessWidget {
                           ),
                         ),
                       ),
-                      onPressed: unlocked
+                      onPressed: active
                           ? null
                           : () async {
                               final ok = await onUpgrade(capacity);
@@ -1979,15 +1977,18 @@ class _RoomSeatsPage extends StatelessWidget {
                             ),
                           const SizedBox(height: 7),
                           Text(
-                            unlocked
-                                ? (active ? 'ACTIVE' : 'UNLOCKED')
-                                : '1,000,000 Coins',
+                            active
+                                ? 'ACTIVE'
+                                : downgrade
+                                    ? 'DOWNGRADE · FREE'
+                                    : '1,000,000 Coins',
+                            textAlign: TextAlign.center,
                             style: TextStyle(
                               color: active
                                   ? const Color(0xFF39D98A)
-                                  : unlocked
-                                  ? const Color(0xFF83D8FF)
-                                  : const Color(0xFFFFD166),
+                                  : downgrade
+                                      ? const Color(0xFF83D8FF)
+                                      : const Color(0xFFFFD166),
                               fontSize: 12,
                             ),
                           ),
@@ -11293,14 +11294,22 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   }
 
   Future<bool> _upgradeRoomSeats(int capacity) async {
-    if (roomRole != 'owner') return false;
-    if (capacity <= seatCapacity) return false;
+    if (roomRole != 'owner' || capacity == seatCapacity) return false;
 
+    final isDowngrade = capacity < seatCapacity;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('Confirm Seat Upgrade'),
-        content: Text('Unlock $capacity seats for 1,000,000 Lovely Coins?'),
+        title: Text(
+          isDowngrade
+              ? 'Confirm Seat Downgrade'
+              : 'Confirm Seat Upgrade',
+        ),
+        content: Text(
+          isDowngrade
+              ? 'Reduce room capacity from $seatCapacity to $capacity seats for free? Seats above $capacity will be emptied and unlocked.'
+              : 'Unlock $capacity seats for 1,000,000 Lovely Coins?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c, false),
@@ -11308,7 +11317,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(c, true),
-            child: const Text('Buy Now'),
+            child: Text(isDowngrade ? 'Downgrade Free' : 'Buy Now'),
           ),
         ],
       ),
@@ -11326,7 +11335,11 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     await _loadSeats();
     if (!mounted) return false;
 
-    showMessage('$capacity seats unlocked!');
+    showMessage(
+      isDowngrade
+          ? 'Room capacity reduced to $capacity seats for free.'
+          : '$capacity seats unlocked!',
+    );
     return true;
   }
 
@@ -11449,6 +11462,148 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     } finally {
       inviteDialogShowing = false;
     }
+  }
+
+  Future<bool> _toggleRoomSeats(List<int> numbers, bool locked) async {
+    if (roomRole != 'owner' || numbers.isEmpty) return false;
+
+    final ok = await _roomPost(
+      '/voice/rooms/${widget.room['id']}/seats/toggle',
+      body: {'seat_numbers': numbers, 'locked': locked},
+    );
+
+    if (!ok || !mounted) return false;
+    await _loadSeats();
+
+    if (mounted) {
+      showMessage(locked ? 'Seats turned OFF.' : 'Seats turned ON.');
+    }
+    return true;
+  }
+
+  Future<void> _showRoomSeatTogglePanel() async {
+    if (roomRole != 'owner' || !mounted) return;
+
+    final selected = <int>{};
+    final numbers = List<int>.generate(seatCapacity, (i) => i + 1);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFFF5FBFF),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          Future<void> apply(List<int> targets, bool locked) async {
+            if (targets.isEmpty) return;
+            final ok = await _toggleRoomSeats(targets, locked);
+            if (ok && sheetContext.mounted) {
+              setSheetState(selected.clear);
+            }
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Center(
+                      child: Text(
+                        'Seat ON / OFF',
+                        style: TextStyle(
+                          color: Color(0xFF123B5A),
+                          fontSize: 19,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Select All Seats'),
+                      value: selected.length == numbers.length,
+                      onChanged: (v) => setSheetState(() {
+                        if (v == true) {
+                          selected.addAll(numbers);
+                        } else {
+                          selected.clear();
+                        }
+                      }),
+                    ),
+                    const Divider(),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: numbers.map((number) {
+                        final seat = seats.firstWhere(
+                          (item) => int.tryParse('${item['seat_number']}') == number,
+                          orElse: () => <String, dynamic>{},
+                        );
+                        final off = seat['is_locked'] == true;
+                        final busy = seat['is_occupied'] == true;
+
+                        return FilterChip(
+                          label: Text('$number · ${off ? 'OFF' : busy ? 'Busy' : 'ON'}'),
+                          selected: selected.contains(number),
+                          onSelected: (v) => setSheetState(() {
+                            if (v) {
+                              selected.add(number);
+                            } else {
+                              selected.remove(number);
+                            }
+                          }),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => apply(numbers, true),
+                            child: const Text('ALL OFF'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => apply(numbers, false),
+                            child: const Text('ALL ON'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: selected.isEmpty
+                                ? null
+                                : () => apply(selected.toList()..sort(), true),
+                            child: const Text('SELECTED OFF'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: selected.isEmpty
+                                ? null
+                                : () => apply(selected.toList()..sort(), false),
+                            child: const Text('SELECTED ON'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<Map<String, String>?> _roomHeaders() async {
@@ -13123,25 +13278,46 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                         },
                                       ),
                                       if (roomRole == 'owner')
-                                        ListTile(
-                                          leading: const Icon(
-                                            Icons.event_seat_rounded,
-                                          ),
-                                          title: const Text('Seats'),
-                                          subtitle: Text(
-                                            '$seatCapacity seats unlocked',
-                                          ),
-                                          onTap: () {
-                                            Navigator.pop(ctx);
-                                            Navigator.of(context).push(
-                                              MaterialPageRoute(
-                                                builder: (_) => _RoomSeatsPage(
-                                                  seatCapacity: seatCapacity,
-                                                  onUpgrade: _upgradeRoomSeats,
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: ListTile(
+                                                  tileColor: Colors.white,
+                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                                  leading: const Icon(Icons.event_seat_rounded, color: Color(0xFF168FFF)),
+                                                  title: const Text('Seats', style: TextStyle(fontWeight: FontWeight.bold)),
+                                                  subtitle: Text('$seatCapacity seats unlocked'),
+                                                  onTap: () {
+                                                    Navigator.pop(ctx);
+                                                    Navigator.of(context).push(
+                                                      MaterialPageRoute(
+                                                        builder: (_) => _RoomSeatsPage(
+                                                          seatCapacity: seatCapacity,
+                                                          onUpgrade: _upgradeRoomSeats,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  },
                                                 ),
                                               ),
-                                            );
-                                          },
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: ListTile(
+                                                  tileColor: Colors.white,
+                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                                  leading: const Icon(Icons.toggle_on_rounded, color: Color(0xFF168FFF)),
+                                                  title: const Text('Seat ON/OFF', style: TextStyle(fontWeight: FontWeight.bold)),
+                                                  subtitle: const Text('Lock controls'),
+                                                  onTap: () {
+                                                    Navigator.pop(ctx);
+                                                    _showRoomSeatTogglePanel();
+                                                  },
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
 
                                       ListTile(
