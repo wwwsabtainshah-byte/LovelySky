@@ -1460,440 +1460,6 @@ class _VideoPageState extends State<VideoPage> {
   }
 }
 
-Future<void> openLovelyCasinoGames(BuildContext context) async {
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => const LovelyCasinoGamesSheet(),
-  );
-}
-
-class LovelyCasinoGamesSheet extends StatefulWidget {
-  const LovelyCasinoGamesSheet({super.key});
-
-  @override
-  State<LovelyCasinoGamesSheet> createState() => _LovelyCasinoGamesSheetState();
-}
-
-class _LovelyCasinoGamesSheetState extends State<LovelyCasinoGamesSheet> {
-  List<Map<String, dynamic>> games = [];
-  List<Map<String, dynamic>> recentGames = [];
-  int coins = 0;
-  bool loading = true;
-  bool launching = false;
-  String message = 'Loading provider games...';
-  Map<String, dynamic>? selectedGame;
-  WebViewController? gameController;
-
-  Future<Map<String, dynamic>> api(
-    String method,
-    String path, {
-    Map<String, dynamic>? body,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('lovely_token');
-    if (token == null || token.isEmpty) {
-      throw Exception('Please login again.');
-    }
-
-    final uri = Uri.parse('$lovelyApi$path');
-    final headers = {
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-
-    final response = method == 'POST'
-        ? await http.post(uri, headers: headers, body: jsonEncode(body ?? {}))
-        : method == 'DELETE'
-        ? await http.delete(uri, headers: headers)
-        : await http.get(uri, headers: headers);
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('Invalid server response.');
-    }
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final detail = decoded['detail'];
-      if (detail is Map) {
-        throw Exception(detail['message']?.toString() ?? detail.toString());
-      }
-      throw Exception(
-        detail?.toString() ??
-            decoded['error']?.toString() ??
-            'Request failed (${response.statusCode}).',
-      );
-    }
-    return decoded;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _loadRecentGames();
-    _loadGames();
-  }
-
-  Future<void> _loadRecentGames() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final saved = prefs.getStringList('lovely_recent_games') ?? [];
-      final loaded = <Map<String, dynamic>>[];
-      for (final item in saved) {
-        try {
-          final decoded = jsonDecode(item);
-          if (decoded is Map) {
-            loaded.add(Map<String, dynamic>.from(decoded));
-          }
-        } catch (_) {}
-      }
-      if (mounted) setState(() => recentGames = loaded);
-    } catch (_) {}
-  }
-
-  Future<void> _loadGames() async {
-    setState(() {
-      loading = true;
-      message = 'Loading provider games...';
-    });
-
-    try {
-      final results = await Future.wait([
-        api('GET', '/games/wallet'),
-        api('GET', '/games/provider/catalog'),
-      ]);
-
-      final wallet = results[0];
-      final catalog = results[1];
-      final rawGames = catalog['games'] as List? ?? [];
-
-      if (!mounted) return;
-      setState(() {
-        coins = (wallet['coins'] as num?)?.toInt() ?? 0;
-        games = rawGames
-            .whereType<Map>()
-            .map((item) => Map<String, dynamic>.from(item))
-            .where((item) => item['id'] != null && item['slug'] != null)
-            .toList();
-        message = games.isEmpty
-            ? 'No games are available in your provider catalogue.'
-            : '';
-      });
-    } catch (e) {
-      if (mounted) setState(() => message = e.toString());
-    } finally {
-      if (mounted) setState(() => loading = false);
-    }
-  }
-
-  Future<void> _openGame(Map<String, dynamic> game) async {
-    if (launching) return;
-
-    setState(() {
-      launching = true;
-      message = 'Creating secure game session...';
-    });
-
-    try {
-      final data = await api(
-        'POST',
-        '/games/provider/session',
-        body: {'game_id': game['slug'].toString()},
-      );
-
-      final launchUrl = data['launch_url']?.toString() ?? '';
-      final uri = Uri.tryParse(launchUrl);
-      if (uri == null ||
-          uri.scheme != 'https' ||
-          uri.host != 'games.casinoapipro.com') {
-        throw Exception('Provider returned an invalid game link.');
-      }
-
-      final controller = WebViewController();
-      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
-      await controller.setBackgroundColor(const Color(0xFF071A2D));
-      await controller.setNavigationDelegate(
-        NavigationDelegate(
-          onWebResourceError: (error) {
-            if (mounted && error.isForMainFrame == true) {
-              setState(() {
-                message = 'Game loading error: ${error.description}';
-              });
-            }
-          },
-        ),
-      );
-      await controller.loadRequest(uri);
-      await _rememberGame(game);
-
-      if (!mounted) return;
-      setState(() {
-        selectedGame = game;
-        gameController = controller;
-        message = '';
-      });
-    } catch (e) {
-      if (mounted) setState(() => message = e.toString());
-    } finally {
-      if (mounted) setState(() => launching = false);
-    }
-  }
-
-  Future<void> _rememberGame(Map<String, dynamic> game) async {
-    final slug = game['slug']?.toString() ?? '';
-    if (slug.isEmpty) return;
-
-    final item = <String, dynamic>{
-      'slug': slug,
-      'name': game['name']?.toString() ?? slug,
-      'thumbnail_url': game['thumbnail_url']?.toString() ?? '',
-      'enabled': true,
-      'status': 'ACTIVE',
-    };
-
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getStringList('lovely_recent_games') ?? [];
-    final updated = <String>[jsonEncode(item)];
-
-    for (final entry in saved) {
-      try {
-        final old = jsonDecode(entry);
-        if (old is Map &&
-            old['slug']?.toString() != slug &&
-            updated.length < 8) {
-          updated.add(jsonEncode(old));
-        }
-      } catch (_) {}
-    }
-
-    await prefs.setStringList('lovely_recent_games', updated);
-    if (mounted) {
-      setState(() {
-        recentGames = updated
-            .map((e) => Map<String, dynamic>.from(jsonDecode(e)))
-            .toList();
-      });
-    }
-  }
-
-  void _backToGames() {
-    setState(() {
-      selectedGame = null;
-      gameController = null;
-      message = '';
-    });
-  }
-
-  String _formatCoins(int value) => value.toString().replaceAllMapped(
-    RegExp(r'\B(?=(\d{3})+(?!\d))'),
-    (match) => ',',
-  );
-
-  Widget _gameTile(Map<String, dynamic> game) {
-    final imageUrl = game['thumbnail_url']?.toString() ?? '';
-    final name = game['name']?.toString() ?? game['slug']?.toString() ?? 'Game';
-    final enabled =
-        game['enabled'] == true &&
-        game['status']?.toString().toUpperCase() == 'ACTIVE';
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(15),
-      onTap: launching || !enabled ? null : () => _openGame(game),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: const Color(0xFFD6EDFC)),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: imageUrl.startsWith('https://')
-                  ? Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const Icon(
-                        Icons.casino_rounded,
-                        size: 42,
-                        color: Color(0xFF168FFF),
-                      ),
-                    )
-                  : const Icon(
-                      Icons.casino_rounded,
-                      size: 42,
-                      color: Color(0xFF168FFF),
-                    ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Text(
-                name,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF183B59),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final game = selectedGame;
-    return SafeArea(
-      child: Container(
-        height: MediaQuery.of(context).size.height * 0.94,
-        decoration: const BoxDecoration(
-          color: Color(0xFFF2FAFF),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 10, 10),
-              child: Row(
-                children: [
-                  if (game != null)
-                    IconButton(
-                      onPressed: _backToGames,
-                      icon: const Icon(Icons.arrow_back),
-                    ),
-                  Expanded(
-                    child: Text(
-                      game?['name']?.toString() ?? 'Lovely Sky Games',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF183B59),
-                      ),
-                    ),
-                  ),
-                  if (game == null)
-                    Text(
-                      '🪙 ${_formatCoins(coins)}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF168FFF),
-                      ),
-                    ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-            ),
-            if (game != null && gameController != null)
-              Expanded(child: WebViewWidget(controller: gameController!))
-            else if (loading || launching)
-              const Expanded(child: Center(child: CircularProgressIndicator()))
-            else if (game == null &&
-                (games.isNotEmpty || recentGames.isNotEmpty))
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (recentGames.isNotEmpty) ...[
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(16, 10, 16, 8),
-                        child: Text(
-                          'Played Recently',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF183B59),
-                          ),
-                        ),
-                      ),
-                      SizedBox(
-                        height: 145,
-                        child: ListView.separated(
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          scrollDirection: Axis.horizontal,
-                          itemCount: recentGames.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 10),
-                          itemBuilder: (_, index) => SizedBox(
-                            width: 145,
-                            child: _gameTile(recentGames[index]),
-                          ),
-                        ),
-                      ),
-                    ],
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 14, 16, 8),
-                      child: Text(
-                        'All Games',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF183B59),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: games.isEmpty
-                          ? const Center(
-                              child: Text('No games available right now.'),
-                            )
-                          : GridView.builder(
-                              padding: const EdgeInsets.all(14),
-                              itemCount: games.length,
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 2,
-                                    crossAxisSpacing: 12,
-                                    mainAxisSpacing: 12,
-                                    childAspectRatio: 1.15,
-                                  ),
-                              itemBuilder: (_, index) =>
-                                  _gameTile(games[index]),
-                            ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              Expanded(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.casino_rounded,
-                          size: 58,
-                          color: Color(0xFF168FFF),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(message, textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
-                        FilledButton(
-                          onPressed: _loadGames,
-                          child: const Text('Retry'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _RoomSeatsPage extends StatelessWidget {
   final int seatCapacity;
   final Future<bool> Function(int capacity) onUpgrade;
@@ -2613,8 +2179,6 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
                           onTap: () => openLovelyRoomGiftStore(context),
                         ),
                         const SizedBox(height: 20),
-                        _liveGamesAction(),
-                        const SizedBox(height: 20),
                         _liveActionIcon(
                           Icons.share_rounded,
                           'Share',
@@ -2782,28 +2346,6 @@ class _VideoRoomPageState extends State<VideoRoomPage> {
                   ),
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _liveGamesAction() {
-    return InkWell(
-      onTap: () => openLovelyCasinoGames(context),
-      borderRadius: BorderRadius.circular(24),
-      child: const Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.casino_rounded, color: Color(0xFF8DE4FF), size: 29),
-          SizedBox(height: 4),
-          Text(
-            'Games',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
             ),
           ),
         ],
@@ -10252,79 +9794,6 @@ class _RoseFacePainter extends CustomPainter {
       oldDelegate.openAmount != openAmount;
 }
 
-class _AnimatedGamepadButton extends StatefulWidget {
-  final VoidCallback onTap;
-
-  const _AnimatedGamepadButton({required this.onTap});
-
-  @override
-  State<_AnimatedGamepadButton> createState() => _AnimatedGamepadButtonState();
-}
-
-class _AnimatedGamepadButtonState extends State<_AnimatedGamepadButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1100),
-  )..repeat(reverse: true);
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.onTap,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          final t = Curves.easeInOut.transform(_controller.value);
-          return Transform.scale(
-            scale: 0.98 + (t * 0.045),
-            child: Container(
-              width: 62,
-              height: 62,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF24547D), Color(0xFF061B35)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                border: Border.all(color: const Color(0xFFFFD83D), width: 2.5),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFFFD21F)
-                        .withValues(alpha: 0.22 + (t * 0.25)),
-                    blurRadius: 12 + (t * 8),
-                    spreadRadius: 1 + (t * 2),
-                  ),
-                  const BoxShadow(
-                    color: Color(0xCC020B19),
-                    blurRadius: 0,
-                    offset: Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: const Center(
-                child: Icon(
-                  Icons.sports_esports_rounded,
-                  color: Color(0xFFFFD83D),
-                  size: 35,
-                  shadows: [Shadow(color: Color(0xFFFFE98A), blurRadius: 9)],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
 class _AnimatedRoomToolbarButton extends StatefulWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -11001,6 +10470,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   int giftComboCount = 1;
   String? lastGiftComboKey;
   DateTime? lastGiftEventAt;
+  double _gamesButtonRight = 14;
+  double _gamesButtonBottom = 190;
+  Offset? _gamesDragLastGlobalPosition;
+  bool _gamesButtonDragging = false;
 
   Map<String, dynamic>? repeatGift;
   Timer? repeatGiftCountdownTimer;
@@ -11015,6 +10488,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   void initState() {
     super.initState();
     activeVoiceRoom.value = widget.room;
+    unawaited(_loadGamesButtonPosition());
+
     unawaited(_startVoice());
     _loadSeats();
     _loadMessages();
@@ -11023,6 +10498,33 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       _loadMessages();
       _checkPendingInvites();
     });
+  }
+
+  String get _gamesButtonPositionKey =>
+      'lovely_games_button_${widget.room['id']}';
+
+  Future<void> _loadGamesButtonPosition() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final right = prefs.getDouble('${_gamesButtonPositionKey}_right');
+    final bottom = prefs.getDouble('${_gamesButtonPositionKey}_bottom');
+    if (right == null && bottom == null) return;
+    setState(() {
+      _gamesButtonRight = right ?? 14;
+      _gamesButtonBottom = bottom ?? 190;
+    });
+  }
+
+  Future<void> _saveGamesButtonPosition() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(
+      '${_gamesButtonPositionKey}_right',
+      _gamesButtonRight,
+    );
+    await prefs.setDouble(
+      '${_gamesButtonPositionKey}_bottom',
+      _gamesButtonBottom,
+    );
   }
 
   Future<void> _startVoice() async {
@@ -13593,16 +13095,6 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                 builder: (ctx) => SafeArea(
                                   child: Wrap(
                                     children: [
-                                      ListTile(
-                                        leading: const Icon(
-                                          Icons.casino_rounded,
-                                        ),
-                                        title: const Text('Games'),
-                                        onTap: () {
-                                          Navigator.pop(ctx);
-                                          openLovelyCasinoGames(context);
-                                        },
-                                      ),
                                       if (roomRole == 'owner' || isMainOwner)
                                         Padding(
                                           padding: const EdgeInsets.symmetric(
@@ -13735,6 +13227,72 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 ),
               ],
             ),
+
+            Positioned(
+              right: _gamesButtonRight,
+              bottom: _gamesButtonBottom,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const _GamesCenterPage()),
+                  );
+                },
+                onLongPressStart: (details) {
+                  setState(() {
+                    _gamesButtonDragging = true;
+                    _gamesDragLastGlobalPosition = details.globalPosition;
+                  });
+                },
+                onLongPressMoveUpdate: (details) {
+                  final previous = _gamesDragLastGlobalPosition;
+                  if (previous == null) return;
+
+                  final delta = details.globalPosition - previous;
+                  final media = MediaQuery.of(context);
+                  final maxRight = (media.size.width - 76)
+                      .clamp(0.0, double.infinity)
+                      .toDouble();
+                  final roomHeight =
+                      media.size.height -
+                      media.padding.top -
+                      media.padding.bottom;
+                  final maxBottom = (roomHeight - 76)
+                      .clamp(0.0, double.infinity)
+                      .toDouble();
+
+                  setState(() {
+                    _gamesButtonRight = (_gamesButtonRight - delta.dx)
+                        .clamp(0.0, maxRight)
+                        .toDouble();
+                    _gamesButtonBottom = (_gamesButtonBottom - delta.dy)
+                        .clamp(0.0, maxBottom)
+                        .toDouble();
+                    _gamesDragLastGlobalPosition = details.globalPosition;
+                  });
+                },
+                onLongPressEnd: (_) {
+                  setState(() {
+                    _gamesButtonDragging = false;
+                    _gamesDragLastGlobalPosition = null;
+                  });
+                  unawaited(_saveGamesButtonPosition());
+                },
+                onLongPressCancel: () {
+                  setState(() {
+                    _gamesButtonDragging = false;
+                    _gamesDragLastGlobalPosition = null;
+                  });
+                  unawaited(_saveGamesButtonPosition());
+                },
+                child: AnimatedScale(
+                  scale: _gamesButtonDragging ? 1.16 : 1,
+                  duration: const Duration(milliseconds: 160),
+                  child: const _AnimatedFloatingGamesIcon(),
+                ),
+              ),
+            ),
+
             if (repeatGift != null)
               Positioned(
                 right: 12,
@@ -13782,13 +13340,6 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   ),
                 ),
               ),
-            Positioned(
-              right: 12,
-              bottom: 68,
-              child: _AnimatedGamepadButton(
-                onTap: () => openLovelyCasinoGames(context),
-              ),
-            ),
 
             if (activeGiftEvent != null)
               Positioned.fill(
@@ -13805,6 +13356,653 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       ),
     );
   }
+}
+
+class _AnimatedFloatingGamesIcon extends StatefulWidget {
+  const _AnimatedFloatingGamesIcon();
+
+  @override
+  State<_AnimatedFloatingGamesIcon> createState() =>
+      _AnimatedFloatingGamesIconState();
+}
+
+class _AnimatedFloatingGamesIconState extends State<_AnimatedFloatingGamesIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = Curves.easeInOut.transform(_controller.value);
+        return Transform.translate(
+          offset: Offset(0, -3 * t),
+          child: Transform.rotate(
+            angle: (t - 0.5) * 0.10,
+            child: Container(
+              width: 70,
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(15),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFFFFE45C),
+                    Color(0xFFFF8A35),
+                    Color(0xFFEA3D9A),
+                    Color(0xFF754BFA),
+                  ],
+                ),
+                border: Border.all(color: const Color(0xFFFFF2AD), width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFF8A35)
+                        .withValues(alpha: 0.28 + t * 0.35),
+                    blurRadius: 10 + t * 9,
+                    spreadRadius: 1 + t,
+                  ),
+                  const BoxShadow(
+                    color: Color(0x88001432),
+                    offset: Offset(0, 4),
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+              child: const Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('🎮', style: TextStyle(fontSize: 34)),
+                  Text(
+                    'GAMES',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black54,
+                          offset: Offset(0, 1),
+                          blurRadius: 2,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _GamesCenterPage extends StatelessWidget {
+  const _GamesCenterPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF091A35),
+      appBar: AppBar(
+        title: const Text(
+          'Games Center',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+        backgroundColor: const Color(0xFF123C70),
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF123C70), Color(0xFF091A35), Color(0xFF251044)],
+          ),
+        ),
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const Text(
+                'CHOOSE YOUR GAME',
+                style: TextStyle(
+                  color: Color(0xFF8DE4FF),
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1,
+                ),
+              ),
+              const SizedBox(height: 16),
+              InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const _Lucky77GamePage()),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFFFFB72D),
+                        Color(0xFFED6738),
+                        Color(0xFF942B91),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: const Color(0xFFFFE18A),
+                      width: 1.5,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x665E32B4),
+                        blurRadius: 16,
+                        offset: Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    children: [
+                      Text('🎰', style: TextStyle(fontSize: 48)),
+                      SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'LUCKY 77',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            Text(
+                              'Lucky 77 Game',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.play_circle_fill_rounded,
+                        color: Colors.white,
+                        size: 35,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 25),
+              const Center(
+                child: Text(
+                  'MORE GAMES COMING SOON',
+                  style: TextStyle(
+                    color: Color(0xFF8DE4FF),
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Lucky77GamePage extends StatefulWidget {
+  const _Lucky77GamePage({super.key});
+
+  @override
+  State<_Lucky77GamePage> createState() => _Lucky77GamePageState();
+}
+
+class _Lucky77GamePageState extends State<_Lucky77GamePage> {
+  int amount = 100;
+  String selection = 'watermelon';
+  double coins = 0;
+  bool loading = true;
+  bool betting = false;
+  String? result;
+  String? error;
+
+  final amounts = [100, 1000, 10000, 100000];
+
+  @override
+  void initState() {
+    super.initState();
+    loadState();
+  }
+
+  Future<Map<String, String>> getHeaders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('lovely_token');
+    if (token == null || token.isEmpty) {
+      throw Exception('Login required');
+    }
+    return {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+  }
+
+  Future<void> loadState() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      final response = await http.get(
+        Uri.parse('https://lovelysky.fastapicloud.dev/games/lucky77/state'),
+        headers: await getHeaders(),
+      );
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode != 200 || data['success'] != true) {
+        throw Exception(data['detail'] ?? 'Unable to load game');
+      }
+      if (!mounted) return;
+      setState(() {
+        coins = (data['coins'] as num?)?.toDouble() ?? 0;
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        error = e.toString();
+        loading = false;
+      });
+    }
+  }
+
+  String fruit(String value) {
+    switch (value) {
+      case 'double_7':
+        return '7️⃣ DOUBLE 7';
+      case 'watermelon':
+        return '🍉 WATERMELON';
+      case 'plum':
+        return '🍑 PLUM';
+      default:
+        return value;
+    }
+  }
+
+  Future<void> play() async {
+    if (betting || loading) return;
+    if (coins < amount) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Not enough coins')));
+      return;
+    }
+
+    setState(() {
+      betting = true;
+      error = null;
+      result = null;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('https://lovelysky.fastapicloud.dev/games/lucky77/bet'),
+        headers: await getHeaders(),
+        body: jsonEncode({
+          'selection': selection,
+          'amount': amount,
+          'request_id': 'lucky77-${DateTime.now().microsecondsSinceEpoch}',
+        }),
+      );
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          data['success'] != true) {
+        throw Exception(data['detail'] ?? 'Bet failed');
+      }
+
+      final bet = data['bet'] as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() {
+        coins = (data['remaining_coins'] as num?)?.toDouble() ?? coins;
+        result = bet['result']?.toString() ?? '';
+      });
+
+      await Future.delayed(const Duration(milliseconds: 2500));
+      if (!mounted) return;
+      final won = bet['status'] == 'won';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            won
+                ? 'YOU WON! Payout: ${bet['payout']} coins'
+                : 'Result: ${fruit(result!)}',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => betting = false);
+    }
+  }
+
+  Widget fruitChoice(String value) {
+    final active = selection == value;
+    final icon = value == 'double_7'
+        ? '7️⃣'
+        : value == 'watermelon'
+        ? '🍉'
+        : '🍑';
+    final title = value == 'double_7'
+        ? 'DOUBLE 7'
+        : value == 'watermelon'
+        ? 'WATERMELON'
+        : 'PLUM';
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: betting ? null : () => setState(() => selection = value),
+        child: Container(
+          margin: const EdgeInsets.all(4),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 3),
+          decoration: BoxDecoration(
+            color: active ? const Color(0xFFFFB52E) : const Color(0xFF29243D),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: active ? Colors.amber : Colors.white24,
+              width: active ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Text(icon, style: const TextStyle(fontSize: 27)),
+              const SizedBox(height: 5),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: active ? Colors.black : Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF11101D),
+      appBar: AppBar(
+        title: const Text('LUCKY 77'),
+        backgroundColor: const Color(0xFF211832),
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            onPressed: loading || betting ? null : loadState,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: loadState,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6338B7), Color(0xFFBD347E)],
+                      ),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'MY COINS',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        Text(
+                          coins.toStringAsFixed(0),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 25,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    height: 285,
+                    child: Center(
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Positioned(
+                            top: 0,
+                            child: Icon(
+                              Icons.arrow_drop_down,
+                              size: 55,
+                              color: Colors.amber.shade300,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 24),
+                            child: SizedBox(
+                              width: 260,
+                              height: 260,
+                              child: CustomPaint(
+                                painter: _Lucky77WheelPainter(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  const Text(
+                    'CHOOSE YOUR FRUIT',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      fruitChoice('double_7'),
+                      fruitChoice('watermelon'),
+                      fruitChoice('plum'),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  const Text(
+                    'BET AMOUNT',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: amounts.map((value) {
+                      final active = amount == value;
+                      return Expanded(
+                        child: GestureDetector(
+                          onTap: betting
+                              ? null
+                              : () => setState(() => amount = value),
+                          child: Container(
+                            margin: const EdgeInsets.only(right: 5),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            decoration: BoxDecoration(
+                              color: active
+                                  ? const Color(0xFFFFB52E)
+                                  : const Color(0xFF29243D),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              value >= 1000 ? '${value ~/ 1000}K' : '$value',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: active ? Colors.black : Colors.white,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    height: 54,
+                    child: ElevatedButton(
+                      onPressed: betting ? null : play,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFFB52E),
+                        foregroundColor: Colors.black,
+                      ),
+                      child: betting
+                          ? const CircularProgressIndicator(color: Colors.black)
+                          : Text(
+                              'PLAY  •  $amount COINS',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                    ),
+                  ),
+                  if (result != null) ...[
+                    const SizedBox(height: 18),
+                    Text(
+                      'RESULT: ${fruit(result!)}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.amber,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                  if (error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      error!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.redAccent),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+class _Lucky77WheelPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    const fruits = ['7️⃣', '🍉', '🍑'];
+    const colors = [Color(0xFFFFB52E), Color(0xFF269D57), Color(0xFF853DAC)];
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 4;
+    const count = 12;
+    const sweep = 2 * math.pi / count;
+
+    for (var i = 0; i < count; i++) {
+      final start = -math.pi / 2 + i * sweep;
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        start,
+        sweep,
+        true,
+        Paint()..color = colors[i % 3],
+      );
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        start,
+        sweep,
+        true,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+      final text = TextPainter(
+        text: TextSpan(
+          text: fruits[i % 3],
+          style: const TextStyle(fontSize: 25),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final angle = start + sweep / 2;
+      final distance = radius * 0.65;
+      text.paint(
+        canvas,
+        Offset(
+          center.dx + math.cos(angle) * distance - text.width / 2,
+          center.dy + math.sin(angle) * distance - text.height / 2,
+        ),
+      );
+    }
+
+    canvas.drawCircle(center, 34, Paint()..color = const Color(0xFF211832));
+    canvas.drawCircle(
+      center,
+      34,
+      Paint()
+        ..color = Colors.amber
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4,
+    );
+    final label = TextPainter(
+      text: const TextSpan(
+        text: '77',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 24,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    label.paint(
+      canvas,
+      Offset(center.dx - label.width / 2, center.dy - label.height / 2),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class LovelySkyStartupError extends StatelessWidget {

@@ -5710,3 +5710,721 @@ def owner_grant_vip_wing(
         raise
     finally:
         db.close()
+
+
+# ============================================================
+# LOVELY SKY - INDEPENDENT LUCKY 77 GAME API
+# ============================================================
+
+LUCKY77_OUTCOMES = [
+    ("double_7", 10, 8),
+    ("watermelon", 30, 2),
+    ("plum", 40, 2),
+    ("no_win", 20, 0),
+]
+LUCKY77_DEFAULT_CYCLES = [500, 800, 1000, 1200, 1500, 2000]
+
+
+def _lucky77_expire_old_records(db):
+    """Rolling 24-hour retention for individual bet and transaction records."""
+    db.execute("""
+        DELETE FROM lucky77_transactions
+        WHERE expires_at <= CURRENT_TIMESTAMP
+    """)
+    db.execute("""
+        DELETE FROM lucky77_bets
+        WHERE expires_at <= CURRENT_TIMESTAMP
+    """)
+    db.execute("""
+        DELETE FROM lucky77_results
+        WHERE expires_at <= CURRENT_TIMESTAMP
+    """)
+
+
+def _lucky77_build_outcome_schedule(target):
+    """Build one saved cycle schedule: 2% Double 7, variable Watermelon/Plum."""
+    target = int(target)
+    double_count = (target * 2) // 100
+    if target >= 50:
+        double_count = max(1, double_count)
+
+    remaining = target - double_count
+    watermelon_share = secrets.randbelow(61) + 20  # 20% to 80%
+    watermelon_count = (remaining * watermelon_share + 50) // 100
+    watermelon_count = max(0, min(remaining, watermelon_count))
+    plum_count = remaining - watermelon_count
+
+    schedule = (
+        ["double_7"] * double_count
+        + ["watermelon"] * watermelon_count
+        + ["plum"] * plum_count
+    )
+    secrets.SystemRandom().shuffle(schedule)
+    return schedule
+
+
+def _lucky77_new_cycle(db, settings):
+    try:
+        targets = json.loads(settings["available_cycle_targets_json"])
+        targets = [
+            int(value) for value in targets
+            if str(value).isdigit() and int(value) > 0
+        ]
+    except Exception:
+        targets = LUCKY77_DEFAULT_CYCLES
+
+    if not targets:
+        targets = LUCKY77_DEFAULT_CYCLES
+
+    target = secrets.choice(targets)
+    schedule = _lucky77_build_outcome_schedule(target)
+    cycle_id = "L77-" + uuid.uuid4().hex[:16].upper()
+
+    db.execute("""
+        INSERT INTO lucky77_cycles
+        (cycle_id, target_bet_count, commission_enabled, commission_rate,
+         outcome_schedule_json)
+        VALUES (?, ?, ?, ?, ?)
+    """, (
+        cycle_id,
+        target,
+        int(settings["commission_enabled"]),
+        int(settings["commission_rate"]),
+        json.dumps(schedule),
+    ))
+    return cycle_id, target
+
+
+@router.get("/games/lucky77/state")
+def lucky77_player_state(
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    ensure_database()
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        _lucky77_expire_old_records(db)
+
+        user_id = int(user["id"])
+        db.execute(
+            "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
+            (user_id,),
+        )
+        wallet = db.execute(
+            "SELECT coins FROM wallets WHERE user_id=?",
+            (user_id,),
+        ).fetchone()
+
+        cycle = db.execute("""
+            SELECT cycle_id, target_bet_count, bet_count,
+                   total_bet_amount, status
+            FROM lucky77_cycles
+            WHERE status='open'
+            ORDER BY id DESC LIMIT 1
+        """).fetchone()
+
+        bets = db.execute("""
+            SELECT bet_id, cycle_id, selection, amount, payout,
+                   status, created_at, expires_at
+            FROM lucky77_bets
+            WHERE user_id=? AND expires_at > CURRENT_TIMESTAMP
+            ORDER BY id DESC LIMIT 50
+        """, (user_id,)).fetchall()
+
+        db.commit()
+        return {
+            "success": True,
+            "coins": int(wallet["coins"]),
+            "active_cycle": dict(cycle) if cycle else None,
+            "recent_bets": [dict(row) for row in bets],
+            "valid_for_hours": 24,
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.post("/games/lucky77/bet")
+def lucky77_place_bet(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+):
+    user = _voice_authenticated_user(authorization)
+    ensure_database()
+
+    selection = str(payload.get("selection", "")).strip().lower()
+    request_id = str(payload.get("request_id", "")).strip()
+
+    try:
+        amount = int(payload.get("amount", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid bet amount")
+
+    if selection not in {"double_7", "watermelon", "plum"}:
+        raise HTTPException(400, "Invalid Lucky 77 selection")
+    if amount <= 0 or amount > 100000000:
+        raise HTTPException(400, "Bet amount must be between 1 and 100000000")
+    if not request_id or len(request_id) > 100:
+        raise HTTPException(400, "A valid request_id is required")
+
+    user_id = int(user["id"])
+    db = get_connection()
+
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        _lucky77_expire_old_records(db)
+
+        existing = db.execute("""
+            SELECT bet_id, cycle_id, selection, amount, payout, status,
+                   outcome, multiplier
+            FROM lucky77_bets
+            WHERE user_id=? AND request_id=?
+        """, (user_id, request_id)).fetchone()
+
+        if existing:
+            db.commit()
+            return {"success": True, "duplicate": True, "bet": dict(existing)}
+
+        db.execute(
+            "INSERT OR IGNORE INTO wallets (user_id) VALUES (?)",
+            (user_id,),
+        )
+
+        settings = db.execute("""
+            SELECT commission_enabled, commission_rate,
+                   available_cycle_targets_json
+            FROM lucky77_settings WHERE id=1
+        """).fetchone()
+
+        cycle = db.execute("""
+            SELECT *
+            FROM lucky77_cycles
+            WHERE status='open'
+            ORDER BY id DESC LIMIT 1
+        """).fetchone()
+
+        if not cycle:
+            cycle_id, _ = _lucky77_new_cycle(db, settings)
+            cycle = db.execute("""
+                SELECT * FROM lucky77_cycles WHERE cycle_id=?
+            """, (cycle_id,)).fetchone()
+
+        cycle_id = cycle["cycle_id"]
+        target_count = int(cycle["target_bet_count"])
+        bet_index = int(cycle["bet_count"])
+
+        try:
+            schedule = json.loads(cycle["outcome_schedule_json"] or "[]")
+        except Exception:
+            schedule = []
+
+        # A cycle with existing bets must never silently receive a new schedule.
+        if len(schedule) != target_count:
+            if bet_index != 0:
+                raise HTTPException(
+                    503,
+                    "Lucky 77 cycle schedule is invalid; betting is paused",
+                )
+            schedule = _lucky77_build_outcome_schedule(target_count)
+            db.execute("""
+                UPDATE lucky77_cycles
+                SET outcome_schedule_json=?
+                WHERE cycle_id=? AND bet_count=0
+            """, (json.dumps(schedule), cycle_id))
+
+        if bet_index >= target_count:
+            raise HTTPException(503, "Lucky 77 cycle is being finalized")
+
+        outcome = schedule[bet_index]
+        multipliers = {"double_7": 8, "watermelon": 2, "plum": 2}
+        multiplier = multipliers[outcome]
+        payout = amount * multiplier if outcome == selection else 0
+
+        commission_enabled = int(cycle["commission_enabled"])
+        commission_rate = int(cycle["commission_rate"])
+        commission = (
+            amount * commission_rate // 100
+            if commission_enabled else 0
+        )
+
+        current_pool = int(cycle["prize_pool"])
+        pool_after_bet = current_pool + amount - commission
+        commission_fund = db.execute("""
+            SELECT balance, outstanding_borrowed
+            FROM lucky77_commission_wallet WHERE id=1
+        """).fetchone()
+        commission_fund_balance = int(commission_fund["balance"])
+        outstanding_borrowed = int(commission_fund["outstanding_borrowed"])
+
+        commission_fund_borrowed = max(0, payout - pool_after_bet)
+
+        if commission_fund_borrowed > commission_fund_balance + commission:
+            raise HTTPException(
+                409,
+                "Lucky 77 temporarily paused: Commission Wallet funds are insufficient",
+            )
+
+        commission_fund_repaid = min(
+            outstanding_borrowed,
+            max(0, pool_after_bet - payout),
+        )
+
+        debit = db.execute("""
+            UPDATE wallets SET coins=coins-?
+            WHERE user_id=? AND coins>=?
+        """, (amount, user_id, amount))
+
+        if debit.rowcount != 1:
+            raise HTTPException(400, "Not enough Lovely Coins")
+
+        bet_id = "L77B-" + uuid.uuid4().hex[:18].upper()
+        bet_status = "won" if payout > 0 else "lost"
+
+        db.execute("""
+            INSERT INTO lucky77_bets
+            (bet_id, cycle_id, user_id, request_id, selection, amount,
+             payout, status, expires_at, settled_at, outcome, multiplier)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','+24 hours'),
+                    CURRENT_TIMESTAMP, ?, ?)
+        """, (
+            bet_id, cycle_id, user_id, request_id, selection,
+            amount, payout, bet_status, outcome, multiplier,
+        ))
+
+        db.execute("""
+            INSERT INTO lucky77_transactions
+            (transaction_id, cycle_id, bet_id, user_id,
+             transaction_type, amount, description, expires_at)
+            VALUES (?, ?, ?, ?, 'bet_debit', ?, ?,
+                    datetime('now','+24 hours'))
+        """, (
+            "L77T-" + uuid.uuid4().hex[:18].upper(),
+            cycle_id, bet_id, user_id, amount,
+            "Lucky 77 bet: " + selection,
+        ))
+
+        if commission > 0:
+            db.execute("""
+                UPDATE lucky77_commission_wallet
+                SET balance=balance+?, total_earned=total_earned+?,
+                    updated_at=CURRENT_TIMESTAMP
+                WHERE id=1
+            """, (commission, commission))
+
+            db.execute("""
+                INSERT INTO lucky77_transactions
+                (transaction_id, cycle_id, bet_id, user_id,
+                 transaction_type, amount, description, expires_at)
+                VALUES (?, ?, ?, NULL, 'commission', ?, ?,
+                        datetime('now','+24 hours'))
+            """, (
+                "L77T-" + uuid.uuid4().hex[:18].upper(),
+                cycle_id, bet_id, commission, "Lucky 77 commission",
+            ))
+
+        if commission_fund_borrowed > 0:
+            borrow_update = db.execute("""
+                UPDATE lucky77_commission_wallet
+                SET balance=balance-?,
+                    outstanding_borrowed=outstanding_borrowed+?,
+                    total_borrowed=total_borrowed+?,
+                    updated_at=CURRENT_TIMESTAMP
+                WHERE id=1 AND balance>=?
+            """, (
+                commission_fund_borrowed,
+                commission_fund_borrowed,
+                commission_fund_borrowed,
+                commission_fund_borrowed,
+            ))
+            if borrow_update.rowcount != 1:
+                raise HTTPException(409, "Commission Wallet changed; retry bet")
+
+            fund_state = db.execute("""
+                SELECT balance, outstanding_borrowed
+                FROM lucky77_commission_wallet WHERE id=1
+            """).fetchone()
+            db.execute("""
+                INSERT INTO lucky77_commission_fund_ledger
+                (transaction_id, cycle_id, bet_id, entry_type, amount,
+                 balance_after, outstanding_after)
+                VALUES (?, ?, ?, 'borrowed', ?, ?, ?)
+            """, (
+                "L77CF-" + uuid.uuid4().hex[:18].upper(),
+                cycle_id, bet_id, commission_fund_borrowed,
+                int(fund_state["balance"]),
+                int(fund_state["outstanding_borrowed"]),
+            ))
+
+        if commission_fund_repaid > 0:
+            repay_update = db.execute("""
+                UPDATE lucky77_commission_wallet
+                SET balance=balance+?,
+                    outstanding_borrowed=outstanding_borrowed-?,
+                    total_repaid=total_repaid+?,
+                    updated_at=CURRENT_TIMESTAMP
+                WHERE id=1 AND outstanding_borrowed>=?
+            """, (
+                commission_fund_repaid,
+                commission_fund_repaid,
+                commission_fund_repaid,
+                commission_fund_repaid,
+            ))
+            if repay_update.rowcount != 1:
+                raise HTTPException(409, "Commission loan changed; retry bet")
+
+            fund_state = db.execute("""
+                SELECT balance, outstanding_borrowed
+                FROM lucky77_commission_wallet WHERE id=1
+            """).fetchone()
+            db.execute("""
+                INSERT INTO lucky77_commission_fund_ledger
+                (transaction_id, cycle_id, bet_id, entry_type, amount,
+                 balance_after, outstanding_after)
+                VALUES (?, ?, ?, 'repaid', ?, ?, ?)
+            """, (
+                "L77CF-" + uuid.uuid4().hex[:18].upper(),
+                cycle_id, bet_id, commission_fund_repaid,
+                int(fund_state["balance"]),
+                int(fund_state["outstanding_borrowed"]),
+            ))
+
+        new_pool = max(
+            0,
+            pool_after_bet - payout - commission_fund_repaid,
+        )
+        commission_fund_state = db.execute("""
+            SELECT balance, outstanding_borrowed
+            FROM lucky77_commission_wallet WHERE id=1
+        """).fetchone()
+
+        if payout > 0:
+            db.execute("""
+                UPDATE wallets SET coins=coins+? WHERE user_id=?
+            """, (payout, user_id))
+
+            db.execute("""
+                INSERT INTO transactions
+                (user_id, transaction_type, amount, currency, description)
+                VALUES (?, 'lucky77_win', ?, 'coins', ?)
+            """, (user_id, payout, "Lucky 77 winning payout " + bet_id))
+
+            db.execute("""
+                INSERT INTO lucky77_transactions
+                (transaction_id, cycle_id, bet_id, user_id,
+                 transaction_type, amount, description, expires_at)
+                VALUES (?, ?, ?, ?, 'win_payout', ?, ?,
+                        datetime('now','+24 hours'))
+            """, (
+                "L77T-" + uuid.uuid4().hex[:18].upper(),
+                cycle_id, bet_id, user_id, payout, "Lucky 77 payout",
+            ))
+
+        new_bet_count = bet_index + 1
+        new_total_bets = int(cycle["total_bet_amount"]) + amount
+        new_commission_total = int(cycle["commission_amount"]) + commission
+        new_total_payout = int(cycle["total_payout"]) + payout
+
+        db.execute("""
+            UPDATE lucky77_cycles
+            SET bet_count=?, total_bet_amount=?, commission_amount=?,
+                prize_pool=?, total_payout=?
+            WHERE cycle_id=?
+        """, (
+            new_bet_count, new_total_bets, new_commission_total,
+            new_pool, new_total_payout, cycle_id,
+        ))
+
+        cycle_completed = new_bet_count >= target_count
+        if cycle_completed:
+            db.execute("""
+                UPDATE lucky77_cycles
+                SET status='completed', completed_at=CURRENT_TIMESTAMP
+                WHERE cycle_id=? AND status='open'
+            """, (cycle_id,))
+
+            outcome_counts = {
+                name: schedule.count(name)
+                for name in ("double_7", "watermelon", "plum")
+            }
+            db.execute("""
+                INSERT OR IGNORE INTO lucky77_results
+                (result_id, cycle_id, result, result_details_json,
+                 total_bet_amount, total_payout, commission_amount,
+                 expires_at)
+                VALUES (?, ?, 'cycle_completed', ?, ?, ?, ?,
+                        datetime('now','+24 hours'))
+            """, (
+                "L77R-" + uuid.uuid4().hex[:16].upper(),
+                cycle_id,
+                json.dumps({
+                    "completed_bet_count": new_bet_count,
+                    "outcome_counts": outcome_counts,
+                    "actual_game_net": new_total_bets - new_total_payout,
+                }),
+                new_total_bets, new_total_payout, new_commission_total,
+            ))
+
+        wallet = db.execute(
+            "SELECT coins FROM wallets WHERE user_id=?",
+            (user_id,),
+        ).fetchone()
+
+        db.commit()
+        return {
+            "success": True,
+            "bet": {
+                "bet_id": bet_id,
+                "cycle_id": cycle_id,
+                "selection": selection,
+                "amount": amount,
+                "result": outcome,
+                "multiplier": multiplier,
+                "payout": payout,
+                "status": bet_status,
+            },
+            "cycle": {
+                "bet_count": new_bet_count,
+                "target_bet_count": target_count,
+                "completed": cycle_completed,
+            },
+            "commission": commission,
+            "commission_fund_borrowed": commission_fund_borrowed,
+            "commission_fund_repaid": commission_fund_repaid,
+            "commission_fund_outstanding": int(commission_fund_state["outstanding_borrowed"]),
+            "commission_fund_balance": int(commission_fund_state["balance"]),
+            "remaining_coins": int(wallet["coins"]),
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.get("/owner/lucky77/dashboard")
+def lucky77_owner_dashboard(
+    authorization: str | None = Header(default=None),
+):
+    _require_coin_owner(authorization)
+    ensure_database()
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        _lucky77_expire_old_records(db)
+
+        settings = db.execute(
+            "SELECT * FROM lucky77_settings WHERE id=1"
+        ).fetchone()
+        wallet = db.execute(
+            "SELECT * FROM lucky77_commission_wallet WHERE id=1"
+        ).fetchone()
+
+        totals = db.execute("""
+            SELECT COUNT(*) AS total_bets,
+                   COALESCE(SUM(amount),0) AS total_bet_amount,
+                   COALESCE(SUM(payout),0) AS total_payout,
+                   COALESCE(SUM(CASE WHEN status='won' THEN 1 ELSE 0 END),0) AS wins,
+                   COALESCE(SUM(CASE WHEN status='lost' THEN 1 ELSE 0 END),0) AS losses
+            FROM lucky77_bets
+            WHERE created_at >= datetime('now','-24 hours')
+        """).fetchone()
+
+        commission_fund_totals = db.execute("""
+            SELECT
+                COALESCE(SUM(CASE
+                    WHEN entry_type='borrowed' THEN amount ELSE 0 END),0)
+                    AS lifetime_borrowed,
+                COALESCE(SUM(CASE
+                    WHEN entry_type='repaid' THEN amount ELSE 0 END),0)
+                    AS lifetime_repaid,
+                COALESCE(SUM(CASE
+                    WHEN entry_type='borrowed'
+                     AND created_at >= datetime('now','-24 hours')
+                    THEN amount ELSE 0 END),0) AS borrowed_24h,
+                COALESCE(SUM(CASE
+                    WHEN entry_type='repaid'
+                     AND created_at >= datetime('now','-24 hours')
+                    THEN amount ELSE 0 END),0) AS repaid_24h
+            FROM lucky77_commission_fund_ledger
+        """).fetchone()
+        current_cycle = db.execute("""
+            SELECT * FROM lucky77_cycles
+            WHERE status='open' ORDER BY id DESC LIMIT 1
+        """).fetchone()
+
+        completed_cycles = db.execute("""
+            SELECT COUNT(*) AS count FROM lucky77_cycles
+            WHERE status='completed'
+              AND completed_at >= datetime('now','-24 hours')
+        """).fetchone()
+
+        db.commit()
+        return {
+            "success": True,
+            "settings": dict(settings),
+            "commission_wallet": dict(wallet),
+            "commission_fund_ledger": dict(commission_fund_totals),
+            "totals_24h": {
+                **dict(totals),
+                "actual_game_net": (
+                    int(totals["total_bet_amount"])
+                    - int(totals["total_payout"])
+                ),
+            },
+            "current_cycle": dict(current_cycle) if current_cycle else None,
+            "completed_cycles_24h": int(completed_cycles["count"]),
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.patch("/owner/lucky77/settings")
+def lucky77_owner_update_settings(
+    payload: dict,
+    authorization: str | None = Header(default=None),
+):
+    owner = _require_coin_owner(authorization)
+    ensure_database()
+
+    enabled = payload.get("commission_enabled")
+    if enabled is not None and not isinstance(enabled, bool):
+        raise HTTPException(400, "commission_enabled must be true or false")
+
+    rate = payload.get("commission_rate", 20)
+    try:
+        rate = int(rate)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid commission rate")
+    if rate < 0 or rate > 100:
+        raise HTTPException(400, "Commission rate must be 0 to 100")
+
+    targets = payload.get("cycle_targets")
+    if targets is not None:
+        if (
+            not isinstance(targets, list) or not targets
+            or len(targets) > 20
+            or any(type(v) is not int or v < 1 or v > 100000 for v in targets)
+        ):
+            raise HTTPException(400, "Invalid cycle targets")
+        targets_json = json.dumps(targets)
+    else:
+        targets_json = None
+
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        current = db.execute(
+            "SELECT * FROM lucky77_settings WHERE id=1"
+        ).fetchone()
+
+        new_enabled = (
+            int(enabled) if enabled is not None
+            else int(current["commission_enabled"])
+        )
+
+        db.execute("""
+            UPDATE lucky77_settings
+            SET commission_enabled=?, commission_rate=?,
+                available_cycle_targets_json=COALESCE(?, available_cycle_targets_json),
+                updated_by_user_id=?, updated_at=CURRENT_TIMESTAMP
+            WHERE id=1
+        """, (
+            new_enabled, rate, targets_json, int(owner["id"]),
+        ))
+        db.commit()
+        return {
+            "success": True,
+            "commission_enabled": bool(new_enabled),
+            "commission_rate": rate,
+            "cycle_targets": json.loads(
+                targets_json or current["available_cycle_targets_json"]
+            ),
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.get("/owner/lucky77/history/{section}")
+def lucky77_owner_history(
+    section: str,
+    authorization: str | None = Header(default=None),
+):
+    _require_coin_owner(authorization)
+    ensure_database()
+
+    allowed = {"bets", "transactions", "results", "cycles", "players"}
+    if section not in allowed:
+        raise HTTPException(400, "Unknown Lucky 77 history section")
+
+    db = get_connection()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        _lucky77_expire_old_records(db)
+
+        if section == "bets":
+            rows = db.execute("""
+                SELECT b.*, u.user_code, u.display_name
+                FROM lucky77_bets b JOIN users u ON u.id=b.user_id
+                WHERE b.expires_at > CURRENT_TIMESTAMP
+                ORDER BY b.id DESC LIMIT 1000
+            """).fetchall()
+
+        elif section == "transactions":
+            rows = db.execute("""
+                SELECT t.*, u.user_code, u.display_name
+                FROM lucky77_transactions t
+                LEFT JOIN users u ON u.id=t.user_id
+                WHERE t.expires_at > CURRENT_TIMESTAMP
+                ORDER BY t.id DESC LIMIT 1000
+            """).fetchall()
+
+        elif section == "results":
+            rows = db.execute("""
+                SELECT * FROM lucky77_results
+                WHERE expires_at > CURRENT_TIMESTAMP
+                ORDER BY id DESC LIMIT 500
+            """).fetchall()
+
+        elif section == "cycles":
+            rows = db.execute("""
+                SELECT * FROM lucky77_cycles
+                WHERE opened_at >= datetime('now','-24 hours')
+                ORDER BY id DESC LIMIT 500
+            """).fetchall()
+
+        else:
+            rows = db.execute("""
+                SELECT u.id AS player_id, u.user_code, u.display_name,
+                       COUNT(b.id) AS total_bets,
+                       COALESCE(SUM(b.amount),0) AS bet_amount,
+                       COALESCE(SUM(b.payout),0) AS total_wins,
+                       SUM(CASE WHEN b.status='lost' THEN 1 ELSE 0 END) AS total_losses,
+                       COALESCE(SUM(b.payout)-SUM(b.amount),0) AS net_result
+                FROM users u
+                JOIN lucky77_bets b ON b.user_id=u.id
+                WHERE b.expires_at > CURRENT_TIMESTAMP
+                GROUP BY u.id, u.user_code, u.display_name
+                ORDER BY bet_amount DESC LIMIT 1000
+            """).fetchall()
+
+        db.commit()
+        return {
+            "success": True,
+            "section": section,
+            "count": len(rows),
+            "records": [dict(row) for row in rows],
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()

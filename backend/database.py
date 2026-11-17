@@ -347,6 +347,37 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
         CREATE INDEX IF NOT EXISTS idx_casino_round_user
             ON casino_active_rounds(user_id, opened_at);
 
+        CREATE TABLE IF NOT EXISTS luck77_shared_rounds (
+            round_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'open'
+                CHECK(status IN ('open','resolved')),
+            total_bet INTEGER NOT NULL DEFAULT 0 CHECK(total_bet >= 0),
+            opened_at INTEGER NOT NULL,
+            closes_at INTEGER NOT NULL,
+            outcome_json TEXT NOT NULL DEFAULT '{}',
+            resolved_at INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_luck77_shared_status
+            ON luck77_shared_rounds(status, closes_at);
+
+        CREATE TABLE IF NOT EXISTS luck77_shared_bets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            round_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            request_id TEXT NOT NULL,
+            selection TEXT NOT NULL,
+            amount INTEGER NOT NULL CHECK(amount > 0),
+            payout INTEGER NOT NULL DEFAULT 0 CHECK(payout >= 0),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, request_id),
+            FOREIGN KEY(round_id) REFERENCES luck77_shared_rounds(round_id),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_luck77_shared_bets_round
+            ON luck77_shared_bets(round_id, selection);
+        CREATE INDEX IF NOT EXISTS idx_luck77_shared_bets_user
+            ON luck77_shared_bets(user_id, round_id);
+
         CREATE TABLE IF NOT EXISTS casino_bet_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             round_id TEXT NOT NULL,
@@ -581,6 +612,153 @@ CREATE TABLE IF NOT EXISTS voice_room_blocks (
                 CREATE INDEX IF NOT EXISTS idx_voice_invites_user
                 ON voice_room_invites(room_id, invitee_uid, status)
             """)
+
+
+    # Independent Lovely Sky Lucky 77 tables
+    with get_connection() as db:
+        db.executescript("""
+        CREATE TABLE IF NOT EXISTS lucky77_settings (
+            id INTEGER PRIMARY KEY CHECK(id=1),
+            commission_enabled INTEGER NOT NULL DEFAULT 1 CHECK(commission_enabled IN (0,1)),
+            commission_rate INTEGER NOT NULL DEFAULT 20 CHECK(commission_rate BETWEEN 0 AND 100),
+            available_cycle_targets_json TEXT NOT NULL DEFAULT '[500,800,1000,1200,1500,2000]',
+            updated_by_user_id INTEGER,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(updated_by_user_id) REFERENCES users(id)
+        );
+        INSERT OR IGNORE INTO lucky77_settings(id) VALUES(1);
+
+        CREATE TABLE IF NOT EXISTS lucky77_commission_wallet (
+            id INTEGER PRIMARY KEY CHECK(id=1),
+            balance INTEGER NOT NULL DEFAULT 0 CHECK(balance>=0),
+            total_earned INTEGER NOT NULL DEFAULT 0 CHECK(total_earned>=0),
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT OR IGNORE INTO lucky77_commission_wallet(id) VALUES(1);
+
+        CREATE TABLE IF NOT EXISTS lucky77_cycles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cycle_id TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','completed','cancelled')),
+            target_bet_count INTEGER NOT NULL CHECK(target_bet_count>0),
+            bet_count INTEGER NOT NULL DEFAULT 0,
+            total_bet_amount INTEGER NOT NULL DEFAULT 0,
+            commission_enabled INTEGER NOT NULL DEFAULT 1,
+            commission_rate INTEGER NOT NULL DEFAULT 20,
+            commission_amount INTEGER NOT NULL DEFAULT 0,
+            prize_pool INTEGER NOT NULL DEFAULT 0,
+            opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            completed_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_lucky77_cycles_status ON lucky77_cycles(status,id);
+
+        CREATE TABLE IF NOT EXISTS lucky77_bets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bet_id TEXT NOT NULL UNIQUE,
+            cycle_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            request_id TEXT NOT NULL,
+            selection TEXT NOT NULL,
+            amount INTEGER NOT NULL CHECK(amount>0),
+            payout INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending','won','lost','refunded')),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TEXT NOT NULL,
+            settled_at TEXT,
+            UNIQUE(user_id,request_id),
+            FOREIGN KEY(cycle_id) REFERENCES lucky77_cycles(cycle_id),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_lucky77_bets_cycle ON lucky77_bets(cycle_id,id);
+        CREATE INDEX IF NOT EXISTS idx_lucky77_bets_user ON lucky77_bets(user_id,created_at);
+        CREATE INDEX IF NOT EXISTS idx_lucky77_bets_expiry ON lucky77_bets(expires_at);
+
+        CREATE TABLE IF NOT EXISTS lucky77_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            result_id TEXT NOT NULL UNIQUE,
+            cycle_id TEXT NOT NULL UNIQUE,
+            result TEXT NOT NULL,
+            result_details_json TEXT NOT NULL DEFAULT '{}',
+            total_bet_amount INTEGER NOT NULL DEFAULT 0,
+            total_payout INTEGER NOT NULL DEFAULT 0,
+            commission_amount INTEGER NOT NULL DEFAULT 0,
+            completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TEXT NOT NULL,
+            FOREIGN KEY(cycle_id) REFERENCES lucky77_cycles(cycle_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_lucky77_results_expiry ON lucky77_results(expires_at);
+
+        CREATE TABLE IF NOT EXISTS lucky77_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id TEXT NOT NULL UNIQUE,
+            cycle_id TEXT,
+            bet_id TEXT,
+            user_id INTEGER,
+            transaction_type TEXT NOT NULL,
+            amount INTEGER NOT NULL CHECK(amount>0),
+            currency TEXT NOT NULL DEFAULT 'coins',
+            description TEXT NOT NULL DEFAULT '',
+            details_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TEXT NOT NULL,
+            FOREIGN KEY(cycle_id) REFERENCES lucky77_cycles(cycle_id),
+            FOREIGN KEY(bet_id) REFERENCES lucky77_bets(bet_id),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_lucky77_transactions_user ON lucky77_transactions(user_id,created_at);
+        CREATE INDEX IF NOT EXISTS idx_lucky77_transactions_expiry ON lucky77_transactions(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_lucky77_transactions_cycle ON lucky77_transactions(cycle_id,id);
+        CREATE TABLE IF NOT EXISTS lucky77_commission_fund_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id TEXT NOT NULL UNIQUE,
+            cycle_id TEXT NOT NULL,
+            bet_id TEXT NOT NULL,
+            entry_type TEXT NOT NULL CHECK(entry_type IN ('borrowed','repaid')),
+            amount INTEGER NOT NULL CHECK(amount>0),
+            balance_after INTEGER NOT NULL CHECK(balance_after>=0),
+            outstanding_after INTEGER NOT NULL CHECK(outstanding_after>=0),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_lucky77_commission_ledger_cycle
+            ON lucky77_commission_fund_ledger(cycle_id,id);
+
+        """)
+
+        # Safe additive migrations for Lucky 77 cycle settlement.
+        cycle_columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(lucky77_cycles)")
+        }
+        for name, definition in {
+            "total_payout": "INTEGER NOT NULL DEFAULT 0",
+            "outcome_schedule_json": "TEXT NOT NULL DEFAULT '[]'",
+        }.items():
+            if name not in cycle_columns:
+                db.execute(f"ALTER TABLE lucky77_cycles ADD COLUMN {name} {definition}")
+
+        wallet_columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(lucky77_commission_wallet)")
+        }
+        for name, definition in {
+            "outstanding_borrowed": "INTEGER NOT NULL DEFAULT 0 CHECK(outstanding_borrowed>=0)",
+            "total_borrowed": "INTEGER NOT NULL DEFAULT 0 CHECK(total_borrowed>=0)",
+            "total_repaid": "INTEGER NOT NULL DEFAULT 0 CHECK(total_repaid>=0)",
+        }.items():
+            if name not in wallet_columns:
+                db.execute(
+                    f"ALTER TABLE lucky77_commission_wallet ADD COLUMN {name} {definition}"
+                )
+
+        bet_columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(lucky77_bets)")
+        }
+        for name, definition in {
+            "outcome": "TEXT",
+            "multiplier": "INTEGER NOT NULL DEFAULT 0",
+        }.items():
+            if name not in bet_columns:
+                db.execute(f"ALTER TABLE lucky77_bets ADD COLUMN {name} {definition}")
+
 
 if __name__ == "__main__":
     initialize_database()
