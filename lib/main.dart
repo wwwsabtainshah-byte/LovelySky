@@ -13575,6 +13575,8 @@ class _Lucky77GamePage extends StatefulWidget {
 }
 
 class _Lucky77GamePageState extends State<_Lucky77GamePage> {
+  late final WebViewController _layoutController;
+
   int amount = 100;
   String selection = 'watermelon';
   double coins = 0;
@@ -13588,6 +13590,10 @@ class _Lucky77GamePageState extends State<_Lucky77GamePage> {
   @override
   void initState() {
     super.initState();
+    _layoutController = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(const Color(0xFF050816))
+      ..loadFlutterAsset('assets/lucky77/lucky77_layout.html');
     loadState();
   }
 
@@ -13751,179 +13757,8 @@ class _Lucky77GamePageState extends State<_Lucky77GamePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF11101D),
-      appBar: AppBar(
-        title: const Text('LUCKY 77'),
-        backgroundColor: const Color(0xFF211832),
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            onPressed: loading || betting ? null : loadState,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: loadState,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF6338B7), Color(0xFFBD347E)],
-                      ),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'MY COINS',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                        Text(
-                          coins.toStringAsFixed(0),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 25,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    height: 285,
-                    child: Center(
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Positioned(
-                            top: 0,
-                            child: Icon(
-                              Icons.arrow_drop_down,
-                              size: 55,
-                              color: Colors.amber.shade300,
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(top: 24),
-                            child: SizedBox(
-                              width: 260,
-                              height: 260,
-                              child: CustomPaint(
-                                painter: _Lucky77WheelPainter(),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  const Text(
-                    'CHOOSE YOUR FRUIT',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      fruitChoice('double_7'),
-                      fruitChoice('watermelon'),
-                      fruitChoice('plum'),
-                    ],
-                  ),
-                  const SizedBox(height: 22),
-                  const Text(
-                    'BET AMOUNT',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: amounts.map((value) {
-                      final active = amount == value;
-                      return Expanded(
-                        child: GestureDetector(
-                          onTap: betting
-                              ? null
-                              : () => setState(() => amount = value),
-                          child: Container(
-                            margin: const EdgeInsets.only(right: 5),
-                            padding: const EdgeInsets.symmetric(vertical: 13),
-                            decoration: BoxDecoration(
-                              color: active
-                                  ? const Color(0xFFFFB52E)
-                                  : const Color(0xFF29243D),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              value >= 1000 ? '${value ~/ 1000}K' : '$value',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: active ? Colors.black : Colors.white,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    height: 54,
-                    child: ElevatedButton(
-                      onPressed: betting ? null : play,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFFB52E),
-                        foregroundColor: Colors.black,
-                      ),
-                      child: betting
-                          ? const CircularProgressIndicator(color: Colors.black)
-                          : Text(
-                              'PLAY  •  $amount COINS',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                    ),
-                  ),
-                  if (result != null) ...[
-                    const SizedBox(height: 18),
-                    Text(
-                      'RESULT: ${fruit(result!)}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.amber,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                  if (error != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      error!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.redAccent),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+      backgroundColor: const Color(0xFF050816),
+      body: SafeArea(child: WebViewWidget(controller: _layoutController)),
     );
   }
 }
