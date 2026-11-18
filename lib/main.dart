@@ -13758,7 +13758,16 @@ class _Lucky77GamePageState extends State<_Lucky77GamePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF050816),
-      body: SafeArea(child: WebViewWidget(controller: _layoutController)),
+      body: SafeArea(
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.4,
+            width: double.infinity,
+            child: WebViewWidget(controller: _layoutController),
+          ),
+        ),
+      ),
     );
   }
 }
