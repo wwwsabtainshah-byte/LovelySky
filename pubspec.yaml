@@ -69,6 +69,8 @@ flutter:
   uses-material-design: true
   assets:
     - assets/lucky77/
+    - assets/lucky77/layered/
+    - assets/lucky77/layered/chips/
     - assets/audio/lucky_chun.wav
     - assets/lovely_sky_frames/
     - assets/vip_animated_lit/
