@@ -47,12 +47,13 @@ android {
 
     if (hasReleaseSigning) {
         signingConfigs {
-            create("release") {
-                storeFile = file(keystorePath!!)
-                storePassword = keystorePassword!!
-                keyAlias = keyAliasValue!!
-                keyPassword = keyPasswordValue!!
-            }
+        create("release") {
+            storeFile = file(keystorePath!!)
+            storeType = "PKCS12"
+            storePassword = keystorePassword!!
+            keyAlias = keyAliasValue!!
+            keyPassword = keyPasswordValue!!
+        }
         }
     }
 
